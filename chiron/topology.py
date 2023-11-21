@@ -25,6 +25,11 @@ class Topology:
         # returns the number of atoms in the topology
         return len(self.atoms)
 
+    @property
+    def mass(self) -> List[float]:
+        # returns the total mass of the system
+        return [atom.mass for atom in self.atoms]
+
     def append(self, atom: Atom):
         # append an atom to the topology
         self.atoms.append(atom)

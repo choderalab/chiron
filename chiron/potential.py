@@ -2,12 +2,17 @@ import jax
 import jax.numpy as np
 from scipy.spatial.distance import pdist, squareform
 from .topology import Topology
+from loguru import logger as log
+from openmm import unit
 
 
 class NeuralNetworkPotential:
     def __init__(self, model, topology: Topology):
         self.topology = topology  # The topology of the system
-        self.model = model(self.topology)  # The trained neural network model
+        if model is None:
+            log.warning("No model provided, using default model")
+        else:
+            self.model = model(self.topology)  # The trained neural network model
 
     def compute_energy(self, positions):
         # Compute the pair distances and displacement vectors
@@ -22,21 +27,34 @@ class NeuralNetworkPotential:
         force = -jax.grad(self.compute_energy)(positions)
         return force
 
-    def compute_pairlist(self, positions, cutoff):
+    def compute_pairlist(self, positions, cutoff) -> np.array:
         # Compute the pairlist for a given set of positions and a cutoff distance
         pair_distances = pdist(positions)
         pairlist = np.where(pair_distances < cutoff)
-        return pairlist
+        return pairlist[0]
 
 
 class LJPotential(NeuralNetworkPotential):
-    def __init__(self, sigma, epsilon, topology: Topology):
-        self.sigma = sigma  # The distance at which the potential is zero
-        self.epsilon = epsilon  # The depth of the potential well
+    def __init__(
+        self,
+        topology: Topology,
+        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole,
+        epsilon: unit.Quantity = 3.350 * unit.angstroms,
+    ):
+        assert isinstance(sigma, unit.Quantity)
+        assert isinstance(epsilon, unit.Quantity)
+
+        self.sigma = sigma.value_in_unit(
+            unit.kilocalories_per_mole
+        )  # The distance at which the potential is zero
+        self.epsilon = epsilon.value_in_unit(
+            unit.angstrom
+        )  # The depth of the potential well
         self.topology = topology  # The topology of the system
 
-    def compute_energy(self, positions):
+    def compute_energy(self, positions: unit.Quantity):
         # Compute the pair distances and displacement vectors
+        positions = positions.value_in_unit(unit.angstrom)
         pair_distances = pdist(positions)
         displacement_vectors = squareform(pair_distances)
         # Use the Lennard-Jones potential to compute the potential energy

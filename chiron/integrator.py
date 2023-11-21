@@ -17,6 +17,7 @@ class LangevinIntegrator:
         self.potential = potential
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+        self.mass = self.potential.topology.mass
 
     def langevin(
         self,
@@ -27,15 +28,14 @@ class LangevinIntegrator:
         collision_rate=1.0 / unit.picoseconds,
         key=random.PRNGKey(0),
     ):
-        mass = self.potential.topology.mass
-        sigma_v = jnp.sqrt(self.kB * temperature / mass)
+        sigma_v = jnp.sqrt(self.kB * temperature / self.mass)
 
         # Initialize velocities
-        v0 = self.sigma_v * random.normal(key, x0.shape)
+        v0 = sigma_v * random.normal(key, x0.shape)
 
         # Convert to dimensionless quantities
-        a = jnp.exp(-self.collision_rate * self.stepsize)
-        b = jnp.sqrt(1 - jnp.exp(-2 * self.collision_rate * self.stepsize))
+        a = jnp.exp(-collision_rate * stepsize)
+        b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate * stepsize))
 
         x = x0
         v = v0
