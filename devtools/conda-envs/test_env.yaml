@@ -9,6 +9,7 @@ dependencies:
   - jax
   - openmm
   - tqdm
+  - loguru
 
     # Testing
   - pytest
