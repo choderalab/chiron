@@ -29,7 +29,7 @@ class NeuralNetworkPotential:
         return pairlist
 
 
-class DummyNeuralNetworkPotential:
+class LJPotential:
     def __init__(self, sigma, epsilon, topology: Topology):
         self.sigma = sigma  # The distance at which the potential is zero
         self.epsilon = epsilon  # The depth of the potential well
@@ -54,3 +54,20 @@ class DummyNeuralNetworkPotential:
         # Compute the force as the negative gradient of the potential energy
         force = -jax.grad(self.compute_energy)(positions)
         return force
+
+
+class HarmonicOscillatorPotential(NeuralNetworkPotential):
+    def __init__(self, k, x0, U0):
+        self.k = k  # spring constant
+        self.x0 = x0  # equilibrium position
+        self.U0 = U0  # offset potential energy
+
+    def compute_energy(self, positions):
+        # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0 
+        # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
+        
+        # compute the displacement vectors
+        displacement_vectors = positions - self.x0
+        # Uue the 3D harmonic oscillator potential to compute the potential energy
+        potential_energy = 0.5 * self.k * np.sum(displacement_vectors**2) + self.U0
+        return potential_energy
