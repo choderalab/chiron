@@ -12,12 +12,14 @@ class LangevinIntegrator:
     def __init__(
         self, potential: NeuralNetworkPotential, box_vectors=None, progress_bar=False
     ):
+        from .utils import get_list_of_mass
+
         self.box_vectors = box_vectors
         self.progress_bar = progress_bar
         self.potential = potential
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
-        self.mass = self.potential.topology.mass
+        self.mass = get_list_of_mass(self.potential.topology)
 
     def run(
         self,

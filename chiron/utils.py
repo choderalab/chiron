@@ -1,4 +1,5 @@
 from openmm.app import Topology
+from openmm import unit
 
 
 def get_data_file_path(relative_path: str) -> str:
@@ -26,7 +27,7 @@ def get_data_file_path(relative_path: str) -> str:
     return str(file_path)
 
 
-def get_list_of_mass(topology: Topology):
+def get_list_of_mass(topology: Topology) -> unit.Quantity:
     """Get the mass of the system from the topology."""
     from simtk import unit
 
