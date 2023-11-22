@@ -1,31 +1,36 @@
-def get_mass_from_atomic_number(atomic_number):
-    # NOTE: there might be a better way to do this
-    # define a dictionary mapping atomic numbers to masses
-    atomic_masses = {
-        1: 1.008,
-        6: 12.011,
-        8: 15.999,
-        # add more atomic numbers and corresponding masses as needed
-    }
-
-    # check if the atomic number is in the dictionary
-    if atomic_number in atomic_masses:
-        return atomic_masses[atomic_number]
-    else:
-        raise KeyError(f"Atomic number {atomic_number} not found.")
+from openmm.app import Topology
 
 
-def get_symbol_from_atomic_number(atomic_number):
-    # define a dictionary mapping atomic numbers to chemical symbols
-    atomic_symbols = {
-        1: "H",
-        6: "C",
-        8: "O",
-        # add more atomic numbers and corresponding symbols as needed
-    }
+def get_data_file_path(relative_path: str) -> str:
+    """Get the full path to one of the reference files in testsystems.
+    In the source distribution, these files are in ``chiron/data/``,
+    but on installation, they're moved to somewhere in the user's python
+    site-packages directory.
 
-    # check if the atomic number is in the dictionary
-    if atomic_number in atomic_symbols:
-        return atomic_symbols[atomic_number]
-    else:
-        raise KeyError(f"Atomic number {atomic_number} not found.")
+    Parameters
+    ----------
+
+    name : str
+        Name of the file to load (with respect to `chiron/data/`)
+
+    """
+    from importlib.resources import files
+
+    _DATA_ROOT = files("chiron") / "data"
+
+    file_path = _DATA_ROOT / relative_path
+
+    if not file_path.exists():
+        raise ValueError(f"Sorry! {file_path} does not exist.")
+
+    return str(file_path)
+
+
+def get_list_of_mass(topology: Topology):
+    """Get the mass of the system from the topology."""
+    from simtk import unit
+
+    mass = []
+    for atom in topology.atoms():
+        mass.append(atom.element.mass)
+    return mass

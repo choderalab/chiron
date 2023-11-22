@@ -45,6 +45,48 @@ def test_neural_network_pairlist():
     assert pairlist.size == 12  # there is one pair that is within the cutoff distance
 
 
+# Test HarmonicOscillatorPotential
+def test_harmonic_oscillator_potential():
+    # Create a harmonic oscillator potential object
+    k = 100.0 * unit.kilocalories_per_mole / unit.angstroms**2
+    U0 = 0.0 * unit.kilocalories_per_mole
+    x0 = 0.0 * unit.angstrom
+    harmonic_potential = HarmonicOscillatorPotential(k, x0, U0)
+    positions = jnp.array([0.0, 0.0, 0.0]) * unit.angstrom
+    # Test compute_energy method
+    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    assert jnp.isclose(energy, 0.0)
+
+    positions = jnp.array([0.2, 0.2, 0.2]) * unit.angstrom
+    # Test compute_energy method
+    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    assert jnp.isclose(energy, 25.10400390625)
+
+    positions = jnp.array([0.2, 0.0, 0.0]) * unit.angstrom
+    # Test compute_energy method
+    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    assert jnp.isclose(energy, 8.368000984191895)
+
+    positions = jnp.array([-0.2, 0.0, 0.0]) * unit.angstrom
+    # Test compute_energy method
+    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    assert jnp.isclose(energy, 8.368000984191895)
+
+    positions = jnp.array([-0.0, 0.2, 0.0]) * unit.angstrom
+    # Test compute_energy method
+    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    assert jnp.isclose(energy, 8.368000984191895)
+
+    # Test compute_force method
+    forces = harmonic_potential.compute_force(positions)
+    assert forces.shape == positions.shape
+
+
 # # Test LJPotential
 # def test_lj_potential():
 #     pdb_file = get_data_file_path("two_particles_1.pdb")
@@ -65,26 +107,3 @@ def test_neural_network_pairlist():
 #     # Test compute_force method
 #     forces = lj_potential.compute_force(positions)
 #     assert forces.shape == positions.shape
-
-
-# Test HarmonicOscillatorPotential
-def test_harmonic_oscillator_potential():
-    # Create a topology object
-    pdb_file = get_data_file_path("two_particles_1.pdb")
-    pdb = app.PDBFile(pdb_file)
-    positions = pdb.getPositions(asNumpy=True)
-
-    # Create a harmonic oscillator potential object
-    k = 100.0 * unit.kilocalories_per_mole / unit.angstroms**2
-    U0 = 0.0 * unit.kilocalories_per_mole
-    x0 = 0.0 * unit.angstrom
-    harmonic_potential = HarmonicOscillatorPotential(k, x0, U0)
-
-    # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
-    assert jnp.isclose(energy, 627.5999)
-
-    # Test compute_force method
-    forces = harmonic_potential.compute_force(positions)
-    assert forces.shape == positions.shape

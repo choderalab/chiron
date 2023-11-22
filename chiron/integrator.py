@@ -19,7 +19,7 @@ class LangevinIntegrator:
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         self.mass = self.potential.topology.mass
 
-    def langevin(
+    def run(
         self,
         x0,
         temperature: unit.Quantity,
