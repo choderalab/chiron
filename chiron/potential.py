@@ -25,17 +25,20 @@ class NeuralNetworkPotential:
 
     def compute_force(self, positions) -> jnp.ndarray:
         # Compute the force as the negative gradient of the potential energy
-        positions_without_unit = jnp.array(
-            positions.value_in_unit_system(unit.md_unit_system)
-        )
-        force = -jax.grad(self.compute_energy)(positions_without_unit)
+        force = -jax.grad(self.compute_energy)(positions)
         return force
 
     def compute_pairlist(self, positions, cutoff) -> jnp.array:
         # Compute the pairlist for a given set of positions and a cutoff distance
-        pair_distances = pdist(positions)
-        pairlist = jnp.where(pair_distances < cutoff)
-        return pairlist[0]
+        from scipy.spatial.distance import cdist
+
+        pair_distances = cdist(positions, positions)
+        pairs = jnp.where(pair_distances < cutoff)
+
+        # exclude case where i ==j and duplicate pairs
+        mask = jnp.where(pairs[0] < pairs[1])
+
+        return pairs[0][mask], pairs[1][mask]
 
 
 class LJPotential(NeuralNetworkPotential):

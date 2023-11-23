@@ -6,11 +6,16 @@ from tqdm import tqdm
 from openmm import unit
 
 from .potential import NeuralNetworkPotential
+from openmm.app import Topology
 
 
 class LangevinIntegrator:
     def __init__(
-        self, potential: NeuralNetworkPotential, box_vectors=None, progress_bar=False
+        self,
+        potential: NeuralNetworkPotential,
+        topology: Topology,
+        box_vectors=None,
+        progress_bar=False,
     ):
         from .utils import get_list_of_mass
 
@@ -19,7 +24,7 @@ class LangevinIntegrator:
         self.potential = potential
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
-        self.mass = get_list_of_mass(self.potential.topology)
+        self.mass = get_list_of_mass(topology)
 
     def run(
         self,
@@ -30,16 +35,21 @@ class LangevinIntegrator:
         collision_rate=1.0 / unit.picoseconds,
         key=random.PRNGKey(0),
     ):
-        sigma_v = jnp.sqrt(self.kB * temperature / self.mass)
-
+        kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
+        mass_unitless = jnp.array(self.mass.value_in_unit_system(unit.md_unit_system))
+        sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
+        stepsize_unitless = stepsize.value_in_unit_system(unit.md_unit_system)
+        collision_rate_unitless = collision_rate.value_in_unit_system(
+            unit.md_unit_system
+        )
         # Initialize velocities
         v0 = sigma_v * random.normal(key, x0.shape)
 
         # Convert to dimensionless quantities
-        a = jnp.exp(-collision_rate * stepsize)
-        b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate * stepsize))
+        a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
+        b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
-        x = x0
+        x = x0.value_in_unit_system(unit.md_unit_system)
         v = v0
 
         traj = [x]
@@ -48,16 +58,24 @@ class LangevinIntegrator:
             key, subkey = random.split(key)
 
             # Leapfrog integration
-            v += (stepsize * 0.5) * self.potential.compute_force(x) / self.mass
-            x += (stepsize * 0.5) * v
+            v += (
+                (stepsize_unitless * 0.5)
+                * self.potential.compute_force(x)
+                / mass_unitless
+            )
+            x += (stepsize_unitless * 0.5) * v
 
             if self.box_vectors is not None:
                 x = x - self.box_vectors * jnp.floor(x / self.box_vectors)
 
             v = a * v + b * sigma_v * random.normal(subkey, x.shape)
 
-            x += (stepsize * 0.5) * v
-            v += (stepsize * 0.5) * self.potential.compute_force(x) / self.mass
+            x += (stepsize_unitless * 0.5) * v
+            v += (
+                (stepsize_unitless * 0.5)
+                * self.potential.compute_force(x)
+                / mass_unitless
+            )
 
             traj.append(x)
 

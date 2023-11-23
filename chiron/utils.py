@@ -33,5 +33,5 @@ def get_list_of_mass(topology: Topology) -> unit.Quantity:
 
     mass = []
     for atom in topology.atoms():
-        mass.append(atom.element.mass)
-    return mass
+        mass.append(atom.element.mass.value_in_unit(unit.amu))
+    return mass * unit.amu
