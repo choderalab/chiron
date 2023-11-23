@@ -25,12 +25,16 @@ def test_neural_network_pairlist():
     # Test compute_pairlist method
     cutoff = 0.2
     pairlist = nn_potential.compute_pairlist(positions, cutoff)
-    assert pairlist.size == 1  # there is one pair that is within the cutoff distance
+    assert (
+        pairlist[0].size == 1 and pairlist[1].size == 1
+    )  # there is one pair that is within the cutoff distance
 
     # Test compute_pairlist method
     cutoff = 0.1
     pairlist = nn_potential.compute_pairlist(positions, cutoff)
-    assert pairlist.size == 0  # there is no pair that is within the cutoff distance
+    assert (
+        pairlist[0].size == 0 and pairlist[1].size == 0
+    )  # there is no pair that is within the cutoff distance
 
     # try this with ethanol
     pdb_file = get_data_file_path("ethanol.pdb")
@@ -42,7 +46,9 @@ def test_neural_network_pairlist():
     cutoff = 0.2
     pairlist = nn_potential.compute_pairlist(positions, cutoff)
     print(pairlist)
-    assert pairlist.size == 12  # there is one pair that is within the cutoff distance
+    assert (
+        pairlist[0].size == 12 and pairlist[1].size == 12
+    )  # there are 12 pairs within the cutoff distance
 
 
 # Test HarmonicOscillatorPotential
@@ -54,37 +60,47 @@ def test_harmonic_oscillator_potential():
     harmonic_potential = HarmonicOscillatorPotential(k, x0, U0)
     positions = jnp.array([0.0, 0.0, 0.0]) * unit.angstrom
     # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    positions_without_unit = jnp.array(
+        positions.value_in_unit_system(unit.md_unit_system)
+    )
+    energy = float(harmonic_potential.compute_energy(positions_without_unit))
     assert jnp.isclose(energy, 0.0)
 
     positions = jnp.array([0.2, 0.2, 0.2]) * unit.angstrom
     # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    positions_without_unit = jnp.array(
+        positions.value_in_unit_system(unit.md_unit_system)
+    )
+    energy = float(harmonic_potential.compute_energy(positions_without_unit))
     assert jnp.isclose(energy, 25.10400390625)
 
     positions = jnp.array([0.2, 0.0, 0.0]) * unit.angstrom
     # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    positions_without_unit = jnp.array(
+        positions.value_in_unit_system(unit.md_unit_system)
+    )
+    energy = float(harmonic_potential.compute_energy(positions_without_unit))
     assert jnp.isclose(energy, 8.368000984191895)
 
     positions = jnp.array([-0.2, 0.0, 0.0]) * unit.angstrom
     # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    positions_without_unit = jnp.array(
+        positions.value_in_unit_system(unit.md_unit_system)
+    )
+    energy = float(harmonic_potential.compute_energy(positions_without_unit))
     assert jnp.isclose(energy, 8.368000984191895)
 
     positions = jnp.array([-0.0, 0.2, 0.0]) * unit.angstrom
     # Test compute_energy method
-    positions_with_unit = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
-    energy = float(harmonic_potential.compute_energy(positions_with_unit))
+    positions_without_unit = jnp.array(
+        positions.value_in_unit_system(unit.md_unit_system)
+    )
+    energy = float(harmonic_potential.compute_energy(positions_without_unit))
     assert jnp.isclose(energy, 8.368000984191895)
 
     # Test compute_force method
-    forces = harmonic_potential.compute_force(positions)
-    assert forces.shape == positions.shape
+    forces = harmonic_potential.compute_force(positions_without_unit)
+    assert forces.shape == positions_without_unit.shape
 
 
 # # Test LJPotential
