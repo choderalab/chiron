@@ -6,13 +6,12 @@ thermodynamic state of a biomolecule using a Markov chain Monte Carlo scheme.
 It currently offer supports for
 * Langevin dynamics,
 * Monte Carlo,
-* Monte Carlo barostat moves,
 
 which can be combined through the SequenceMove classes.
 
 >>> from chiron import unit
 >>> from openmmtools.testsystems import AlanineDipeptideVacuum
->>> from chiron.states import StateVariablesCollection
+>>> from chiron.states import SimulationVariables
 >>> from chiron.potential import NeuralNetworkPotential
 >>> from modelforge.potential.pretrained_models import SchNetModel
 >>> from chiron.mcmc import MCMCSampler, SequenceMove, MCMove, LangevinDynamicsMove
@@ -22,7 +21,7 @@ dipeptide system in vacuum.
 
 >>> alanine_dipeptide = AlanineDipeptideVacuum()
 >>> potential = NeuralNetworkPotential(SchNetModel, alanine_dipeptide.topology)
->>> state = StateVariablesCollection(temperature=298*unit.kelvin, positions=test.positions)
+>>> state = SimulationVariables(temperature=298*unit.kelvin, positions=test.positions)
 
 Create an MCMC move to sample the equilibrium distribution.
 
@@ -37,7 +36,7 @@ You can combine them to form a sequence of moves
 >>> sampler = MCMCSampler(thermodynamic_state, sampler_state, move=sequence_move)
 
 """
-from chiron.states import StateVariablesCollection
+from chiron.states import SimulationState
 from chiron.potential import NeuralNetworkPotential
 from openmm import unit
 from loguru import logger as log
@@ -57,7 +56,7 @@ class GibbsSampler(object):
 
     """
 
-    def __init__(self, state_variables: StateVariablesCollection, move_set: MoveSet):
+    def __init__(self, state_variables: SimulationState, move_set: MoveSet):
         from copy import deepcopy
 
         log.info("Initializing Gibbs sampler")
@@ -114,7 +113,7 @@ class LangevinDynamicsMove:
 
     def run(
         self,
-        state_variables: StateVariablesCollection,
+        state_variables: SimulationState,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -158,7 +157,9 @@ class MCMove:
         self.system = NeuralNetworkPotential
 
     def _check_state_compatiblity(
-        self, old_state: StateVariablesCollection, new_state: StateVariablesCollection
+        self,
+        old_state: SimulationState,
+        new_state: SimulationState,
     ):
         """
         Check if the states are compatible.
@@ -191,7 +192,9 @@ class MCMove:
         raise NotImplementedError("apply_move() must be implemented in subclasses")
 
     def compute_acceptance_probability(
-        self, old_state: StateVariablesCollection, new_state: StateVariablesCollection
+        self,
+        old_state: SimulationState,
+        new_state: SimulationState,
     ):
         """
         Compute the acceptance probability for a move from an old state to a new state.
