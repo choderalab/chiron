@@ -1,6 +1,9 @@
 from openmm import unit
-from typing import List
-from .potential import Potential
+from typing import List, Optional
+from .potential import NeuralNetworkPotential
+from jax import numpy as jnp
+from loguru import logger as log
+
 
 class SimulationState:
     """
@@ -39,14 +42,62 @@ class SimulationState:
 
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        temperature: Optional[unit.Quantity] = None,
+        volume: Optional[unit.Quantity] = None,
+        pressure: Optional[unit.Quantity] = None,
+        nr_of_particles: Optional[int] = None,
+        position: Optional[jnp.ndarray] = None,
+        potential: Optional[NeuralNetworkPotential] = None,
+    ) -> None:
         # initialize all state variables
-        self.temperature: unit.Quantity
-        self.volume: unit.Quantity
-        self.pressure: unit.Quantity
-        self.nr_of_particles: int
-        self.position: unit.Quantity
-        self.potential: Potential
+        self.temperature = temperature
+        self.volume = volume
+        self.pressure = pressure
+        self.nr_of_particles = nr_of_particles
+        self.position = position
+        self.potential = potential
+
+        # check which variables are not None
+
+        self._check_completness()
+
+    def check_variables(self):
+        """
+        Check which variables in the __init__ method are None.
+
+        Returns
+        -------
+        List[str]
+            A list of variable names that are None.
+        """
+        variables = [
+            "temperature",
+            "volume",
+            "pressure",
+            "nr_of_particles",
+            "position",
+            "potential",
+        ]
+        set_variables = [var for var in variables if getattr(self, var) is not None]
+        return set_variables
+
+    def _check_completness(self):
+        # check which variables are set
+        set_variables = self.check_variables()
+
+        if len(set_variables) == 0:
+            log.info("No variables are set.")
+
+        # print all set variables
+        for var in set_variables:
+            log.info(f"{var} is set.")
+
+        if self.temperature and self.volume and self.nr_of_particles:
+            log.info("NVT ensemble simulated.")
+        if self.temperature and self.pressure and self.nr_of_particles:
+            log.info("NpT ensemble is simulated.")
 
     @classmethod
     def are_states_compatible(cls, state1, state2):
@@ -125,7 +176,8 @@ class SimulationState:
 
 class JointSimulationStates:
     """
-    Manages a collection of SimulationState objects.
+    Manages a collection of SimulationState objects to define a joint probability distribution
+    to generate samples from.
     """
 
     def __init__(self, states: List[SimulationState]):
