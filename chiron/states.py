@@ -1,6 +1,6 @@
 from openmm import unit
 from typing import List
-
+from .potential import Potential
 
 class SimulationState:
     """
@@ -46,6 +46,7 @@ class SimulationState:
         self.pressure: unit.Quantity
         self.nr_of_particles: int
         self.position: unit.Quantity
+        self.potential: Potential
 
     @classmethod
     def are_states_compatible(cls, state1, state2):
