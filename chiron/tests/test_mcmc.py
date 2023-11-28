@@ -34,26 +34,27 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes():
     state = SimulationState()
     ho = HarmonicOscillator()
 
-    state = {"K" : ho.K, "U0" : ho.U0, "x0" : 0.0 * unit.angstrom}
-    
+    state = {"K": ho.K, "U0": ho.U0, "x0": 0.0 * unit.angstrom}
+
     langevin_move = LangevinDynamicsMove(
         n_steps=5,
         NeuralNetworPotential=HarmonicOscillatorPotential,
         stepsize=0.2 * unit.femtoseconds,
     )
 
-    move_set = MoveSet({"LangevinDynamics" : langevin_move}, {"LangevinDynamics": 5_000})
+    move_set = MoveSet({"LangevinDynamics": langevin_move}, [("LangevinDynamics", 10)])
     sampler = GibbsSampler(state, move_set)
     sampler.run()
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
     # define two harmonic oscillators with different spring constants and equilibrium positions
-    # sample from the joint distribution of the two HO using local langevin moves 
+    # sample from the joint distribution of the two HO using local langevin moves
     # and global moves that change the spring constants and equilibrium positions
     pass
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_MC_moves():
     # define two harmonic oscillators with different spring constants and equilibrium positions
-    # sample from the joint distribution of the two HO using metropolis hastings moves 
+    # sample from the joint distribution of the two HO using metropolis hastings moves
+    pass

@@ -40,7 +40,7 @@ from chiron.states import SimulationState
 from chiron.potential import NeuralNetworkPotential
 from openmm import unit
 from loguru import logger as log
-from typing import Dict, Union
+from typing import Dict, Union, Tuple, List
 
 
 from typing import Optional
@@ -246,52 +246,64 @@ class MoveSet:
     """
 
     def __init__(
-        self, availalbe_moves: Dict[str, StateUpdateMove], move_schedule: Dict[str, int]
+        self,
+        availalbe_moves: Dict[str, StateUpdateMove],
+        move_schedule: List[Tuple[str, int]],
     ) -> None:
         """
         Initializes a MoveSet object.
 
-        Parameters:
+        Parameters
         ----------
-        - availalbe_moves (Dict[str, StateUpdateMove]): A dictionary of available moves, where the keys are move names and the values are StateUpdateMove objects.
-        - move_schedule (Dict[str, int]): A dictionary representing the move schedule, where the keys are move names and the values are integers representing the number of times each move should be performed.
+        available_moves : Dict[str, StateUpdateMove]
+            A dictionary of available moves, where the keys are move names and the values are StateUpdateMove objects.
+        move_sequence : List[Tuple[str, int]]
+            A list representing the move sequence, where each tuple contains a move name and an integer representing the number of times the move should be performed in sequence.
 
-        Raises:
-        - ValueError: If a move in availalbe_moves is not present in the move_schedule.
+        Raises
+        ------
+        ValueError
+            If a move in the sequence is not present in available_moves.
         """
         self.availalbe_moves = availalbe_moves
         self.move_schedule = move_schedule
 
-        self._check_completness()
+        self._validate_sequence()
 
-    def _check_completness(self):
+    def _validate_sequence(self):
         """
-        Checks if all moves in availalbe_moves are present in the move_schedule.
+        Validates the move sequence against the available moves.
 
-        Raises:
-        - ValueError: If a move in availalbe_moves is not present in the move_schedule.
+        Raises
+        ------
+        ValueError
+            If a move in the sequence is not present in available_moves.
         """
-        for key in self.availalbe_moves.keys():
-            if key not in self.move_schedule.keys():
-                raise ValueError(f"Move {key} is not in the move schedule.")
+        for move_name, _ in self.move_sequence:
+            if move_name not in self.available_moves:
+                raise ValueError(f"Move {move_name} in the sequence is not available.")
 
     def add_move(self, new_moves: Dict[str, MCMove]):
         """
         Adds new moves to the available moves.
 
-        Parameters:
-        - new_moves (Dict[str, MCMove]): A dictionary of new moves to be added, where the keys are move names and the values are MCMove objects.
+        Parameters
+        ----------
+        new_moves : Dict[str, MCMove]
+            A dictionary of new moves to be added, where the keys are move names and the values are MCMove objects.
         """
-        self.availalbe_moves.update(new_moves)
+        self.available_moves.update(new_moves)
 
     def remove_move(self, move_name: str):
         """
         Removes a move from the available moves.
 
-        Parameters:
-        - move_name (str): The name of the move to be removed.
+        Parameters
+        ----------
+        move_name : str
+            The name of the move to be removed.
         """
-        del self.availalbe_moves[move_name]
+        del self.available_moves[move_name]
 
 
 class GibbsSampler(object):
