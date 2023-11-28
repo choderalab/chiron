@@ -40,7 +40,7 @@ from chiron.states import SimulationState
 from chiron.potential import NeuralNetworkPotential
 from openmm import unit
 from loguru import logger as log
-from typing import Dict
+from typing import Dict, Union
 
 
 from typing import Optional
@@ -90,7 +90,7 @@ class LangevinDynamicsMove(StateUpdateMove):
 
     def run(
         self,
-        state_variables: SimulationState,
+        state_variables: Union[SimulationState, Dict],
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -242,27 +242,55 @@ class ProposedPositionMove(MCMove):
 
 class MoveSet:
     """
-    A container for a set of moves.
-    The moves will define the joint distributions that are sampled.
+    Represents a set of moves for a Markov Chain Monte Carlo (MCMC) algorithm.
     """
 
     def __init__(
         self, availalbe_moves: Dict[str, StateUpdateMove], move_schedule: Dict[str, int]
     ) -> None:
+        """
+        Initializes a MoveSet object.
+
+        Parameters:
+        ----------
+        - availalbe_moves (Dict[str, StateUpdateMove]): A dictionary of available moves, where the keys are move names and the values are StateUpdateMove objects.
+        - move_schedule (Dict[str, int]): A dictionary representing the move schedule, where the keys are move names and the values are integers representing the number of times each move should be performed.
+
+        Raises:
+        - ValueError: If a move in availalbe_moves is not present in the move_schedule.
+        """
         self.availalbe_moves = availalbe_moves
         self.move_schedule = move_schedule
 
         self._check_completness()
 
     def _check_completness(self):
+        """
+        Checks if all moves in availalbe_moves are present in the move_schedule.
+
+        Raises:
+        - ValueError: If a move in availalbe_moves is not present in the move_schedule.
+        """
         for key in self.availalbe_moves.keys():
             if key not in self.move_schedule.keys():
                 raise ValueError(f"Move {key} is not in the move schedule.")
 
     def add_move(self, new_moves: Dict[str, MCMove]):
+        """
+        Adds new moves to the available moves.
+
+        Parameters:
+        - new_moves (Dict[str, MCMove]): A dictionary of new moves to be added, where the keys are move names and the values are MCMove objects.
+        """
         self.availalbe_moves.update(new_moves)
 
     def remove_move(self, move_name: str):
+        """
+        Removes a move from the available moves.
+
+        Parameters:
+        - move_name (str): The name of the move to be removed.
+        """
         del self.availalbe_moves[move_name]
 
 
@@ -280,7 +308,9 @@ class GibbsSampler(object):
 
     """
 
-    def __init__(self, state_variables: SimulationState, move_set: MoveSet):
+    def __init__(
+        self, state_variables: Union[SimulationState, Dict], move_set: MoveSet
+    ):
         from copy import deepcopy
 
         log.info("Initializing Gibbs sampler")
@@ -289,7 +319,9 @@ class GibbsSampler(object):
         self.state_variables = deepcopy(state_variables)
         self.move = move_set
 
-    def run(self, ):
+    def run(
+        self,
+    ):
         """
         Run the sampler for a specified number of iterations.
 
@@ -299,4 +331,9 @@ class GibbsSampler(object):
             Number of iterations of the sampler to run.
 
         """
-        # Apply move for n_iterations.
+        log.info("Running Gibbs sampler")
+        log.info(f"move_set = {self.move.availalbe_moves}")
+        log.info(f"move_schedule = {self.move.move_schedule}")
+        for key in self.move.move_schedule.keys():
+            for _ in range(self.move.move_schedule[key]):
+                self.move.availalbe_moves[key].run(self.state_variables)
