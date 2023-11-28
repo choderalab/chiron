@@ -7,6 +7,8 @@ from openmm import unit
 
 from .potential import NeuralNetworkPotential
 from openmm.app import Topology
+from typing import Dict, Optional
+from loguru import logger as log
 
 
 class LangevinIntegrator:
@@ -36,9 +38,13 @@ class LangevinIntegrator:
         self.box_vectors = box_vectors
         self.progress_bar = progress_bar
         self.potential = potential
+        self.velocities = None
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         self.mass = get_list_of_mass(topology)
+
+    def set_velocities(self, vel: unit.Quantity):
+        self.velocities = vel
 
     def run(
         self,
@@ -48,7 +54,7 @@ class LangevinIntegrator:
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
         key=random.PRNGKey(0),
-    ):
+    ) -> Dict[str, jnp.array]:
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
 
@@ -73,6 +79,12 @@ class LangevinIntegrator:
             Trajectory of particle positions at each simulation step.
         """
 
+        log.info("Running Langevin dynamics")
+        log.info(f"n_steps = {n_steps}")
+        log.info(f"stepsize = {stepsize}")
+        log.info(f"collision_rate = {collision_rate}")
+        log.info(f"temperature = {temperature}")
+
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
         mass_unitless = jnp.array(self.mass.value_in_unit_system(unit.md_unit_system))
         sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
@@ -80,9 +92,12 @@ class LangevinIntegrator:
         collision_rate_unitless = collision_rate.value_in_unit_system(
             unit.md_unit_system
         )
-        # Initialize velocities
-        v0 = sigma_v * random.normal(key, x0.shape)
 
+        # Initialize velocities
+        if self.velocities is None:
+            v0 = sigma_v * random.normal(key, x0.shape)
+        else:
+            v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
         # Convert to dimensionless quantities
         a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
         b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
@@ -91,30 +106,30 @@ class LangevinIntegrator:
         v = v0
 
         traj = [x]
+        energy = [self.potential.compute_energy(x)]
 
+        random_noise_v = random.normal(key, (n_steps, x.shape[-1]))
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
-            key, subkey = random.split(key)
-
-            # Leapfrog integration
+            # v
             v += (
                 (stepsize_unitless * 0.5)
                 * self.potential.compute_force(x)
                 / mass_unitless
             )
+            # r
             x += (stepsize_unitless * 0.5) * v
 
             if self.box_vectors is not None:
                 x = x - self.box_vectors * jnp.floor(x / self.box_vectors)
-
-            v = a * v + b * sigma_v * random.normal(subkey, x.shape)
-
+            # o
+            v = (a * v) + (b * sigma_v * random_noise_v[step])
+            # r
             x += (stepsize_unitless * 0.5) * v
-            v += (
-                (stepsize_unitless * 0.5)
-                * self.potential.compute_force(x)
-                / mass_unitless
-            )
+
+            F = self.potential.compute_force(x)
+            # v
+            v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             traj.append(x)
-
-        return traj
+            energy.append(self.potential.compute_energy(x))
+        return {"traj": traj, "energy": energy}

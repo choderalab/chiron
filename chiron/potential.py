@@ -81,6 +81,11 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         assert isinstance(k, unit.Quantity)
         assert isinstance(x0, unit.Quantity)
         assert isinstance(U0, unit.Quantity)
+        log.info("Initializing HarmonicOscillatorPotential")
+        log.info(f"k = {k}")
+        log.info(f"x0 = {x0}")
+        log.info(f"U0 = {U0}")
+        log.info("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
         self.k = k.value_in_unit_system(unit.md_unit_system)  # spring constant
         self.x0 = x0.value_in_unit_system(unit.md_unit_system)  # equilibrium position
         self.U0 = U0.value_in_unit_system(
@@ -92,7 +97,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors
-        displacement_vectors = positions - self.x0
+        displacement_vectors = positions[0] - self.x0
 
         # Uue the 3D harmonic oscillator potential to compute the potential energy
         potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
