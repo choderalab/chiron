@@ -4,7 +4,9 @@ import jax.numpy as jnp
 
 
 # the topology class can be constructed from an openmm topology object
-# the topology class needs to be able to
+# the topology class needs to be able to perceive bonds, amino acids, ligands, waters, etc.
+# the topology class needs to be able to perceive the center of mass of the system
+
 class Topology:
     # this class implements all possible query actions that depend on the coordinates and elements of the molecular system
 
