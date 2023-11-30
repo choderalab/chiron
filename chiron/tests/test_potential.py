@@ -57,6 +57,7 @@ def test_harmonic_oscillator_potential():
     k = 100.0 * unit.kilocalories_per_mole / unit.angstroms**2
     U0 = 0.0 * unit.kilocalories_per_mole
     x0 = 0.0 * unit.angstrom
+
     from openmmtools.testsystems import HarmonicOscillator as ho
 
     harmonic_potential = HarmonicOscillatorPotential(ho.topology, k, x0, U0)
@@ -74,7 +75,7 @@ def test_harmonic_oscillator_potential():
         positions.value_in_unit_system(unit.md_unit_system)
     )
     energy = float(harmonic_potential.compute_energy(positions_without_unit))
-    assert jnp.isclose(energy, 25.10400390625)
+    assert jnp.isclose(energy, 8.368000984191895)
 
     positions = jnp.array([0.2, 0.0, 0.0]) * unit.angstrom
     # Test compute_energy method
@@ -98,7 +99,7 @@ def test_harmonic_oscillator_potential():
         positions.value_in_unit_system(unit.md_unit_system)
     )
     energy = float(harmonic_potential.compute_energy(positions_without_unit))
-    assert jnp.isclose(energy, 8.368000984191895)
+    assert jnp.isclose(energy, 0.0)
 
     # Test compute_force method
     forces = harmonic_potential.compute_force(positions_without_unit)

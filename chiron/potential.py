@@ -9,11 +9,11 @@ import jax.numpy as jnp
 
 class NeuralNetworkPotential:
     def __init__(self, model, **kwargs):
-        self.topology = model.potential.topology  # The topology of the system
         if model is None:
             log.warning("No model provided, using default model")
         else:
             self.model = model  # The trained neural network model
+            self.topology = model.potential.topology  # The topology of the system
 
     def compute_energy(self, positions):
         # Compute the pair distances and displacement vectors
@@ -77,7 +77,6 @@ class LJPotential(NeuralNetworkPotential):
 class HarmonicOscillatorPotential(NeuralNetworkPotential):
     def __init__(
         self,
-        _,
         topology: Topology,
         k: unit.Quantity = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2,
         x0: unit.Quantity = 0.0 * unit.angstrom,

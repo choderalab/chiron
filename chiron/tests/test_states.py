@@ -7,7 +7,7 @@ def test_initialize_state():
 
     ho = HarmonicOscillator()
 
-    potential = HarmonicOscillatorPotential(None, ho.topology, ho.K, ho.U0)
+    potential = HarmonicOscillatorPotential(ho.topology, ho.K, ho.U0)
 
     thermodynamic_state = ThermodynamicState(potential)
     assert thermodynamic_state.temperature is None
@@ -41,7 +41,7 @@ def test_reduced_potential():
 
     ho = HarmonicOscillator()
     potential = HarmonicOscillatorPotential(
-        None, topology=ho.topology, k=ho.K, U0=ho.U0
+        topology=ho.topology, k=ho.K, U0=ho.U0
     )
 
     state = ThermodynamicState(
@@ -50,5 +50,4 @@ def test_reduced_potential():
     sampler_state = SamplerState(ho.positions)
 
     reduced_e = state.get_reduced_potential(sampler_state)
-    print(reduced_e)
-    assert reduced_e == 0.5
+    assert reduced_e == 0.0

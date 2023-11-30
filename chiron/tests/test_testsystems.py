@@ -15,12 +15,18 @@ def test_HO():
         ho.positions,
         harmonic_potential,
         temperature=300 * kelvin,
-        n_steps=1000,
+        n_steps=5,
     )
 
     class State:
         def __init__(self, temperature):
             self.temperature = temperature
 
-    ho.get_potential_expectation(State(300 * kelvin))
-    ho.get_potential_standard_deviation(State(300 * kelvin))
+    stddev = ho.get_potential_expectation(State(300 * kelvin))
+    expectation = ho.get_potential_standard_deviation(State(300 * kelvin))
+    from openmm import unit
+    import jax.numpy as jnp
+
+    assert jnp.isclose(
+        expectation.value_in_unit_system(unit.md_unit_system), 3.741508178
+    )

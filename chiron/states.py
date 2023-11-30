@@ -170,7 +170,7 @@ class ThermodynamicState:
         ...                            pressure=1.0*unit.atmosphere, position=waterbox.positions)
         >>> u = state.reduced_potential()
         """
-        beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * self.temperature)
+        beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
         reduced_potential = (
             self.potential.compute_energy(sampler_state.unitless_positions)
             * unit.kilocalories_per_mole
