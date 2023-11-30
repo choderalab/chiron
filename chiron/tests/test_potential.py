@@ -57,7 +57,9 @@ def test_harmonic_oscillator_potential():
     k = 100.0 * unit.kilocalories_per_mole / unit.angstroms**2
     U0 = 0.0 * unit.kilocalories_per_mole
     x0 = 0.0 * unit.angstrom
-    harmonic_potential = HarmonicOscillatorPotential(k, x0, U0)
+    from openmmtools.testsystems import HarmonicOscillator as ho
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, k, x0, U0)
     positions = jnp.array([0.0, 0.0, 0.0]) * unit.angstrom
     # Test compute_energy method
     positions_without_unit = jnp.array(

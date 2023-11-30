@@ -1,66 +1,67 @@
 from openmm import unit
 from typing import List, Optional
-from .potential import NeuralNetworkPotential
 from jax import numpy as jnp
 from loguru import logger as log
+from .potential import NeuralNetworkPotential
+from openmm.app import Topology
 
 
-class SimulationState:
+class SamplerState:
     """
-    Represents the state of a simulation.
+    Represents the state that is changed by the integrator.
+    Parameters
+    ----------
+    positions : Nx3 openmm.unit.Quantity
+        Position vectors for N particles (length units).
+    velocities : Nx3 openmm.unit.Quantity, optional
+        Velocity vectors for N particles (velocity units).
+    box_vectors : 3x3 openmm.unit.Quantity
+        Current box vectors (length units).
+
+    """
+
+    def __init__(self, positions, velocities=None, box_vectors=None) -> None:
+        self.positions = positions
+        self.velocities = velocities
+        self.box_vectors = box_vectors
+
+    @property
+    def unitless_positions(self):
+        return self.positions.value_in_unit_system(unit.md_unit_system)
+
+
+class ThermodynamicState:
+    """
+    Represents the thermodynamic ensemble
 
     Attributes
     ----------
+    potential : NeuralNetworkPotential
+        The potential energy function of the system.
     temperature : unit.Quantity
         The temperature of the simulation.
     volume : unit.Quantity
         The volume of the simulation.
     pressure : unit.Quantity
         The pressure of the simulation.
-    nr_of_particles : int
-        The number of particles in the simulation.
-    position : unit.Quantity
-        The position of the particles in the simulation.
-
-    Methods
-    -------
-    are_states_compatible(state1, state2)
-        Check if two states are compatible and we can compute the reduced potential.
-    get_reduced_potential(state)
-        Compute the reduced potential for a given state.
-    reduced_potential(context_state)
-        Compute the reduced potential in this thermodynamic state.
-
-    Examples
-    -------
-    >>> from openmmtools import testsystems
-    >>> waterbox = testsystems.WaterBox(box_edge=20.0*unit.angstroms)
-    >>> topology, positions = waterbox.system.topology, waterbox.positions
-    >>> state = SimulationsState(temperature=298.0*unit.kelvin,
-    ...                            pressure=1.0*unit.atmosphere, position=waterbox.positions)
-
 
     """
 
     def __init__(
         self,
+        potential: Optional[NeuralNetworkPotential],
         temperature: Optional[unit.Quantity] = None,
         volume: Optional[unit.Quantity] = None,
         pressure: Optional[unit.Quantity] = None,
-        nr_of_particles: Optional[int] = None,
-        position: Optional[jnp.ndarray] = None,
-        potential: Optional[NeuralNetworkPotential] = None,
-    ) -> None:
-        # initialize all state variables
+    ):
+        self.potential = potential
         self.temperature = temperature
         self.volume = volume
         self.pressure = pressure
-        self.nr_of_particles = nr_of_particles
-        self.position = position
-        self.potential = potential
 
-        # check which variables are not None
+        from .utils import get_nr_of_particles
 
+        self.nr_of_particles = get_nr_of_particles(self.potential.topology)
         self._check_completness()
 
     def check_variables(self):
@@ -76,9 +77,6 @@ class SimulationState:
             "temperature",
             "volume",
             "pressure",
-            "nr_of_particles",
-            "position",
-            "potential",
         ]
         set_variables = [var for var in variables if getattr(self, var) is not None]
         return set_variables
@@ -121,19 +119,20 @@ class SimulationState:
         """
         pass
 
-    def get_reduced_potential(self):
+    def get_reduced_potential(self, sampler_state: SamplerState):
         """Compute the reduced potential in this thermodynamic state.
+
+        Parameters
+        --------
+        sampler_state : SamplerState
+            The sampler state to compute the reduced potential for.
+            Contains positions and box vectors.
 
         Returns
         -------
         u : float
             The unit-less reduced potential, which can be considered
             to have units of kT.
-
-        Raises
-        ------
-        ThermodynamicsError
-            If the sampler state has a different number of particles.
 
         Notes
         -----
@@ -171,42 +170,13 @@ class SimulationState:
         ...                            pressure=1.0*unit.atmosphere, position=waterbox.positions)
         >>> u = state.reduced_potential()
         """
-        pass
+        beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * self.temperature)
+        reduced_potential = (
+            self.potential.compute_energy(sampler_state.unitless_positions)
+            * unit.kilocalories_per_mole
+        ) / unit.AVOGADRO_CONSTANT_NA
 
+        if self.pressure is not None:
+            reduced_potential += self.pressure * self.volume
 
-class JointSimulationStates:
-    """
-    Manages a collection of SimulationState objects to define a joint probability distribution
-    to generate samples from.
-    """
-
-    def __init__(self, states: List[SimulationState]):
-        self.states = states
-
-    def add_state(self, state: SimulationState):
-        """
-        Add a new SimulationState to the collection.
-
-        Parameters
-        ----------
-        state : SimulationState
-            The simulation state to add.
-        """
-        self.states.append(state)
-
-    def check_compatibility(self):
-        """
-        Check the compatibility of all states in the collection.
-
-        Returns
-        -------
-        bool
-            True if all states are compatible, False otherwise.
-        """
-        for i in range(len(self.states)):
-            for j in range(i + 1, len(self.states)):
-                if not SimulationState.are_states_compatible(
-                    self.states[i], self.states[j]
-                ):
-                    return False
-        return True
+        return beta * reduced_potential

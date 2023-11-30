@@ -8,12 +8,12 @@ import jax.numpy as jnp
 
 
 class NeuralNetworkPotential:
-    def __init__(self, model, topology: Topology):
-        self.topology = topology  # The topology of the system
+    def __init__(self, model, **kwargs):
+        self.topology = model.potential.topology  # The topology of the system
         if model is None:
             log.warning("No model provided, using default model")
         else:
-            self.model = model(self.topology)  # The trained neural network model
+            self.model = model  # The trained neural network model
 
     def compute_energy(self, positions):
         # Compute the pair distances and displacement vectors
@@ -42,12 +42,11 @@ class NeuralNetworkPotential:
 
 
 class LJPotential(NeuralNetworkPotential):
-    def __init__(
-        self,
-        topology: Topology,
-        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole,
-        epsilon: unit.Quantity = 3.350 * unit.angstroms,
-    ):
+    def __init__(self, model, **kwargs):
+        self.topology = model.potential.topology  # The topology of the system
+
+        sigma: unit.Quantity = (1.0 * unit.kilocalories_per_mole,)
+        epsilon: unit.Quantity = (3.350 * unit.angstroms,)
         assert isinstance(sigma, unit.Quantity)
         assert isinstance(epsilon, unit.Quantity)
 
@@ -57,7 +56,6 @@ class LJPotential(NeuralNetworkPotential):
         self.epsilon = epsilon.value_in_unit(
             unit.angstrom
         )  # The depth of the potential well
-        self.topology = topology  # The topology of the system
 
     def compute_energy(self, positions: unit.Quantity):
         # Compute the pair distances and displacement vectors
@@ -77,7 +75,14 @@ class LJPotential(NeuralNetworkPotential):
 
 
 class HarmonicOscillatorPotential(NeuralNetworkPotential):
-    def __init__(self, k, x0, U0):
+    def __init__(
+        self,
+        _,
+        topology: Topology,
+        k: unit.Quantity = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2,
+        x0: unit.Quantity = 0.0 * unit.angstrom,
+        U0: unit.Quantity = 0.0 * unit.kilocalories_per_mole,
+    ):
         assert isinstance(k, unit.Quantity)
         assert isinstance(x0, unit.Quantity)
         assert isinstance(U0, unit.Quantity)
@@ -91,6 +96,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self.U0 = U0.value_in_unit_system(
             unit.md_unit_system
         )  # offset potential energy
+        self.topology = topology
 
     def compute_energy(self, positions):
         # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0

@@ -47,25 +47,18 @@ from typing import Optional
 
 
 class StateUpdateMove:
-    def __init__(self, NeuralNetworkPotential: NeuralNetworkPotential):
+    def __init__(self):
         """
         Initialize the MCMove with a molecular system.
 
-        Parameters
-        ----------
-        system : object
-            A representation of the molecular system (e.g., coordinates, topology).
         """
         # system represents the potential energy function and topology
-        self.system: Optional[NeuralNetworkPotential] = None
-        self.NeuralNetworkPotential = NeuralNetworkPotential
+        pass
 
 
 class LangevinDynamicsMove(StateUpdateMove):
     def __init__(
         self,
-        n_steps: int,
-        NeuralNetworkPotential: NeuralNetworkPotential,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
     ):
@@ -74,23 +67,27 @@ class LangevinDynamicsMove(StateUpdateMove):
 
         Parameters
         ----------
-        n_steps : int
-            Number of simulation steps to perform.
-        NeuralNetworkPotential : object
-            A representation of the molecular system (neural network potential and topology).
         stepsize : unit.Quantity
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
         """
-        super().__init__(NeuralNetworkPotential)
-        self.n_steps = n_steps
         self.stepsize = stepsize
         self.collision_rate = collision_rate
 
+        from chiron.integrators import LangevinIntegrator
+
+        self.integrator = LangevinIntegrator(
+            stepsize=self.stepsize,
+            collision_rate=self.collision_rate,
+        )
+
     def run(
         self,
-        state_variables: Union[SimulationState, Dict],
+        potential: NeuralNetworkPotential,
+        x0: unit.Quantity,
+        state_variables: SimulationState,
+        n_steps: int,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -98,21 +95,14 @@ class LangevinDynamicsMove(StateUpdateMove):
         Args:
             state_variables (StateVariablesCollection): State variables of the system.
         """
-        from chiron.integrator import LangevinIntegrator
 
-        if self.system is None:
-            self.system = self.NeuralNetworkPotential(state_variables)
 
-        dynamics = LangevinIntegrator(
-            self.system, self.system.topology, state_variables.box_vectors
-        )
-
-        dynamics.run(
-            x0=state_variables.positions,
+        self.integrator.run(
+            x0=x0,
+            potential=potential,
+            box_vectors=state_variables.box_vectors,
             temperature=state_variables.temperature,
-            n_steps=self.n_steps,
-            stepsize=self.stepsize,
-            collision_rate=self.collision_rate,
+            n_steps=n_steps,
         )
 
 
@@ -247,7 +237,7 @@ class MoveSet:
 
     def __init__(
         self,
-        availalbe_moves: Dict[str, StateUpdateMove],
+        available_moves: Dict[str, StateUpdateMove],
         move_schedule: List[Tuple[str, int]],
     ) -> None:
         """
@@ -265,7 +255,7 @@ class MoveSet:
         ValueError
             If a move in the sequence is not present in available_moves.
         """
-        self.availalbe_moves = availalbe_moves
+        self.available_moves = available_moves
         self.move_schedule = move_schedule
 
         self._validate_sequence()
@@ -279,7 +269,7 @@ class MoveSet:
         ValueError
             If a move in the sequence is not present in available_moves.
         """
-        for move_name, _ in self.move_sequence:
+        for move_name, _ in self.move_schedule:
             if move_name not in self.available_moves:
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
 
@@ -331,21 +321,18 @@ class GibbsSampler(object):
         self.state_variables = deepcopy(state_variables)
         self.move = move_set
 
-    def run(
-        self,
-    ):
+    def run(self, x0: unit.Quantity):
         """
         Run the sampler for a specified number of iterations.
 
         Parameters
         ----------
-        n_iterations : int
-            Number of iterations of the sampler to run.
+        xO : unit.Quantity
+            Initial positions of the particles.
 
         """
         log.info("Running Gibbs sampler")
-        log.info(f"move_set = {self.move.availalbe_moves}")
+        log.info(f"move_set = {self.move.available_moves}")
         log.info(f"move_schedule = {self.move.move_schedule}")
-        for key in self.move.move_schedule.keys():
-            for _ in range(self.move.move_schedule[key]):
-                self.move.availalbe_moves[key].run(self.state_variables)
+        for move, n_steps in self.move.move_schedule:
+            self.move.available_moves[move].run(x0, self.state_variables, n_steps)

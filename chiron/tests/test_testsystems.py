@@ -1,4 +1,4 @@
-from chiron.integrator import LangevinIntegrator
+from chiron.integrators import LangevinIntegrator
 
 
 def test_HO():
@@ -7,9 +7,16 @@ def test_HO():
     from openmmtools.testsystems import HarmonicOscillator
 
     ho = HarmonicOscillator()
-    harmonic_potential = HarmonicOscillatorPotential(ho.K, ho.positions, ho.U0)
-    integrator = LangevinIntegrator(harmonic_potential, ho.topology)
-    integrator.run(ho.positions, temperature=300 * kelvin, n_steps=1000)
+    harmonic_potential = HarmonicOscillatorPotential(
+        ho.topology, ho.K, ho.positions, ho.U0
+    )
+    integrator = LangevinIntegrator()
+    integrator.run(
+        ho.positions,
+        harmonic_potential,
+        temperature=300 * kelvin,
+        n_steps=1000,
+    )
 
     class State:
         def __init__(self, temperature):

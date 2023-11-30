@@ -1,39 +1,54 @@
 def test_initialize_state():
-    from chiron.states import SimulationState
+    from chiron.states import ThermodynamicState, SamplerState
     from openmm import unit
+    from chiron.potential import HarmonicOscillatorPotential
+    from openmmtools.testsystems import HarmonicOscillator
+    import jax.numpy as jnp
 
-    state = SimulationState()
-    assert state.temperature is None
-    assert state.pressure is None
-    assert state.volume is None
-    assert state.nr_of_particles is None
-    assert state.position is None
-    assert state.potential is None
+    ho = HarmonicOscillator()
 
-    state = SimulationState(
-        temperature=300, volume=30 * (unit.angstrom**3), nr_of_particles=3000
+    potential = HarmonicOscillatorPotential(None, ho.topology, ho.K, ho.U0)
+
+    thermodynamic_state = ThermodynamicState(potential)
+    assert thermodynamic_state.temperature is None
+    assert thermodynamic_state.pressure is None
+    assert thermodynamic_state.volume is None
+    assert thermodynamic_state.nr_of_particles is not None
+    assert thermodynamic_state.potential is not None
+
+    state = ThermodynamicState(
+        potential, temperature=300, volume=30 * (unit.angstrom**3)
     )
     assert state.temperature == 300
     assert state.pressure is None
     assert state.volume == 30 * (unit.angstrom**3)
-    assert state.nr_of_particles == 3000
-    assert state.position is None
+    assert state.nr_of_particles == 1
+
+    sampler_state = SamplerState(ho.positions)
+
+    assert jnp.allclose(
+        sampler_state.positions.value_in_unit(unit.angstrom),
+        jnp.array([[0.0, 0.0, 0.0]]),
+    )
 
 
 def test_reduced_potential():
-    from chiron.states import SimulationState
+    from chiron.states import ThermodynamicState, SamplerState
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
     import jax.numpy as jnp
     from openmmtools.testsystems import HarmonicOscillator
 
-    state = SimulationState(
-        temperature=300, volume=30 * (unit.angstrom**3), nr_of_particles=1
-    )
     ho = HarmonicOscillator()
-
-    harmonic_potential = HarmonicOscillatorPotential(
-        ho.K, jnp.array([0, 0, 0]) * unit.angstrom, 0.0
+    potential = HarmonicOscillatorPotential(
+        None, topology=ho.topology, k=ho.K, U0=ho.U0
     )
-    state.potential = harmonic_potential
-    assert state.reduced_potential() == 0.5
+
+    state = ThermodynamicState(
+        potential, temperature=300, volume=30 * (unit.angstrom**3)
+    )
+    sampler_state = SamplerState(ho.positions)
+
+    reduced_e = state.get_reduced_potential(sampler_state)
+    print(reduced_e)
+    assert reduced_e == 0.5

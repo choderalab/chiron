@@ -14,34 +14,25 @@ from loguru import logger as log
 class LangevinIntegrator:
     def __init__(
         self,
-        potential: NeuralNetworkPotential,
-        topology: Topology,
-        box_vectors=None,
-        progress_bar=False,
+        stepsize=1.0 * unit.femtoseconds,  # NOTE: move these to the init call
+        collision_rate=1.0 / unit.picoseconds,  # NOTE: move these to the init call
     ):
         """
         Initialize the LangevinIntegrator object.
 
         Parameters
         ----------
-        potential : NeuralNetworkPotential
-            Object representing the potential energy function.
-        topology : Topology
-            Object representing the molecular system.
-        box_vectors : array_like, optional
-            Box vectors for periodic boundary conditions.
-        progress_bar : bool, optional
-            Flag indicating whether to display a progress bar during integration.
+        stepsize : unit.Quantity, optional
+            Time step size for the integration.
+        collision_rate : unit.Quantity, optional
+            Collision rate for the Langevin dynamics.
         """
-        from .utils import get_list_of_mass
-
-        self.box_vectors = box_vectors
-        self.progress_bar = progress_bar
-        self.potential = potential
-        self.velocities = None
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
-        self.mass = get_list_of_mass(topology)
+        log.info(f"stepsize = {stepsize}")
+        log.info(f"collision_rate = {collision_rate}")
+        self.stepsize = stepsize
+        self.collision_rate = collision_rate
 
     def set_velocities(self, vel: unit.Quantity):
         self.velocities = vel
@@ -49,11 +40,12 @@ class LangevinIntegrator:
     def run(
         self,
         x0,
+        potential: NeuralNetworkPotential,  # NOTE: let's move this to the run call
         temperature: unit.Quantity,
         n_steps: int = 5_000,
-        stepsize=1.0 * unit.femtoseconds,
-        collision_rate=1.0 / unit.picoseconds,
         key=random.PRNGKey(0),
+        box_vectors=None,  # NOTE: let's move this to the run call
+        progress_bar=False,  # NOTE: let's move this to the run call
     ) -> Dict[str, jnp.array]:
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
@@ -62,14 +54,16 @@ class LangevinIntegrator:
         ----------
         x0 : array_like
             Initial positions of the particles.
+        potential : NeuralNetworkPotential
+            Object representing the potential energy function. #NOTE: this might change, maybe rename to system
+        box_vectors : array_like, optional
+            Box vectors for periodic boundary conditions.
+        progress_bar : bool, optional
+            Flag indicating whether to display a progress bar during integration.
         temperature : unit.Quantity
             Temperature of the system.
         n_steps : int, optional
             Number of simulation steps to perform.
-        stepsize : unit.Quantity, optional
-            Time step size for the integration.
-        collision_rate : unit.Quantity, optional
-            Collision rate for the Langevin dynamics.
         key : jax.random.PRNGKey
             Random key for generating random numbers.
 
@@ -78,18 +72,26 @@ class LangevinIntegrator:
         list of array_like
             Trajectory of particle positions at each simulation step.
         """
+        from .utils import get_list_of_mass
+
+        self.mass = get_list_of_mass(
+            potential.topology
+        )  # NOTE: move these to the run call
+
+        self.box_vectors = box_vectors  # NOTE: move these to the run call
+        self.progress_bar = progress_bar  # NOTE: move these to the run call
+        self.potential = potential  # NOTE: move these to the run call
+        self.velocities = None  # NOTE: move these to the run call
 
         log.info("Running Langevin dynamics")
         log.info(f"n_steps = {n_steps}")
-        log.info(f"stepsize = {stepsize}")
-        log.info(f"collision_rate = {collision_rate}")
         log.info(f"temperature = {temperature}")
 
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
         mass_unitless = jnp.array(self.mass.value_in_unit_system(unit.md_unit_system))
         sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
-        stepsize_unitless = stepsize.value_in_unit_system(unit.md_unit_system)
-        collision_rate_unitless = collision_rate.value_in_unit_system(
+        stepsize_unitless = self.stepsize.value_in_unit_system(unit.md_unit_system)
+        collision_rate_unitless = self.collision_rate.value_in_unit_system(
             unit.md_unit_system
         )
 
@@ -102,8 +104,8 @@ class LangevinIntegrator:
         a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
         b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
-        x = x0.value_in_unit_system(unit.md_unit_system)
-        v = v0
+        x = jnp.array(x0.value_in_unit_system(unit.md_unit_system))
+        v = jnp.array(v0)
 
         traj = [x]
         energy = [self.potential.compute_energy(x)]
@@ -132,4 +134,5 @@ class LangevinIntegrator:
 
             traj.append(x)
             energy.append(self.potential.compute_energy(x))
+
         return {"traj": traj, "energy": energy}

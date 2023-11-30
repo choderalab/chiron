@@ -27,6 +27,11 @@ def get_data_file_path(relative_path: str) -> str:
     return str(file_path)
 
 
+def get_nr_of_particles(topology: Topology) -> int:
+    """Get the number of particles in the system from the topology."""
+    return topology.getNumAtoms()
+
+
 def get_list_of_mass(topology: Topology) -> unit.Quantity:
     """Get the mass of the system from the topology."""
     from simtk import unit
