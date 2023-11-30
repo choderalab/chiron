@@ -96,7 +96,6 @@ class LangevinDynamicsMove(StateUpdateMove):
             state_variables (StateVariablesCollection): State variables of the system.
         """
 
-
         self.integrator.run(
             x0=x0,
             potential=potential,
@@ -336,3 +335,113 @@ class GibbsSampler(object):
         log.info(f"move_schedule = {self.move.move_schedule}")
         for move, n_steps in self.move.move_schedule:
             self.move.available_moves[move].run(x0, self.state_variables, n_steps)
+
+
+class MetropolizedMove:
+    """A base class for metropolized moves.
+
+    Only the proposal needs to be specified by subclasses through the method
+    _propose_positions().
+
+    Parameters
+    ----------
+    atom_subset : slice or list of int, optional
+        If specified, the move is applied only to those atoms specified by these
+        indices. If None, the move is applied to all atoms (default is None).
+
+    Attributes
+    ----------
+    n_accepted : int
+        The number of proposals accepted.
+    n_proposed : int
+        The total number of attempted moves.
+    atom_subset
+
+    Examples
+    --------
+    TBC
+    """
+
+    def __init__(self, atom_subset=None, **kwargs):
+        super(MetropolizedMove, self).__init__(**kwargs)
+        self.n_accepted = 0
+        self.n_proposed = 0
+        self.atom_subset = atom_subset
+
+    @property
+    def statistics(self):
+        """The acceptance statistics as a dictionary."""
+        return dict(n_accepted=self.n_accepted, n_proposed=self.n_proposed)
+
+    @statistics.setter
+    def statistics(self, value):
+        self.n_accepted = value["n_accepted"]
+        self.n_proposed = value["n_proposed"]
+
+    def apply(self, thermodynamic_state, sampler_state):
+        """Apply a metropolized move to the sampler state.
+
+        Total number of acceptances and proposed move are updated.
+
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+           The thermodynamic state to use to apply the move.
+        sampler_state : openmmtools.states.SamplerState
+           The initial sampler state to apply the move to. This is modified.
+
+        """
+        import copy
+        import jax.numpy as jnp
+
+        # Compute initial energy
+        initial_energy = thermodynamic_state.reduced_potential(sampler_state)
+        # Store initial positions of the atoms that are moved.
+        # We'll use this also to recover in case the move is rejected.
+        atom_subset = self.atom_subset
+        if isinstance(atom_subset, slice):
+            # Numpy array when sliced return a view, they are not copied.
+            initial_positions = copy.deepcopy(sampler_state.positions[atom_subset])
+        else:
+            # This automatically creates a copy.
+            initial_positions = sampler_state.positions[atom_subset]
+
+        # Propose perturbed positions. Modifying the reference changes the sampler state.
+        proposed_positions = self._propose_positions(initial_positions)
+
+        # Compute the energy of the proposed positions.
+        sampler_state.positions[atom_subset] = proposed_positions
+
+        proposed_energy = thermodynamic_state.reduced_potential(sampler_state)
+
+        # Accept or reject with Metropolis criteria.
+        delta_energy = proposed_energy - initial_energy
+        if not jnp.isnan(proposed_energy) and (
+            delta_energy <= 0.0 or jnp.random.rand() < jnp.exp(-delta_energy)
+        ):
+            self.n_accepted += 1
+        else:
+            # Restore original positions.
+            sampler_state.positions[atom_subset] = initial_positions
+        self.n_proposed += 1
+
+    def _propose_positions(self, positions: jnp.ndarray):
+        """Return new proposed positions.
+
+        These method must be implemented in subclasses.
+
+        Parameters
+        ----------
+        positions : nx3 jnp.ndarray
+            The original positions of the subset of atoms that these move
+            applied to.
+
+        Returns
+        -------
+        proposed_positions : nx3 jnp.ndarray
+            The new proposed positions.
+
+        """
+        raise NotImplementedError(
+            "This MetropolizedMove does not know how to propose new positions."
+        )
