@@ -6,16 +6,10 @@ def test_sample_from_harmonic_osciallator():
 
     ho = HarmonicOscillator()
 
-    params = {}
-    params["k"] = ho.K
-    params["U0"] = ho.U0
-    params["x0"] = 0.0 * unit.angstrom
-    params["topology"] = ho.topology
-
     from chiron.potential import HarmonicOscillatorPotential
 
-    harmonic_potential = HarmonicOscillatorPotential(None, **params)
-    # NOTE: let's construct this potential from the openmmtools test system (ask dominic how to do this)
+    # NOTE: let's construct this potential from the openmmtools test system ( dominic)
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
     from chiron.integrators import LangevinIntegrator
 
     integrator = LangevinIntegrator(
@@ -41,30 +35,36 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes():
     # use local moves to sample from the HO, but use the MCMC classes
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from openmmtools.testsystems import HarmonicOscillator
     from chiron.mcmc import LangevinDynamicsMove, MoveSet, GibbsSampler
-    from chiron.states import SimulationState
 
-    state = SimulationState()
+    # Initalize the testsystem
+    from openmmtools.testsystems import HarmonicOscillator
 
     ho = HarmonicOscillator()
+    
+    # Initalize the potential
+    from chiron.potential import HarmonicOscillatorPotential
 
-    params = {}
-    params["k"] = ho.K
-    params["U0"] = ho.U0
-    params["x0"] = 0.0 * unit.angstrom
-    params["topology"] = ho.topology
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
 
-    harmonic_potential = HarmonicOscillatorPotential(None, **params)
+    # Initalize the sampler and thermodynamic state
+    from chiron.states import ThermodynamicState, SamplerState
 
-    langevin_move = LangevinDynamicsMove(
-        NeuralNetworkPotential=HarmonicOscillatorPotential,
-        stepsize=0.2 * unit.femtoseconds,
+    thermodynamic_state = ThermodynamicState(
+        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
     )
+    sampler_state = SamplerState(ho.positions)
 
-    move_set = MoveSet({"LangevinDynamics": langevin_move}, [("LangevinDynamics", 10)])
-    sampler = GibbsSampler(state, move_set)
-    sampler.run(ho.positions)
+    # Initalize the move set (here only LangevinDynamicsMove)
+    langevin_move = LangevinDynamicsMove()
+
+    move_set = MoveSet({"LangevinDynamics": langevin_move}, [("LangevinDynamics", 1)])
+
+    # Initalize the sampler
+    sampler = GibbsSampler(move_set)
+    
+    # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+    sampler.run(thermodynamic_state, sampler_state, nr_of_repeats=2) # how many times to repeat
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

@@ -36,12 +36,12 @@ You can combine them to form a sequence of moves
 >>> sampler = MCMCSampler(thermodynamic_state, sampler_state, move=sequence_move)
 
 """
-from chiron.states import SimulationState
+from chiron.states import SamplerState, ThermodynamicState
 from chiron.potential import NeuralNetworkPotential
 from openmm import unit
 from loguru import logger as log
 from typing import Dict, Union, Tuple, List
-
+import jax.numpy as jnp
 
 from typing import Optional
 
