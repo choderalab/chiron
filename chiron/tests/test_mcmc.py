@@ -65,7 +65,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     sampler_state = SamplerState(ho.positions)
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    langevin_move = LangevinDynamicsMove(nr_of_steps=100)
+    langevin_move = LangevinDynamicsMove(nr_of_steps=100, seed=0)
 
     move_set = MoveSet([("LangevinMove", langevin_move)])
 

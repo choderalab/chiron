@@ -65,6 +65,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
         nr_of_steps=1_000,
+        seed: int = 1234,
     ):
         """
         Initialize the LangevinDynamicsMove with a molecular system.
@@ -78,7 +79,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         nr_of_steps : int
             Number of steps to run the integrator for.
         """
-        super().__init__(nr_of_steps)
+        super().__init__(nr_of_steps, seed)
         self.stepsize = stepsize
         self.collision_rate = collision_rate
 
@@ -96,11 +97,13 @@ class LangevinDynamicsMove(StateUpdateMove):
         Args:
             state_variables (StateVariablesCollection): State variables of the system.
         """
+        import jax.random as jrandom
 
         self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
+            key=self.key,
         )
 
 
