@@ -1,5 +1,11 @@
 def test_sample_from_harmonic_osciallator():
-    # use local moves to sample from the harmonic oscillator
+    """
+    Test sampling from a harmonic oscillator using local moves.
+
+    This test initializes a harmonic oscillator from openmmtools.testsystems,
+    sets up a harmonic potential, and uses a Langevin integrator to sample
+    from the oscillator's state space.
+    """
     from openmm import unit
 
     # initialize openmmtestsystem
@@ -41,7 +47,12 @@ def test_sample_from_harmonic_osciallator():
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics():
-    # use local moves to sample from the HO, but use the MCMC classes
+    """
+    Test sampling from a harmonic oscillator using MCMC classes and Langevin dynamics.
+
+    This test initializes a harmonic oscillator, sets up the thermodynamic and
+    sampler states, and uses the Langevin dynamics move in an MCMC sampling scheme.
+    """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
     from chiron.mcmc import LangevinDynamicsMove, MoveSet, GibbsSampler
@@ -77,7 +88,12 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove():
-    # use local moves to sample from the HO, but use the MCMC classes
+    """
+    Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
+
+    This test initializes a harmonic oscillator, sets up the thermodynamic and
+    sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
+    """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
     from chiron.mcmc import MetropolisDisplacementMove, MoveSet, GibbsSampler
