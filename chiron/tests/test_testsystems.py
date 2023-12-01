@@ -1,4 +1,11 @@
 def test_HO():
+    """
+    Test the harmonic oscillator system using a Langevin integrator.
+
+    This function initializes a harmonic oscillator from openmmtools.testsystems,
+    sets up a harmonic potential, and uses the Langevin integrator to run the simulation.
+    It then tests if the standard deviation of the potential is close to the expected value.
+    """
     from openmm.unit import kelvin
 
     # initialize testystem

@@ -308,6 +308,8 @@ class GibbsSampler(object):
                 log.info(f"Performing: {move_name}")
                 move.run(self.sampler_state, self.thermodynamic_state)
 
+        log.info("Finished running Gibbs sampler")
+
 
 class MetropolizedMove(MCMove):
     """A base class for metropolized moves.
@@ -368,26 +370,25 @@ class MetropolizedMove(MCMove):
 
         # Compute initial energy
         initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
+        log.debug(f"Initial energy is {initial_energy}.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
-        if isinstance(atom_subset, slice):
-            # Numpy array when sliced return a view, they are not copied.
-            initial_positions = copy.deepcopy(sampler_state.x0[atom_subset])
-        else:
-            # This automatically creates a copy.
-            initial_positions = sampler_state.x0[atom_subset]
-
+        log.debug(f"Atom subset is {atom_subset}.")
+        initial_positions = copy.deepcopy(sampler_state.x0[atom_subset])
+        log.debug(f"Initial positions are {initial_positions}.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(initial_positions)
+        log.debug(f"Proposed positions are {proposed_positions}.")
+        log.debug(f"Sampler state is {sampler_state.x0}.")
 
         # Compute the energy of the proposed positions.
         sampler_state.x0[atom_subset] = proposed_positions
-
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-
+        log.debug(f"Proposed energy is {proposed_energy}.")
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
+        log.debug(f"Delta energy is {delta_energy}.")
         import jax.random as jrandom
 
         key, subkey = jrandom.split(self.key)
@@ -396,9 +397,15 @@ class MetropolizedMove(MCMove):
             delta_energy <= 0.0 or jrandom.normal(subkey) < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
+            log.debug(
+                f"Move accepted. Energy change: {delta_energy:.3f}. Number of accepted moves: {self.n_accepted}."
+            )
         else:
             # Restore original positions.
             sampler_state.x0[atom_subset] = initial_positions
+            log.debug(
+                f"Move rejected. Energy change: {delta_energy:.3f}. Number of rejected moves: {self.n_proposed - self.n_accepted}."
+            )
         self.n_proposed += 1
 
     def _propose_positions(self, positions: jnp.ndarray):
@@ -455,9 +462,11 @@ class MetropolisDisplacementMove(MetropolizedMove):
         seed: int = 1234,
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
+        atom_subset: Optional[List[int]] = None,
     ):
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
         self.displacement_sigma = displacement_sigma
+        self.atom_subset = atom_subset
 
     def displace_positions(self, positions, displacement_sigma=1.0 * unit.nanometer):
         """Return the positions after applying a random displacement to them.
@@ -492,4 +501,6 @@ class MetropolisDisplacementMove(MetropolizedMove):
         return self.displace_positions(initial_positions, self.displacement_sigma)
 
     def run(self, sampler_state, thermodynamic_state):
-        self.apply(thermodynamic_state, sampler_state)
+        for trials in range(self.nr_of_moves):
+            self.apply(thermodynamic_state, sampler_state)
+            log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
