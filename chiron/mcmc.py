@@ -61,6 +61,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        nr_of_steps=1_000,
     ):
         """
         Initialize the LangevinDynamicsMove with a molecular system.
@@ -74,6 +75,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         """
         self.stepsize = stepsize
         self.collision_rate = collision_rate
+        self.nr_of_steps = nr_of_steps
 
         from chiron.integrators import LangevinIntegrator
 
@@ -82,13 +84,7 @@ class LangevinDynamicsMove(StateUpdateMove):
             collision_rate=self.collision_rate,
         )
 
-    def run(
-        self,
-        potential: NeuralNetworkPotential,
-        x0: unit.Quantity,
-        state_variables: SimulationState,
-        n_steps: int,
-    ):
+    def run(self, sampler_state: SamplerState, thermodynamic_state: ThermodynamicState):
         """
         Run the integrator to perform molecular dynamics simulation.
 
@@ -97,11 +93,11 @@ class LangevinDynamicsMove(StateUpdateMove):
         """
 
         self.integrator.run(
-            x0=x0,
-            potential=potential,
-            box_vectors=state_variables.box_vectors,
-            temperature=state_variables.temperature,
-            n_steps=n_steps,
+            x0=sampler_state.x0,
+            potential=thermodynamic_state.potential,
+            box_vectors=sampler_state.box_vectors,
+            temperature=thermodynamic_state.temperature,
+            n_steps=self.nr_of_steps,
         )
 
 
@@ -310,17 +306,21 @@ class GibbsSampler(object):
     """
 
     def __init__(
-        self, state_variables: Union[SimulationState, Dict], move_set: MoveSet
+        self,
+        move_set: MoveSet,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
     ):
         from copy import deepcopy
 
         log.info("Initializing Gibbs sampler")
 
         # Make a deep copy of the state so that initial state is unchanged.
-        self.state_variables = deepcopy(state_variables)
         self.move = move_set
+        self.sampler_state = deepcopy(sampler_state)
+        self.thermodynamic_state = deepcopy(thermodynamic_state)
 
-    def run(self, x0: unit.Quantity):
+    def run(self, n_iterations: int = 1):
         """
         Run the sampler for a specified number of iterations.
 
@@ -333,8 +333,11 @@ class GibbsSampler(object):
         log.info("Running Gibbs sampler")
         log.info(f"move_set = {self.move.available_moves}")
         log.info(f"move_schedule = {self.move.move_schedule}")
+
         for move, n_steps in self.move.move_schedule:
-            self.move.available_moves[move].run(x0, self.state_variables, n_steps)
+            self.move.available_moves[move].run(
+                self.sampler_state, self.thermodynamic_state, n_steps
+            )
 
 
 class MetropolizedMove:

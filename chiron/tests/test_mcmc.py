@@ -41,7 +41,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes():
     from openmmtools.testsystems import HarmonicOscillator
 
     ho = HarmonicOscillator()
-    
+
     # Initalize the potential
     from chiron.potential import HarmonicOscillatorPotential
 
@@ -58,13 +58,15 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes():
     # Initalize the move set (here only LangevinDynamicsMove)
     langevin_move = LangevinDynamicsMove()
 
-    move_set = MoveSet({"LangevinDynamics": langevin_move}, [("LangevinDynamics", 1)])
+    move_set = MoveSet(
+        {"LangevinDynamics": (langevin_move, 1)}, [("LangevinDynamics", 1)]
+    )
 
     # Initalize the sampler
-    sampler = GibbsSampler(move_set)
-    
+    sampler = GibbsSampler(move_set, sampler_state, thermodynamic_state)
+
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(thermodynamic_state, sampler_state, nr_of_repeats=2) # how many times to repeat
+    sampler.run(nr_of_repeats=2)  # how many times to repeat
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
