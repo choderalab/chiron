@@ -11,7 +11,7 @@ which can be combined through the SequenceMove classes.
 
 >>> from chiron import unit
 >>> from openmmtools.testsystems import AlanineDipeptideVacuum
->>> from chiron.states import SimulationVariables
+>>> from chiron.states import ThermodynamicState, SamplerState
 >>> from chiron.potential import NeuralNetworkPotential
 >>> from modelforge.potential.pretrained_models import SchNetModel
 >>> from chiron.mcmc import MCMCSampler, SequenceMove, MCMove, LangevinDynamicsMove
@@ -21,7 +21,8 @@ dipeptide system in vacuum.
 
 >>> alanine_dipeptide = AlanineDipeptideVacuum()
 >>> potential = NeuralNetworkPotential(SchNetModel, alanine_dipeptide.topology)
->>> state = SimulationVariables(temperature=298*unit.kelvin, positions=test.positions)
+>>> thermodynamic_state = ThermodynamicState(temperature=298*unit.kelvin)
+>>> simulation_state = SamplerState(positions=test.positions)
 
 Create an MCMC move to sample the equilibrium distribution.
 
@@ -47,13 +48,12 @@ from typing import Optional
 
 
 class StateUpdateMove:
-    def __init__(self):
+    def __init__(self, nr_of_trials: int):
         """
-        Initialize the MCMove with a molecular system.
+        Initialize any move with a molecular system.
 
         """
-        # system represents the potential energy function and topology
-        pass
+        self.nr_of_trials = nr_of_trials
 
 
 class LangevinDynamicsMove(StateUpdateMove):
@@ -73,9 +73,9 @@ class LangevinDynamicsMove(StateUpdateMove):
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
         """
+        super().__init__(nr_of_steps)
         self.stepsize = stepsize
         self.collision_rate = collision_rate
-        self.nr_of_steps = nr_of_steps
 
         from chiron.integrators import LangevinIntegrator
 
@@ -93,26 +93,20 @@ class LangevinDynamicsMove(StateUpdateMove):
         """
 
         self.integrator.run(
-            x0=sampler_state.x0,
-            potential=thermodynamic_state.potential,
-            box_vectors=sampler_state.box_vectors,
-            temperature=thermodynamic_state.temperature,
+            thermodynamic_state=thermodynamic_state,
+            sampler_state=sampler_state,
             n_steps=self.nr_of_steps,
         )
 
 
 class MCMove(StateUpdateMove):
     def __init__(self) -> None:
-        self.system: Optional[NeuralNetworkPotential] = None
-
-    def _initialize_system(self, state_variables: SimulationState):
-        if self.system is None:
-            self.system = self.NeuralNetworkPotential(state_variables)
+        
 
     def _check_state_compatiblity(
         self,
-        old_state: SimulationState,
-        new_state: SimulationState,
+        old_state: SamplerState,
+        new_state: SamplerState,
     ):
         """
         Check if the states are compatible.
@@ -147,8 +141,8 @@ class MCMove(StateUpdateMove):
 
     def compute_acceptance_probability(
         self,
-        old_state: SimulationState,
-        new_state: SimulationState,
+        old_state: SamplerState,
+        new_state: SamplerState,
     ):
         """
         Compute the acceptance probability for a move from an old state to a new state.
@@ -217,14 +211,6 @@ class TautomericStateMove(MCMove):
         pass
 
 
-class ProposedPositionMove(MCMove):
-    def apply_move(self):
-        """
-        Implement the logic specific to a MC position change.
-        """
-        pass
-
-
 class MoveSet:
     """
     Represents a set of moves for a Markov Chain Monte Carlo (MCMC) algorithm.
@@ -232,16 +218,13 @@ class MoveSet:
 
     def __init__(
         self,
-        available_moves: Dict[str, StateUpdateMove],
-        move_schedule: List[Tuple[str, int]],
+        move_schedule: List[Tuple[str, StateUpdateMove]],
     ) -> None:
         """
         Initializes a MoveSet object.
 
         Parameters
         ----------
-        available_moves : Dict[str, StateUpdateMove]
-            A dictionary of available moves, where the keys are move names and the values are StateUpdateMove objects.
         move_sequence : List[Tuple[str, int]]
             A list representing the move sequence, where each tuple contains a move name and an integer representing the number of times the move should be performed in sequence.
 
@@ -250,7 +233,7 @@ class MoveSet:
         ValueError
             If a move in the sequence is not present in available_moves.
         """
-        self.available_moves = available_moves
+        _AVAILABLE_MOVES = ["LangevinDynamicsMove"]
         self.move_schedule = move_schedule
 
         self._validate_sequence()
@@ -264,31 +247,9 @@ class MoveSet:
         ValueError
             If a move in the sequence is not present in available_moves.
         """
-        for move_name, _ in self.move_schedule:
-            if move_name not in self.available_moves:
+        for move_name, move_class in self.move_schedule:
+            if not isinstance(move_class, StateUpdateMove):
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
-
-    def add_move(self, new_moves: Dict[str, MCMove]):
-        """
-        Adds new moves to the available moves.
-
-        Parameters
-        ----------
-        new_moves : Dict[str, MCMove]
-            A dictionary of new moves to be added, where the keys are move names and the values are MCMove objects.
-        """
-        self.available_moves.update(new_moves)
-
-    def remove_move(self, move_name: str):
-        """
-        Removes a move from the available moves.
-
-        Parameters
-        ----------
-        move_name : str
-            The name of the move to be removed.
-        """
-        del self.available_moves[move_name]
 
 
 class GibbsSampler(object):
@@ -331,13 +292,11 @@ class GibbsSampler(object):
 
         """
         log.info("Running Gibbs sampler")
-        log.info(f"move_set = {self.move.available_moves}")
         log.info(f"move_schedule = {self.move.move_schedule}")
 
-        for move, n_steps in self.move.move_schedule:
-            self.move.available_moves[move].run(
-                self.sampler_state, self.thermodynamic_state, n_steps
-            )
+        for move_name, move in self.move.move_schedule:
+            log.info(f"Performing: {move_name}")
+            move.run(self.sampler_state, self.thermodynamic_state)
 
 
 class MetropolizedMove:
@@ -365,8 +324,7 @@ class MetropolizedMove:
     TBC
     """
 
-    def __init__(self, atom_subset=None, **kwargs):
-        super(MetropolizedMove, self).__init__(**kwargs)
+    def __init__(self, atom_subset=None):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
@@ -448,3 +406,66 @@ class MetropolizedMove:
         raise NotImplementedError(
             "This MetropolizedMove does not know how to propose new positions."
         )
+
+
+class MetropolisDisplacementMove(MetropolizedMove, MCMove):
+    """A metropolized move that randomly displace a subset of atoms.
+
+    Parameters
+    ----------
+    displacement_sigma : openmm.unit.Quantity
+        The standard deviation of the normal distribution used to propose the
+        random displacement (units of length, default is 1.0*nanometer).
+    atom_subset : slice or list of int, optional
+        If specified, the move is applied only to those atoms specified by these
+        indices. If None, the move is applied to all atoms (default is None).
+
+    Attributes
+    ----------
+    n_accepted : int
+        The number of proposals accepted.
+    n_proposed : int
+        The total number of attempted moves.
+    displacement_sigma
+    atom_subset
+
+    See Also
+    --------
+    MetropolizedMove
+
+    """
+
+    def __init__(self, displacement_sigma=1.0 * unit.nanometer, **kwargs):
+        super().__init__(**kwargs)
+        self.displacement_sigma = displacement_sigma
+
+    @staticmethod
+    def displace_positions(positions, displacement_sigma=1.0 * unit.nanometer):
+        """Return the positions after applying a random displacement to them.
+
+        Parameters
+        ----------
+        positions : nx3 numpy.ndarray openmm.unit.Quantity
+            The positions to displace.
+        displacement_sigma : openmm.unit.Quantity
+            The standard deviation of the normal distribution used to propose
+            the random displacement (units of length, default is 1.0*nanometer).
+
+        Returns
+        -------
+        rotated_positions : nx3 numpy.ndarray openmm.unit.Quantity
+            The displaced positions.
+
+        """
+        import jax.numpy as jnp
+
+        positions_unit = positions.unit
+        unitless_displacement_sigma = displacement_sigma / positions_unit
+        displacement_vector = unit.Quantity(
+            jnp.random.randn(3) * unitless_displacement_sigma, positions_unit
+        )
+        return positions + displacement_vector
+
+    def _propose_positions(self, initial_positions):
+        """Implement MetropolizedMove._propose_positions for apply()."""
+        return self.displace_positions(initial_positions, self.displacement_sigma)

@@ -1,29 +1,32 @@
-from chiron.integrators import LangevinIntegrator
-
-
 def test_HO():
     from openmm.unit import kelvin
-    from chiron.potential import HarmonicOscillatorPotential
+
+    # initialize testystem
     from openmmtools.testsystems import HarmonicOscillator
 
     ho = HarmonicOscillator()
-    harmonic_potential = HarmonicOscillatorPotential(
-        ho.topology, ho.K, ho.positions, ho.U0
+    # initialize potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
+
+    # initialize states and integrator
+    from chiron.integrators import LangevinIntegrator
+    from chiron.states import SamplerState, ThermodynamicState
+
+    thermodynamic_state = ThermodynamicState(
+        potential=harmonic_potential, temperature=300 * kelvin
     )
+    sampler_state = SamplerState(ho.positions)
     integrator = LangevinIntegrator()
     integrator.run(
-        ho.positions,
-        harmonic_potential,
-        temperature=300 * kelvin,
+        sampler_state,
+        thermodynamic_state,
         n_steps=5,
     )
 
-    class State:
-        def __init__(self, temperature):
-            self.temperature = temperature
-
-    stddev = ho.get_potential_expectation(State(300 * kelvin))
-    expectation = ho.get_potential_standard_deviation(State(300 * kelvin))
+    stddev = ho.get_potential_expectation(thermodynamic_state)
+    expectation = ho.get_potential_standard_deviation(thermodynamic_state)
     from openmm import unit
     import jax.numpy as jnp
 

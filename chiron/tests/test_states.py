@@ -27,7 +27,7 @@ def test_initialize_state():
     sampler_state = SamplerState(ho.positions)
 
     assert jnp.allclose(
-        sampler_state.positions.value_in_unit(unit.angstrom),
+        sampler_state.x0.value_in_unit(unit.angstrom),
         jnp.array([[0.0, 0.0, 0.0]]),
     )
 
@@ -40,9 +40,7 @@ def test_reduced_potential():
     from openmmtools.testsystems import HarmonicOscillator
 
     ho = HarmonicOscillator()
-    potential = HarmonicOscillatorPotential(
-        topology=ho.topology, k=ho.K, U0=ho.U0
-    )
+    potential = HarmonicOscillatorPotential(topology=ho.topology, k=ho.K, U0=ho.U0)
 
     state = ThermodynamicState(
         potential, temperature=300, volume=30 * (unit.angstrom**3)

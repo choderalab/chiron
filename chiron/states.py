@@ -11,8 +11,8 @@ class SamplerState:
     Represents the state that is changed by the integrator.
     Parameters
     ----------
-    positions : Nx3 openmm.unit.Quantity
-        Position vectors for N particles (length units).
+    x0 : Nx3 openmm.unit.Quantity
+        Current position vectors for N particles (length units).
     velocities : Nx3 openmm.unit.Quantity, optional
         Velocity vectors for N particles (velocity units).
     box_vectors : 3x3 openmm.unit.Quantity
@@ -20,14 +20,14 @@ class SamplerState:
 
     """
 
-    def __init__(self, positions, velocities=None, box_vectors=None) -> None:
-        self.positions = positions
+    def __init__(self, x0, velocities=None, box_vectors=None) -> None:
+        self.x0 = x0
         self.velocities = velocities
         self.box_vectors = box_vectors
 
     @property
-    def unitless_positions(self):
-        return self.positions.value_in_unit_system(unit.md_unit_system)
+    def x0_unitless(self):
+        return self.x0.value_in_unit_system(unit.md_unit_system)
 
 
 class ThermodynamicState:
@@ -172,7 +172,7 @@ class ThermodynamicState:
         """
         beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
         reduced_potential = (
-            self.potential.compute_energy(sampler_state.unitless_positions)
+            self.potential.compute_energy(sampler_state.x0_unitless)
             * unit.kilocalories_per_mole
         ) / unit.AVOGADRO_CONSTANT_NA
 

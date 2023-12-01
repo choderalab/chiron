@@ -5,17 +5,17 @@ from jax import random
 from tqdm import tqdm
 from openmm import unit
 
-from .potential import NeuralNetworkPotential
 from openmm.app import Topology
 from typing import Dict, Optional
 from loguru import logger as log
+from .states import SamplerState, ThermodynamicState
 
 
 class LangevinIntegrator:
     def __init__(
         self,
-        stepsize=1.0 * unit.femtoseconds,  # NOTE: move these to the init call
-        collision_rate=1.0 / unit.picoseconds,  # NOTE: move these to the init call
+        stepsize=1.0 * unit.femtoseconds,
+        collision_rate=1.0 / unit.picoseconds,
     ):
         """
         Initialize the LangevinIntegrator object.
@@ -39,13 +39,11 @@ class LangevinIntegrator:
 
     def run(
         self,
-        x0,
-        potential: NeuralNetworkPotential,  # NOTE: let's move this to the run call
-        temperature: unit.Quantity,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
         n_steps: int = 5_000,
         key=random.PRNGKey(0),
-        box_vectors=None,  # NOTE: let's move this to the run call
-        progress_bar=False,  # NOTE: let's move this to the run call
+        progress_bar=False,
     ) -> Dict[str, jnp.array]:
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
@@ -74,14 +72,15 @@ class LangevinIntegrator:
         """
         from .utils import get_list_of_mass
 
-        self.mass = get_list_of_mass(
-            potential.topology
-        )  # NOTE: move these to the run call
+        potential = thermodynamic_state.potential
 
-        self.box_vectors = box_vectors  # NOTE: move these to the run call
-        self.progress_bar = progress_bar  # NOTE: move these to the run call
-        self.potential = potential  # NOTE: move these to the run call
-        self.velocities = None  # NOTE: move these to the run call
+        self.mass = get_list_of_mass(potential.topology)
+
+        self.box_vectors = sampler_state.box_vectors
+        self.progress_bar = progress_bar
+        self.velocities = None
+        temperature = thermodynamic_state.temperature
+        x0 = sampler_state.x0
 
         log.info("Running Langevin dynamics")
         log.info(f"n_steps = {n_steps}")
@@ -108,14 +107,14 @@ class LangevinIntegrator:
         v = jnp.array(v0)
 
         traj = [x]
-        energy = [self.potential.compute_energy(x)]
+        energy = [potential.compute_energy(x)]
 
         random_noise_v = random.normal(key, (n_steps, x.shape[-1]))
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             # v
             v += (
                 (stepsize_unitless * 0.5)
-                * self.potential.compute_force(x)
+                * potential.compute_force(x)
                 / mass_unitless
             )
             # r
@@ -128,11 +127,11 @@ class LangevinIntegrator:
             # r
             x += (stepsize_unitless * 0.5) * v
 
-            F = self.potential.compute_force(x)
+            F = potential.compute_force(x)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             traj.append(x)
-            energy.append(self.potential.compute_energy(x))
+            energy.append(potential.compute_energy(x))
 
         return {"traj": traj, "energy": energy}
