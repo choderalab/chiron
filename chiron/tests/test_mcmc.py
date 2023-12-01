@@ -101,7 +101,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     sampler_state = SamplerState(ho.positions)
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    mc_displacement_move = MetropolisDisplacementMove(nr_of_steps=100)
+    mc_displacement_move = MetropolisDisplacementMove(nr_of_moves=100)
 
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
 

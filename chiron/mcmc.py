@@ -48,12 +48,12 @@ from typing import Optional
 
 
 class StateUpdateMove:
-    def __init__(self, nr_of_trials: int):
+    def __init__(self, nr_of_moves: int):
         """
         Initialize any move with a molecular system.
 
         """
-        self.nr_of_trials = nr_of_trials
+        self.nr_of_moves = nr_of_moves
 
 
 class LangevinDynamicsMove(StateUpdateMove):
@@ -72,6 +72,8 @@ class LangevinDynamicsMove(StateUpdateMove):
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
+        nr_of_steps : int
+            Number of steps to run the integrator for.
         """
         super().__init__(nr_of_steps)
         self.stepsize = stepsize
@@ -95,13 +97,13 @@ class LangevinDynamicsMove(StateUpdateMove):
         self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
-            n_steps=self.nr_of_steps,
+            n_steps=self.nr_of_moves,
         )
 
 
 class MCMove(StateUpdateMove):
-    def __init__(self) -> None:
-        
+    def __init__(self, nr_of_moves) -> None:
+        super().__init__(nr_of_moves)
 
     def _check_state_compatiblity(
         self,
@@ -299,7 +301,7 @@ class GibbsSampler(object):
             move.run(self.sampler_state, self.thermodynamic_state)
 
 
-class MetropolizedMove:
+class MetropolizedMove(MCMove):
     """A base class for metropolized moves.
 
     Only the proposal needs to be specified by subclasses through the method
@@ -324,10 +326,11 @@ class MetropolizedMove:
     TBC
     """
 
-    def __init__(self, atom_subset=None):
+    def __init__(self, atom_subset=None, nr_of_moves: int = 100):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
+        super().__init__(nr_of_moves=nr_of_moves)
 
     @property
     def statistics(self):
@@ -346,9 +349,9 @@ class MetropolizedMove:
 
         Parameters
         ----------
-        thermodynamic_state : openmmtools.states.ThermodynamicState
+        thermodynamic_state : ThermodynamicState
            The thermodynamic state to use to apply the move.
-        sampler_state : openmmtools.states.SamplerState
+        sampler_state : SamplerState
            The initial sampler state to apply the move to. This is modified.
 
         """
@@ -356,24 +359,24 @@ class MetropolizedMove:
         import jax.numpy as jnp
 
         # Compute initial energy
-        initial_energy = thermodynamic_state.reduced_potential(sampler_state)
+        initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
         if isinstance(atom_subset, slice):
             # Numpy array when sliced return a view, they are not copied.
-            initial_positions = copy.deepcopy(sampler_state.positions[atom_subset])
+            initial_positions = copy.deepcopy(sampler_state.x0[atom_subset])
         else:
             # This automatically creates a copy.
-            initial_positions = sampler_state.positions[atom_subset]
+            initial_positions = sampler_state.x0[atom_subset]
 
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(initial_positions)
 
         # Compute the energy of the proposed positions.
-        sampler_state.positions[atom_subset] = proposed_positions
+        sampler_state.x0[atom_subset] = proposed_positions
 
-        proposed_energy = thermodynamic_state.reduced_potential(sampler_state)
+        proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
 
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
@@ -408,7 +411,7 @@ class MetropolizedMove:
         )
 
 
-class MetropolisDisplacementMove(MetropolizedMove, MCMove):
+class MetropolisDisplacementMove(MetropolizedMove):
     """A metropolized move that randomly displace a subset of atoms.
 
     Parameters
@@ -435,8 +438,8 @@ class MetropolisDisplacementMove(MetropolizedMove, MCMove):
 
     """
 
-    def __init__(self, displacement_sigma=1.0 * unit.nanometer, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, displacement_sigma=1.0 * unit.nanometer, nr_of_moves: int = 100):
+        super().__init__(nr_of_moves=nr_of_moves)
         self.displacement_sigma = displacement_sigma
 
     @staticmethod
@@ -458,14 +461,18 @@ class MetropolisDisplacementMove(MetropolizedMove, MCMove):
 
         """
         import jax.numpy as jnp
+        from jax import random
 
         positions_unit = positions.unit
         unitless_displacement_sigma = displacement_sigma / positions_unit
         displacement_vector = unit.Quantity(
-            jnp.random.randn(3) * unitless_displacement_sigma, positions_unit
+            np.random.randn(3) * unitless_displacement_sigma, positions_unit
         )
         return positions + displacement_vector
 
     def _propose_positions(self, initial_positions):
         """Implement MetropolizedMove._propose_positions for apply()."""
         return self.displace_positions(initial_positions, self.displacement_sigma)
+
+    def run(self, sampler_state, thermodynamic_state):
+        self.apply(thermodynamic_state, sampler_state)
