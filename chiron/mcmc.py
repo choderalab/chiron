@@ -174,7 +174,7 @@ class MCMove(StateUpdateMove):
         new_system = self.system(new_state)
 
         energy_before_state_change = old_system.compute_energy(old_state.position)
-        enegy_after_state_change = new_system.compute_energy(new_state.position)
+        energy_after_state_change = new_system.compute_energy(new_state.position)
         # Implement the logic to compute the acceptance probability
         pass
 
