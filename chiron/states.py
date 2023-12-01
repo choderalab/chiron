@@ -8,41 +8,48 @@ from openmm.app import Topology
 
 class SamplerState:
     """
-    Represents the state that is changed by the integrator.
+    Represents the state of the system that is updated during integration.
+
     Parameters
     ----------
-    x0 : Nx3 openmm.unit.Quantity
-        Current position vectors for N particles (length units).
-    velocities : Nx3 openmm.unit.Quantity, optional
-        Velocity vectors for N particles (velocity units).
-    box_vectors : 3x3 openmm.unit.Quantity
-        Current box vectors (length units).
+    x0 : unit.Quantity
+        The current positions of the particles in the simulation.
+    velocities : unit.Quantity, optional
+        The velocities of the particles in the simulation.
+    box_vectors : unit.Quantity, optional
+        The box vectors defining the simulation's periodic boundary conditions.
 
     """
 
-    def __init__(self, x0, velocities=None, box_vectors=None) -> None:
+    def __init__(
+        self,
+        x0: unit.Quantity,
+        velocities: Optional[unit.Quantity] = None,
+        box_vectors: Optional[unit.Quantity] = None,
+    ) -> None:
         self.x0 = x0
         self.velocities = velocities
         self.box_vectors = box_vectors
 
     @property
-    def x0_unitless(self):
+    def x0_unitless(self) -> jnp.ndarray:
+        """Return unitless positions."""
         return self.x0.value_in_unit_system(unit.md_unit_system)
 
 
 class ThermodynamicState:
     """
-    Represents the thermodynamic ensemble
+    Represents the thermodynamic state of the system.
 
-    Attributes
+    Parameters
     ----------
     potential : NeuralNetworkPotential
         The potential energy function of the system.
-    temperature : unit.Quantity
+    temperature : unit.Quantity, optional
         The temperature of the simulation.
-    volume : unit.Quantity
+    volume : unit.Quantity, optional
         The volume of the simulation.
-    pressure : unit.Quantity
+    pressure : unit.Quantity, optional
         The pressure of the simulation.
 
     """
@@ -64,14 +71,9 @@ class ThermodynamicState:
         self.nr_of_particles = get_nr_of_particles(self.potential.topology)
         self._check_completness()
 
-    def check_variables(self):
+    def check_variables(self) -> None:
         """
-        Check which variables in the __init__ method are None.
-
-        Returns
-        -------
-        List[str]
-            A list of variable names that are None.
+        Check if all necessary variables are set and log the simulation ensemble.
         """
         variables = [
             "temperature",
@@ -119,56 +121,28 @@ class ThermodynamicState:
         """
         pass
 
-    def get_reduced_potential(self, sampler_state: SamplerState):
-        """Compute the reduced potential in this thermodynamic state.
+    def get_reduced_potential(self, sampler_state: SamplerState) -> float:
+        """
+        Compute the reduced potential for the given sampler state.
 
         Parameters
-        --------
+        ----------
         sampler_state : SamplerState
-            The sampler state to compute the reduced potential for.
-            Contains positions and box vectors.
+            The sampler state for which to compute the reduced potential.
 
         Returns
         -------
-        u : float
-            The unit-less reduced potential, which can be considered
-            to have units of kT.
+        float
+            The reduced potential of the system.
 
         Notes
         -----
-        The reduced potential is defined as in Ref. [1],
-
-        u = \beta [U(x) + p V(x) + \mu N(x)]
-
-        where the thermodynamic parameters are
-
-        \beta = 1/(kB T) is the inverse temperature
-        p is the pressure
-        \mu is the chemical potential
-
-        and the configurational properties are
-
-        x the atomic positions
-        U(x) is the potential energy
-        V(x) is the instantaneous box volume
-        N(x) the numbers of various particle species (e.g. protons of
-             titratable groups)
-
-        References
-        ----------
-        [1] Shirts MR and Chodera JD. Statistically optimal analysis of
-        equilibrium states. J Chem Phys 129:124105, 2008.
-
-        Examples
-        --------
-        Compute the reduced potential of a water box at 298 K and 1 atm.
-
-        >>> from openmmtools import testsystems
-        >>> waterbox = testsystems.WaterBox(box_edge=20.0*unit.angstroms)
-        >>> topology, positions = waterbox.system.topology, waterbox.positions
-        >>> state = SimulationsState(temperature=298.0*unit.kelvin,
-        ...                            pressure=1.0*unit.atmosphere, position=waterbox.positions)
-        >>> u = state.reduced_potential()
+        The reduced potential is computed as:
+        u = \beta [U(x) + p V(x) + \mu N(x)],
+        where \beta is the inverse temperature, p is the pressure,
+        \mu is the chemical potential, x are the atomic positions,
+        U(x) is the potential energy, V(x) is the box volume,
+        and N(x) is the number of particles.
         """
         beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
         reduced_potential = (

@@ -41,17 +41,21 @@ from chiron.states import SamplerState, ThermodynamicState
 from chiron.potential import NeuralNetworkPotential
 from openmm import unit
 from loguru import logger as log
-from typing import Dict, Union, Tuple, List
+from typing import Dict, Union, Tuple, List, Optional
 import jax.numpy as jnp
-
-from typing import Optional
 
 
 class StateUpdateMove:
     def __init__(self, nr_of_moves: int, seed: int):
         """
-        Initialize any move with a molecular system.
+        Initialize a move within the molecular system.
 
+        Parameters
+        ----------
+        nr_of_moves : int
+            Number of moves to be applied.
+        seed : int
+            Seed for random number generation.
         """
         import jax.random as jrandom
 
@@ -222,25 +226,22 @@ class TautomericStateMove(MCMove):
 class MoveSet:
     """
     Represents a set of moves for a Markov Chain Monte Carlo (MCMC) algorithm.
+
+    Parameters
+    ----------
+    move_schedule : List[Tuple[str, StateUpdateMove]]
+        A list representing the move schedule, where each tuple contains a move name and a move instance.
+
+    Raises
+    ------
+    ValueError
+        If a move in the schedule is not an instance of StateUpdateMove.
     """
 
     def __init__(
         self,
         move_schedule: List[Tuple[str, StateUpdateMove]],
     ) -> None:
-        """
-        Initializes a MoveSet object.
-
-        Parameters
-        ----------
-        move_sequence : List[Tuple[str, int]]
-            A list representing the move sequence, where each tuple contains a move name and an integer representing the number of times the move should be performed in sequence.
-
-        Raises
-        ------
-        ValueError
-            If a move in the sequence is not present in available_moves.
-        """
         _AVAILABLE_MOVES = ["LangevinDynamicsMove"]
         self.move_schedule = move_schedule
 
@@ -261,17 +262,19 @@ class MoveSet:
 
 
 class GibbsSampler(object):
-    """Basic Markov chain Monte Carlo Gibbs sampler.
+    """
+    Basic Markov chain Monte Carlo Gibbs sampler.
 
     Parameters
     ----------
-    StateVariablesCollection : states.StateVariablesCollection
-        Defines the states describing the conditional distributions.
-    move_set : container of MarkovChainMonteCarloMove objects
-        Moves to attempt during MCMC run.
-        The move set can be a single move or a sequence of moves.
-        The moves will define the joint distributions that are sampled.
+    move_set : MoveSet
+        Set of moves to attempt during MCMC run.
+    sampler_state : SamplerState
+        Initial sampler state.
+    thermodynamic_state : ThermodynamicState
+        Thermodynamic state describing the system.
 
+    Examples
     """
 
     def __init__(
@@ -283,8 +286,6 @@ class GibbsSampler(object):
         from copy import deepcopy
 
         log.info("Initializing Gibbs sampler")
-
-        # Make a deep copy of the state so that initial state is unchanged.
         self.move = move_set
         self.sampler_state = deepcopy(sampler_state)
         self.thermodynamic_state = deepcopy(thermodynamic_state)
@@ -295,16 +296,17 @@ class GibbsSampler(object):
 
         Parameters
         ----------
-        xO : unit.Quantity
-            Initial positions of the particles.
-
+        n_iterations : int, optional
+            Number of iterations of the sampler to run.
         """
         log.info("Running Gibbs sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
-
-        for move_name, move in self.move.move_schedule:
-            log.info(f"Performing: {move_name}")
-            move.run(self.sampler_state, self.thermodynamic_state)
+        log.info("Running Gibbs sampler")
+        for iteration in range(n_iterations):
+            log.info(f"Iteration {iteration + 1}/{n_iterations}")
+            for move_name, move in self.move.move_schedule:
+                log.info(f"Performing: {move_name}")
+                move.run(self.sampler_state, self.thermodynamic_state)
 
 
 class MetropolizedMove(MCMove):

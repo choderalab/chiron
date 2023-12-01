@@ -4,11 +4,9 @@ import jax.numpy as jnp
 from jax import random
 from tqdm import tqdm
 from openmm import unit
-
-from openmm.app import Topology
-from typing import Dict, Optional
-from loguru import logger as log
 from .states import SamplerState, ThermodynamicState
+from typing import Dict
+from loguru import logger as log
 
 
 class LangevinIntegrator:
@@ -16,7 +14,7 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
-    ):
+    ) -> None:
         """
         Initialize the LangevinIntegrator object.
 
@@ -34,7 +32,15 @@ class LangevinIntegrator:
         self.stepsize = stepsize
         self.collision_rate = collision_rate
 
-    def set_velocities(self, vel: unit.Quantity):
+    def set_velocities(self, vel: unit.Quantity) -> None:
+        """
+        Set the initial velocities for the Langevin Integrator.
+
+        Parameters
+        ----------
+        vel : unit.Quantity
+            Velocities to be set for the integrator.
+        """
         self.velocities = vel
 
     def run(
@@ -50,25 +56,21 @@ class LangevinIntegrator:
 
         Parameters
         ----------
-        x0 : array_like
-            Initial positions of the particles.
-        potential : NeuralNetworkPotential
-            Object representing the potential energy function. #NOTE: this might change, maybe rename to system
-        box_vectors : array_like, optional
-            Box vectors for periodic boundary conditions.
-        progress_bar : bool, optional
-            Flag indicating whether to display a progress bar during integration.
-        temperature : unit.Quantity
-            Temperature of the system.
+        sampler_state : SamplerState
+            The initial state of the simulation, including positions.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system, including temperature and potential.
         n_steps : int, optional
             Number of simulation steps to perform.
-        key : jax.random.PRNGKey
+        key : jax.random.PRNGKey, optional
             Random key for generating random numbers.
+        progress_bar : bool, optional
+            Flag indicating whether to display a progress bar during integration.
 
         Returns
         -------
-        list of array_like
-            Trajectory of particle positions at each simulation step.
+        Dict[str, jnp.ndarray]
+            A dictionary containing the trajectory of particle positions and energies at each simulation step.
         """
         from .utils import get_list_of_mass
 
@@ -112,11 +114,7 @@ class LangevinIntegrator:
         random_noise_v = random.normal(key, (n_steps, x.shape[-1]))
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             # v
-            v += (
-                (stepsize_unitless * 0.5)
-                * potential.compute_force(x)
-                / mass_unitless
-            )
+            v += (stepsize_unitless * 0.5) * potential.compute_force(x) / mass_unitless
             # r
             x += (stepsize_unitless * 0.5) * v
 
