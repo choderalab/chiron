@@ -48,12 +48,15 @@ from typing import Optional
 
 
 class StateUpdateMove:
-    def __init__(self, nr_of_moves: int):
+    def __init__(self, nr_of_moves: int, seed: int):
         """
         Initialize any move with a molecular system.
 
         """
+        import jax.random as jrandom
+
         self.nr_of_moves = nr_of_moves
+        self.key = jrandom.PRNGKey(seed)  # 'seed' is an integer seed value
 
 
 class LangevinDynamicsMove(StateUpdateMove):
@@ -102,8 +105,8 @@ class LangevinDynamicsMove(StateUpdateMove):
 
 
 class MCMove(StateUpdateMove):
-    def __init__(self, nr_of_moves) -> None:
-        super().__init__(nr_of_moves)
+    def __init__(self, nr_of_moves: int, seed: int) -> None:
+        super().__init__(nr_of_moves, seed)
 
     def _check_state_compatiblity(
         self,
@@ -326,11 +329,11 @@ class MetropolizedMove(MCMove):
     TBC
     """
 
-    def __init__(self, atom_subset=None, nr_of_moves: int = 100):
+    def __init__(self, seed: int = 1234, atom_subset=None, nr_of_moves: int = 100):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
-        super().__init__(nr_of_moves=nr_of_moves)
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
 
     @property
     def statistics(self):
@@ -380,13 +383,17 @@ class MetropolizedMove(MCMove):
 
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
+        import jax.random as jrandom
+
+        key, subkey = jrandom.split(self.key)
+
         if not jnp.isnan(proposed_energy) and (
-            delta_energy <= 0.0 or jnp.random.rand() < jnp.exp(-delta_energy)
+            delta_energy <= 0.0 or jrandom.normal(subkey) < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
         else:
             # Restore original positions.
-            sampler_state.positions[atom_subset] = initial_positions
+            sampler_state.x0[atom_subset] = initial_positions
         self.n_proposed += 1
 
     def _propose_positions(self, positions: jnp.ndarray):
@@ -438,12 +445,16 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
     """
 
-    def __init__(self, displacement_sigma=1.0 * unit.nanometer, nr_of_moves: int = 100):
-        super().__init__(nr_of_moves=nr_of_moves)
+    def __init__(
+        self,
+        seed: int = 1234,
+        displacement_sigma=1.0 * unit.nanometer,
+        nr_of_moves: int = 100,
+    ):
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
         self.displacement_sigma = displacement_sigma
 
-    @staticmethod
-    def displace_positions(positions, displacement_sigma=1.0 * unit.nanometer):
+    def displace_positions(self, positions, displacement_sigma=1.0 * unit.nanometer):
         """Return the positions after applying a random displacement to them.
 
         Parameters
@@ -460,13 +471,14 @@ class MetropolisDisplacementMove(MetropolizedMove):
             The displaced positions.
 
         """
-        import jax.numpy as jnp
-        from jax import random
+        import jax.random as jrandom
 
+        key, subkey = jrandom.split(self.key)
         positions_unit = positions.unit
         unitless_displacement_sigma = displacement_sigma / positions_unit
         displacement_vector = unit.Quantity(
-            np.random.randn(3) * unitless_displacement_sigma, positions_unit
+            jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma,
+            positions_unit,
         )
         return positions + displacement_vector
 
