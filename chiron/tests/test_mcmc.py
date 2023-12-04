@@ -124,6 +124,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
+        slice_dim=None,
     )
 
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
@@ -133,6 +134,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
+    #assert False
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

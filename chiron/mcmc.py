@@ -365,7 +365,6 @@ class MetropolizedMove(MCMove):
            The initial sampler state to apply the move to. This is modified.
 
         """
-        import copy
         import jax.numpy as jnp
 
         # Compute initial energy
@@ -374,16 +373,22 @@ class MetropolizedMove(MCMove):
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
+        x0 = sampler_state.x0
         log.debug(f"Atom subset is {atom_subset}.")
-        initial_positions = copy.deepcopy(sampler_state.x0[atom_subset])
+        initial_positions = (jnp.copy(x0[jnp.array(atom_subset)]),)
         log.debug(f"Initial positions are {initial_positions}.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
-        proposed_positions = self._propose_positions(initial_positions)
+        proposed_positions = self._propose_positions(
+            unit.Quantity(initial_positions, sampler_state.distance_unit)
+        )
         log.debug(f"Proposed positions are {proposed_positions}.")
-        log.debug(f"Sampler state is {sampler_state.x0}.")
+        log.debug(f"Sampler state is {sampler_state.x0_unitless}.")
 
         # Compute the energy of the proposed positions.
-        sampler_state.x0[atom_subset] = proposed_positions
+        sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
+            proposed_positions
+        )
+        log.debug(f"Sampler state is {sampler_state.x0}.")
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         log.debug(f"Proposed energy is {proposed_energy}.")
         # Accept or reject with Metropolis criteria.
@@ -408,14 +413,14 @@ class MetropolizedMove(MCMove):
             )
         self.n_proposed += 1
 
-    def _propose_positions(self, positions: jnp.ndarray):
+    def _propose_positions(self, positions: unit.Quantity):
         """Return new proposed positions.
 
         These method must be implemented in subclasses.
 
         Parameters
         ----------
-        positions : nx3 jnp.ndarray
+        positions : nx3 jnp.ndarray unit.Quantity
             The original positions of the subset of atoms that these move
             applied to.
 
@@ -463,17 +468,44 @@ class MetropolisDisplacementMove(MetropolizedMove):
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
+        slice_dim: Optional[int] = None,
     ):
+        """
+        Initialize the MCMC class.
+
+        Parameters
+        ----------
+        seed : int, optional
+            The seed for the random number generator. Default is 1234.
+        displacement_sigma : float or unit.Quantity, optional
+            The standard deviation of the displacement for each move. Default is 1.0 nm.
+        nr_of_moves : int, optional
+            The number of moves to perform. Default is 100.
+        atom_subset : list of int, optional
+            A subset of atom indices to consider for the moves. Default is None.
+        slice_dim : int, optional
+            The dimension along which to slice the atom subset. Default is None.
+
+        Returns
+        -------
+        None
+        """
+
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
+        self.slice_dim = slice_dim
+        if slice_dim is not None:
+            log.info(f"Updating coordinates only along dimension {self.slice_dim}")
 
-    def displace_positions(self, positions, displacement_sigma=1.0 * unit.nanometer):
+    def displace_positions(
+        self, positions: unit.Quantity, displacement_sigma=1.0 * unit.nanometer
+    ):
         """Return the positions after applying a random displacement to them.
 
         Parameters
         ----------
-        positions : nx3 numpy.ndarray openmm.unit.Quantity
+        positions : nx3 jnp.array unit.Quantity
             The positions to displace.
         displacement_sigma : openmm.unit.Quantity
             The standard deviation of the normal distribution used to propose
@@ -488,15 +520,24 @@ class MetropolisDisplacementMove(MetropolizedMove):
         import jax.random as jrandom
 
         key, subkey = jrandom.split(self.key)
-        positions_unit = positions.unit
-        unitless_displacement_sigma = displacement_sigma / positions_unit
-        displacement_vector = unit.Quantity(
-            jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma,
-            positions_unit,
-        )
-        return positions + displacement_vector
+        distance_unit = positions.unit
+        x0 = positions.value_in_unit(distance_unit)
+        unitless_displacement_sigma = displacement_sigma.value_in_unit(distance_unit)
+        if self.slice_dim is not None:
+            displacement_scalar = (
+                jrandom.normal(subkey, shape=(1,)) * unitless_displacement_sigma
+            )
+            updated_position = (x0.at[0, self.slice_dim].add(displacement_scalar),)
+        else:
+            displacement_vector = (
+                jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
+            )
+            updated_position = x0 + displacement_vector
 
-    def _propose_positions(self, initial_positions):
+        log.debug(f"Updated position: {updated_position}")
+        return unit.Quantity(updated_position, distance_unit)
+
+    def _propose_positions(self, initial_positions: unit.Quantity):
         """Implement MetropolizedMove._propose_positions for apply()."""
         return self.displace_positions(initial_positions, self.displacement_sigma)
 

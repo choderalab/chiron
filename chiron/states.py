@@ -27,9 +27,45 @@ class SamplerState:
         velocities: Optional[unit.Quantity] = None,
         box_vectors: Optional[unit.Quantity] = None,
     ) -> None:
-        self.x0 = x0
-        self.velocities = velocities
-        self.box_vectors = box_vectors
+        import jax.numpy as jnp
+
+        self._distance_unit = x0.unit
+        self._x0 = x0
+        self._velocities = velocities
+        self._box_vectors = box_vectors
+
+    @property
+    def x0(self) -> jnp.array:
+        return self._convert_to_jnp(self._x0)
+
+    @property
+    def velocities(self) -> jnp.array:
+        if self._velocities is None:
+            return None
+        return self._convert_to_jnp(self._velocities)
+
+    @property
+    def box_vectors(self) -> jnp.array:
+        if self._box_vectors is None:
+            return None
+        return self._convert_to_jnp(self._box_vectors)
+
+    @x0.setter
+    def x0(self, x0: jnp.array) -> None:
+        self._x0 = unit.Quantity(x0, self._distance_unit)
+
+    @property
+    def distance_unit(self) -> unit.Unit:
+        return self._distance_unit
+
+    def _convert_to_jnp(self, array: unit.Quantity) -> unit.Quantity:
+        """
+        Convert the sampler state to jnp arrays.
+        """
+        import jax.numpy as jnp
+
+        array_ = array / self.distance_unit
+        return unit.Quantity(jnp.array(array_), self.distance_unit)
 
     @property
     def x0_unitless(self) -> jnp.ndarray:
