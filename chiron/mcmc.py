@@ -375,15 +375,17 @@ class MetropolizedMove(MCMove):
         atom_subset = self.atom_subset
         x0 = sampler_state.x0
         log.debug(f"Atom subset is {atom_subset}.")
-        initial_positions = (jnp.copy(x0[jnp.array(atom_subset)]),)
+        initial_positions = jnp.copy(x0[jnp.array(atom_subset)])
         log.debug(f"Initial positions are {initial_positions}.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(
             unit.Quantity(initial_positions, sampler_state.distance_unit)
         )
         log.debug(f"Proposed positions are {proposed_positions}.")
-        log.debug(f"Sampler state is {sampler_state.x0_unitless}.")
-
+        log.debug(f"Sampler state is {sampler_state.x0}.")
+        proposed_positions = proposed_positions.value_in_unit(
+            sampler_state.distance_unit
+        )
         # Compute the energy of the proposed positions.
         sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
             proposed_positions
@@ -407,7 +409,9 @@ class MetropolizedMove(MCMove):
             )
         else:
             # Restore original positions.
-            sampler_state.x0[atom_subset] = initial_positions
+            sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
+                initial_positions
+            )
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f}. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
@@ -527,7 +531,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
             displacement_scalar = (
                 jrandom.normal(subkey, shape=(1,)) * unitless_displacement_sigma
             )
-            updated_position = (x0.at[0, self.slice_dim].add(displacement_scalar),)
+            updated_position = x0.at[0, self.slice_dim].add(displacement_scalar)
         else:
             displacement_vector = (
                 jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma

@@ -105,8 +105,8 @@ class LangevinIntegrator:
         a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
         b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
-        x = jnp.array(x0.value_in_unit_system(unit.md_unit_system))
-        v = jnp.array(v0)
+        x = x0
+        v = v0
 
         traj = [x]
         energy = [potential.compute_energy(x)]

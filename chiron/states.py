@@ -65,12 +65,7 @@ class SamplerState:
         import jax.numpy as jnp
 
         array_ = array / self.distance_unit
-        return unit.Quantity(jnp.array(array_), self.distance_unit)
-
-    @property
-    def x0_unitless(self) -> jnp.ndarray:
-        """Return unitless positions."""
-        return self.x0.value_in_unit_system(unit.md_unit_system)
+        return jnp.array(array_)
 
 
 class ThermodynamicState:
@@ -181,9 +176,9 @@ class ThermodynamicState:
         and N(x) is the number of particles.
         """
         beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
+        log.debug(sampler_state.x0)
         reduced_potential = (
-            self.potential.compute_energy(sampler_state.x0_unitless)
-            * unit.kilocalories_per_mole
+            self.potential.compute_energy(sampler_state.x0) * unit.kilocalories_per_mole
         ) / unit.AVOGADRO_CONSTANT_NA
 
         if self.pressure is not None:

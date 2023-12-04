@@ -134,7 +134,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
-    #assert False
+    # assert False
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

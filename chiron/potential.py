@@ -90,14 +90,18 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         log.info(f"x0 = {x0}")
         log.info(f"U0 = {U0}")
         log.info("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
-        self.k = k.value_in_unit_system(unit.md_unit_system)  # spring constant
-        self.x0 = x0.value_in_unit_system(unit.md_unit_system)  # equilibrium position
-        self.U0 = U0.value_in_unit_system(
-            unit.md_unit_system
+        self.k = jnp.array(
+            k.value_in_unit_system(unit.md_unit_system)
+        )  # spring constant
+        self.x0 = jnp.array(
+            x0.value_in_unit_system(unit.md_unit_system)
+        )  # equilibrium position
+        self.U0 = jnp.array(
+            U0.value_in_unit_system(unit.md_unit_system)
         )  # offset potential energy
         self.topology = topology
 
-    def compute_energy(self, positions):
+    def compute_energy(self, positions: jnp.array):
         # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 

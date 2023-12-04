@@ -27,7 +27,7 @@ def test_initialize_state():
     sampler_state = SamplerState(ho.positions)
 
     assert jnp.allclose(
-        sampler_state.x0.value_in_unit(unit.angstrom),
+        sampler_state.x0,
         jnp.array([[0.0, 0.0, 0.0]]),
     )
 
