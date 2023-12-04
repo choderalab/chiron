@@ -390,13 +390,12 @@ class MetropolizedMove(MCMove):
             proposed_positions
         )
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        log.debug(f"Proposed energy is {proposed_energy}.")
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
         log.debug(f"Delta energy is {delta_energy}.")
         import jax.random as jrandom
 
-        key, subkey = jrandom.split(self.key)
+        self.key, subkey = jrandom.split(self.key)
 
         if not jnp.isnan(proposed_energy) and (
             delta_energy <= 0.0 or jrandom.normal(subkey) < jnp.exp(-delta_energy)
@@ -521,7 +520,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         """
         import jax.random as jrandom
 
-        key, subkey = jrandom.split(self.key)
+        self.key, subkey = jrandom.split(self.key)
         distance_unit = positions.unit
         x0 = positions.value_in_unit(distance_unit)
         unitless_displacement_sigma = displacement_sigma.value_in_unit(distance_unit)

@@ -116,15 +116,12 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     )
     sampler_state = SamplerState(ho.positions)
 
-    from functools import partial
-    from chiron.utils import slice_array
-
     # Initalize the move set (here only LangevinDynamicsMove)
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
-        slice_dim=0,
+        # slice_dim=0,
     )
 
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])

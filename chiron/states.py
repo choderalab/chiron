@@ -33,6 +33,8 @@ class SamplerState:
         self._x0 = x0
         self._velocities = velocities
         self._box_vectors = box_vectors
+        self._trajectory = {}
+        self._properties = {}
 
     @property
     def x0(self) -> jnp.array:
