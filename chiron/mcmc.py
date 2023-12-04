@@ -341,6 +341,7 @@ class MetropolizedMove(MCMove):
         self.n_proposed = 0
         self.atom_subset = atom_subset
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        log.debug(f"Atom subset is {atom_subset}.")
 
     @property
     def statistics(self):
@@ -374,7 +375,6 @@ class MetropolizedMove(MCMove):
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
         x0 = sampler_state.x0
-        log.debug(f"Atom subset is {atom_subset}.")
         initial_positions = jnp.copy(x0[jnp.array(atom_subset)])
         log.debug(f"Initial positions are {initial_positions}.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
@@ -382,7 +382,6 @@ class MetropolizedMove(MCMove):
             unit.Quantity(initial_positions, sampler_state.distance_unit)
         )
         log.debug(f"Proposed positions are {proposed_positions}.")
-        log.debug(f"Sampler state is {sampler_state.x0}.")
         proposed_positions = proposed_positions.value_in_unit(
             sampler_state.distance_unit
         )
@@ -390,7 +389,6 @@ class MetropolizedMove(MCMove):
         sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
             proposed_positions
         )
-        log.debug(f"Sampler state is {sampler_state.x0}.")
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         log.debug(f"Proposed energy is {proposed_energy}.")
         # Accept or reject with Metropolis criteria.
@@ -528,15 +526,19 @@ class MetropolisDisplacementMove(MetropolizedMove):
         x0 = positions.value_in_unit(distance_unit)
         unitless_displacement_sigma = displacement_sigma.value_in_unit(distance_unit)
         if self.slice_dim is not None:
-            displacement_scalar = (
-                jrandom.normal(subkey, shape=(1,)) * unitless_displacement_sigma
+            displacement_vector = (
+                jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
             )
-            updated_position = x0.at[0, self.slice_dim].add(displacement_scalar)
+            mask = jnp.ones(3, dtype=bool)
+            mask = mask.at[self.slice_dim].set(False)
+            displacement_vector = displacement_vector.at[mask].set(0)
+
         else:
             displacement_vector = (
                 jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
             )
-            updated_position = x0 + displacement_vector
+
+        updated_position = x0 + displacement_vector
 
         log.debug(f"Updated position: {updated_position}")
         return unit.Quantity(updated_position, distance_unit)
