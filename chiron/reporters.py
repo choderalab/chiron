@@ -8,11 +8,15 @@ import numpy as np
 class SimulationReporter:
     def __init__(self, filename, buffer_size=1):
         """
-        Initializes the SimulationReporter.
+        Initialize the SimulationReporter.
 
-        Parameters:
-        filename (str): Name of the HDF5 file to write the simulation data.
-        buffer_size (int): Number of data points to buffer before writing to disk.
+        Parameters
+        ----------
+        filename : str
+            Name of the HDF5 file to write the simulation data.
+        buffer_size : int, optional
+            Number of data points to buffer before writing to disk (default is 1).
+
         """
         self.filename = filename
         self.buffer_size = buffer_size
@@ -21,11 +25,14 @@ class SimulationReporter:
 
     def report(self, data_dict):
         """
-        Adds new data to the buffer. Writes buffer to disk if it's full.
+        Add new data to the buffer and write the buffer to disk if it's full.
 
-        Parameters:
-        data_dict (dict): Dictionary containing data to report. Keys are data labels (e.g., 'energy'),
-                          and values are the data points (numpy arrays).
+        Parameters
+        ----------
+        data_dict : dict
+            Dictionary containing data to report. Keys are data labels (e.g., 'energy'),
+            and values are the data points (usually numpy arrays).
+
         """
         for key, value in data_dict.items():
             if key not in self.buffer:
@@ -39,10 +46,13 @@ class SimulationReporter:
 
     def _write_to_disk(self, key):
         """
-        Writes buffered data of a given key to the HDF5 file.
+        Write buffered data of a given key to the HDF5 file.
 
-        Parameters:
-        key (str): The key of the data to write to disk.
+        Parameters
+        ----------
+        key : str
+            The key of the data to write to disk.
+
         """
         data = np.array(self.buffer[key])
 
@@ -61,7 +71,8 @@ class SimulationReporter:
 
     def close(self):
         """
-        Writes any remaining data in the buffer to disk and closes the HDF5 file.
+        Write any remaining data in the buffer to disk and close the HDF5 file.
+
         """
         for key in self.buffer:
             if self.buffer[key]:
