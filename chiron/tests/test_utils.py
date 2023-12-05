@@ -1,4 +1,5 @@
 def test_get_list_of_mass():
+    """Test the get_list_of_mass function."""
     from chiron.utils import get_list_of_mass
     from openmm.app import Topology, Element
     from openmm import unit
@@ -22,6 +23,7 @@ def test_get_list_of_mass():
 
 
 def test_reporter():
+    """Read in a reporter file and check its contend."""
     import h5py
     import numpy as np
     from chiron.utils import get_data_file_path

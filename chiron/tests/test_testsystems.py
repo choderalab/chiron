@@ -4,7 +4,6 @@ def test_HO():
 
     This function initializes a harmonic oscillator from openmmtools.testsystems,
     sets up a harmonic potential, and uses the Langevin integrator to run the simulation.
-    It then tests if the standard deviation of the potential is close to the expected value.
     """
     from openmm.unit import kelvin
 
@@ -23,8 +22,8 @@ def test_HO():
         potential=harmonic_potential, temperature=300 * kelvin
     )
 
-
-    stddev = ho.get_potential_expectation(thermodynamic_state)
+    # don't do anything, just check that we get the right expectation value for the testsystem
+    # NOTE: this doesn't actually test anything meaningful, but it's a good starting point
     expectation = ho.get_potential_standard_deviation(thermodynamic_state)
     from openmm import unit
     import jax.numpy as jnp

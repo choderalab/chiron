@@ -1,4 +1,5 @@
 def test_initialize_state():
+    """Test initializing a thermodynamic and sampler state."""
     from chiron.states import ThermodynamicState, SamplerState
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
@@ -33,6 +34,7 @@ def test_initialize_state():
 
 
 def test_reduced_potential():
+    """Test the reduced potential function."""
     from chiron.states import ThermodynamicState, SamplerState
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
