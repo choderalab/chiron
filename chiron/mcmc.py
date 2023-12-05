@@ -539,7 +539,6 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
         updated_position = x0 + displacement_vector
 
-        log.debug(f"Updated position: {updated_position}")
         return unit.Quantity(updated_position, distance_unit)
 
     def _propose_positions(self, initial_positions: unit.Quantity):
