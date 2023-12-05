@@ -26,15 +26,16 @@ class SamplerState:
         x0: unit.Quantity,
         velocities: Optional[unit.Quantity] = None,
         box_vectors: Optional[unit.Quantity] = None,
+        traj_file_name: Optional[str] = None,
+        property_file_name: Optional[str] = None,
     ) -> None:
         import jax.numpy as jnp
+        from mdtraj.formats import DCDTrajectoryFile
 
         self._distance_unit = x0.unit
         self._x0 = x0
         self._velocities = velocities
         self._box_vectors = box_vectors
-        self._trajectory = {}
-        self._properties = {}
 
     @property
     def x0(self) -> jnp.array:

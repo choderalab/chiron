@@ -28,8 +28,12 @@ def test_sample_from_harmonic_osciallator():
     sampler_state = SamplerState(x0=ho.positions)
     from chiron.integrators import LangevinIntegrator
 
+    from chiron.reporters import SimulationReporter
+
+    reporter = SimulationReporter("test.h5", 1)
+
     integrator = LangevinIntegrator(
-        stepsize=0.2 * unit.femtosecond,
+        stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
     )
 
     r = integrator.run(
@@ -39,11 +43,23 @@ def test_sample_from_harmonic_osciallator():
     )
 
     import jax.numpy as jnp
+    import h5py
+
+    h5_file = "test.h5"
+    h5 = h5py.File(h5_file, "r")
+    keys = h5.keys()
+
+    assert "energy" in keys, "Energy not in keys"
+    assert "step" in keys, "Step not in keys"
+    assert "traj" in keys, "Traj not in keys"
+
+    energy = h5["energy"][:]
+    print(energy)
 
     reference_energy = jnp.array(
-        [0.0, 0.00018982, 0.00076115, 0.00172312, 0.00307456, 0.00480607]
+        [0.00018982, 0.00076115, 0.00172312, 0.00307456, 0.00480607]
     )
-    jnp.allclose(jnp.array(r["energy"]).flatten(), reference_energy)
+    assert jnp.allclose(energy, reference_energy)
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics():
@@ -75,8 +91,13 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     )
     sampler_state = SamplerState(ho.positions)
 
-    # Initalize the move set (here only LangevinDynamicsMove)
-    langevin_move = LangevinDynamicsMove(nr_of_steps=100, seed=0)
+    # Initalize the move set (here only LangevinDynamicsMove) and reporter
+    from chiron.reporters import SimulationReporter
+
+    simulation_reporter = SimulationReporter("test.h5", 1)
+    langevin_move = LangevinDynamicsMove(
+        nr_of_steps=100, seed=0, simulation_reporter=simulation_reporter
+    )
 
     move_set = MoveSet([("LangevinMove", langevin_move)])
 
@@ -116,11 +137,16 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     )
     sampler_state = SamplerState(ho.positions)
 
-    # Initalize the move set (here only LangevinDynamicsMove)
+    # Initalize the move set and reporter
+    from chiron.reporters import SimulationReporter
+
+    simulation_reporter = SimulationReporter("test.h5", 1)
+
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
+        simulation_reporter=simulation_reporter,
         # slice_dim=0,
     )
 

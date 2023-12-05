@@ -27,6 +27,22 @@ def get_data_file_path(relative_path: str) -> str:
     return str(file_path)
 
 
+def slice_array(arr, start_column, end_column):
+    """
+    Slices the array from start_column to end_column.
+
+    Parameters:
+    arr (np.ndarray): The input array.
+    start_column (int): The starting column index for slicing.
+    end_column (int): The ending column index for slicing (exclusive).
+
+    Returns:
+    np.ndarray: The sliced array.
+    """
+
+    return arr[:, start_column:end_column]
+
+
 def get_nr_of_particles(topology: Topology) -> int:
     """Get the number of particles in the system from the topology."""
     return topology.getNumAtoms()

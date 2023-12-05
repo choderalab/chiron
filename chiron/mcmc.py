@@ -43,6 +43,7 @@ from openmm import unit
 from loguru import logger as log
 from typing import Dict, Union, Tuple, List, Optional
 import jax.numpy as jnp
+from chiron.reporters import SimulationReporter
 
 
 class StateUpdateMove:
@@ -68,6 +69,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        simulation_reporter: Optional[SimulationReporter] = None,
         nr_of_steps=1_000,
         seed: int = 1234,
     ):
@@ -86,15 +88,21 @@ class LangevinDynamicsMove(StateUpdateMove):
         super().__init__(nr_of_steps, seed)
         self.stepsize = stepsize
         self.collision_rate = collision_rate
+        self.simulation_reporter = simulation_reporter
 
         from chiron.integrators import LangevinIntegrator
 
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
+            reporter=self.simulation_reporter,
         )
 
-    def run(self, sampler_state: SamplerState, thermodynamic_state: ThermodynamicState):
+    def run(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+    ):
         """
         Run the integrator to perform molecular dynamics simulation.
 
@@ -353,7 +361,12 @@ class MetropolizedMove(MCMove):
         self.n_accepted = value["n_accepted"]
         self.n_proposed = value["n_proposed"]
 
-    def apply(self, thermodynamic_state, sampler_state):
+    def apply(
+        self,
+        thermodynamic_state: ThermodynamicState,
+        sampler_state: SamplerState,
+        reporter: SimulationReporter,
+    ):
         """Apply a metropolized move to the sampler state.
 
         Total number of acceptances and proposed move are updated.
@@ -364,7 +377,8 @@ class MetropolizedMove(MCMove):
            The thermodynamic state to use to apply the move.
         sampler_state : SamplerState
            The initial sampler state to apply the move to. This is modified.
-
+        reporter: SimulationReporter
+              The reporter to write the data to.
         """
         import jax.numpy as jnp
 
@@ -403,6 +417,13 @@ class MetropolizedMove(MCMove):
             self.n_accepted += 1
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f}. Number of accepted moves: {self.n_accepted}."
+            )
+            reporter.report(
+                {
+                    "energy": proposed_energy,
+                    "step": self.n_proposed,
+                    "traj": sampler_state.x0,
+                }
             )
         else:
             # Restore original positions.
@@ -470,6 +491,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
         slice_dim: Optional[int] = None,
+        simulation_reporter: Optional[SimulationReporter] = None,
     ):
         """
         Initialize the MCMC class.
@@ -486,7 +508,8 @@ class MetropolisDisplacementMove(MetropolizedMove):
             A subset of atom indices to consider for the moves. Default is None.
         slice_dim : int, optional
             The dimension along which to slice the atom subset. Default is None.
-
+        simulation_reporter : SimulationReporter, optional
+            The reporter to write the data to. Default is None.
         Returns
         -------
         None
@@ -496,8 +519,13 @@ class MetropolisDisplacementMove(MetropolizedMove):
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
         self.slice_dim = slice_dim
+        self.simulation_reporter = simulation_reporter
         if slice_dim is not None:
             log.info(f"Updating coordinates only along dimension {self.slice_dim}")
+        if self.simulation_reporter is not None:
+            log.info(
+                f"Using reporter {self.simulation_reporter} saving to {self.simulation_reporter.filename}"
+            )
 
     def displace_positions(
         self, positions: unit.Quantity, displacement_sigma=1.0 * unit.nanometer
@@ -545,7 +573,17 @@ class MetropolisDisplacementMove(MetropolizedMove):
         """Implement MetropolizedMove._propose_positions for apply()."""
         return self.displace_positions(initial_positions, self.displacement_sigma)
 
-    def run(self, sampler_state, thermodynamic_state):
+    def run(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+    ):
         for trials in range(self.nr_of_moves):
-            self.apply(thermodynamic_state, sampler_state)
+            self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
             log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+            self.simulation_reporter.report(
+                {
+                    "Acceptance rate": self.n_accepted / self.n_proposed,
+                    "step": self.n_proposed,
+                }
+            )

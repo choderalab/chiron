@@ -7,6 +7,8 @@ from openmm import unit
 from .states import SamplerState, ThermodynamicState
 from typing import Dict
 from loguru import logger as log
+from .reporters import SimulationReporter
+from typing import Optional
 
 
 class LangevinIntegrator:
@@ -14,6 +16,8 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        save_frequency: int = 100,
+        reporter: Optional[SimulationReporter] = None,
     ) -> None:
         """
         Initialize the LangevinIntegrator object.
@@ -31,6 +35,10 @@ class LangevinIntegrator:
         log.info(f"collision_rate = {collision_rate}")
         self.stepsize = stepsize
         self.collision_rate = collision_rate
+        if reporter is not None:
+            log.info(f"Using reporter {reporter} saving to {reporter.filename}")
+            self.reporter = reporter
+        self.save_frequency = save_frequency
 
     def set_velocities(self, vel: unit.Quantity) -> None:
         """
@@ -50,7 +58,7 @@ class LangevinIntegrator:
         n_steps: int = 5_000,
         key=random.PRNGKey(0),
         progress_bar=False,
-    ) -> Dict[str, jnp.array]:
+    ):
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
 
@@ -67,10 +75,6 @@ class LangevinIntegrator:
         progress_bar : bool, optional
             Flag indicating whether to display a progress bar during integration.
 
-        Returns
-        -------
-        Dict[str, jnp.ndarray]
-            A dictionary containing the trajectory of particle positions and energies at each simulation step.
         """
         from .utils import get_list_of_mass
 
@@ -108,9 +112,6 @@ class LangevinIntegrator:
         x = x0
         v = v0
 
-        traj = [x]
-        energy = [potential.compute_energy(x)]
-
         random_noise_v = random.normal(key, (n_steps, x.shape[-1]))
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             # v
@@ -129,7 +130,9 @@ class LangevinIntegrator:
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
-            traj.append(x)
-            energy.append(potential.compute_energy(x))
-
-        return {"traj": traj, "energy": energy}
+            if step % self.save_frequency == 0:
+                log.debug(f"Step {step}")
+                if self.reporter is not None:
+                    d = {"traj": x, "energy": potential.compute_energy(x), "step": step}
+                    log.debug(d)
+                    self.reporter.report(d)
