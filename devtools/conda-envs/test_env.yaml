@@ -19,5 +19,6 @@ dependencies:
   - codecov
 
     # Pip-only installs
-  #- pip:
+  - pip:
+     - h5py
   #  - codecov
