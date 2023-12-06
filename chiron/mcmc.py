@@ -383,6 +383,9 @@ class MetropolizedMove(MCMove):
 
         # Compute initial energy
         initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
+        initial_energy = thermodynamic_state.kT_to_kJ_per_mol(
+            initial_energy
+        ).value_in_unit_system(unit.md_unit_system)
         log.debug(f"Initial energy is {initial_energy} kJ/mol.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
@@ -398,6 +401,9 @@ class MetropolizedMove(MCMove):
             proposed_positions
         )
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
+        proposed_energy = thermodynamic_state.kT_to_kJ_per_mol(
+            proposed_energy
+        ).value_in_unit_system(unit.md_unit_system)
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
         log.debug(f"Delta energy is {delta_energy} kJ/mol.")
@@ -578,7 +584,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         for trials in range(self.nr_of_moves):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
             if trials % 100 == 0:
-                log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+                log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
                 if self.simulation_reporter is not None:
                     self.simulation_reporter.report(
                         {

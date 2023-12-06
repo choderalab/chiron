@@ -97,6 +97,12 @@ class ThermodynamicState:
     ):
         self.potential = potential
         self.temperature = temperature
+        if temperature:
+            self.beta = 1.0 / (
+                unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
+            )
+        else:
+            self.beta = None
         self.volume = volume
         self.pressure = pressure
 
@@ -178,7 +184,11 @@ class ThermodynamicState:
         U(x) is the potential energy, V(x) is the box volume,
         and N(x) is the number of particles.
         """
-        beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
+        if self.beta is None:
+            self.beta = 1.0 / (
+                unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
+            )
+
         reduced_potential = (
             unit.Quantity(
                 self.potential.compute_energy(sampler_state.x0), unit.kilojoule_per_mole
@@ -188,4 +198,8 @@ class ThermodynamicState:
         if self.pressure is not None:
             reduced_potential += self.pressure * self.volume
 
-        return beta * reduced_potential
+        return self.beta * reduced_potential
+
+    def kT_to_kJ_per_mol(self, energy):
+        energy = energy * unit.AVOGADRO_CONSTANT_NA
+        return energy / self.beta
