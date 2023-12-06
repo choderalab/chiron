@@ -21,7 +21,7 @@ class SimulationReporter:
         self.filename = filename
         self.buffer_size = buffer_size
         self.buffer = {}
-        self.h5file = h5py.File(filename, "w")
+        self.h5file = h5py.File(filename, "a")
         log.info(f"Writing simulation data to {filename}")
 
     def report(self, data_dict):
@@ -78,3 +78,20 @@ class SimulationReporter:
             if self.buffer[key]:
                 self._write_to_disk(key)
         self.h5file.close()
+
+    def get_property(self, name:str):
+        """
+        Get the property from the HDF5 file.
+
+        Parameters
+        ----------
+        name : str
+            Name of the property to get.
+
+        Returns
+        -------
+        np.ndarray
+            The property.
+
+        """
+        return np.array(self.h5file[name])

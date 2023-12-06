@@ -28,8 +28,11 @@ def test_reporter():
     import numpy as np
     from chiron.utils import get_data_file_path
 
+
     h5_file = "test.h5"
     h5_test_file = get_data_file_path(h5_file)
+
+    # Read the h5 file manually and check values
     h5 = h5py.File(h5_test_file, "r")
     keys = h5.keys()
 
@@ -38,7 +41,18 @@ def test_reporter():
     assert "traj" in keys, "Traj not in keys"
 
     energy = h5["energy"][:]
+    reference_energy = np.array(
+        [0.00492691, 0.08072066, 0.14170173, 0.5773072, 1.8576853]
+    )
     assert np.allclose(
         energy,
-        np.array([0.00492691, 0.08072066, 0.14170173, 0.5773072, 1.8576853]),
+        reference_energy,
     ), "Energy not correct"
+
+    h5.close()
+    
+    # Use the reporter class and check values
+    from chiron.reporters import SimulationReporter
+
+    reporter = SimulationReporter(h5_test_file, 1)
+    assert np.allclose(reference_energy, reporter.get_property("energy"))
