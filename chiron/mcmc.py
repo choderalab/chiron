@@ -383,16 +383,16 @@ class MetropolizedMove(MCMove):
 
         # Compute initial energy
         initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        log.debug(f"Initial energy is {initial_energy}.")
+        log.debug(f"Initial energy is {initial_energy} kJ/mol.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
         x0 = sampler_state.x0
         initial_positions = jnp.copy(x0[jnp.array(atom_subset)])
-        log.debug(f"Initial positions are {initial_positions}.")
+        log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(initial_positions)
-        log.debug(f"Proposed positions are {proposed_positions}.")
+        log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
         sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
             proposed_positions
@@ -400,17 +400,19 @@ class MetropolizedMove(MCMove):
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
-        log.debug(f"Delta energy is {delta_energy}.")
+        log.debug(f"Delta energy is {delta_energy} kJ/mol.")
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
 
+        compare_to = jrandom.uniform(subkey)
         if not jnp.isnan(proposed_energy) and (
-            delta_energy <= 0.0 or jrandom.normal(subkey) < jnp.exp(-delta_energy)
+            delta_energy <= 0.0 or compare_to < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
+            log.debug(f"Check suceeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
             log.debug(
-                f"Move accepted. Energy change: {delta_energy:.3f}. Number of accepted moves: {self.n_accepted}."
+                f"Move accepted. Energy change: {delta_energy:.3f} kJ/mol. Number of accepted moves: {self.n_accepted}."
             )
             reporter.report(
                 {
@@ -425,7 +427,7 @@ class MetropolizedMove(MCMove):
                 initial_positions
             )
             log.debug(
-                f"Move rejected. Energy change: {delta_energy:.3f}. Number of rejected moves: {self.n_proposed - self.n_accepted}."
+                f"Move rejected. Energy change: {delta_energy:.3f} kJ/mol. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
         self.n_proposed += 1
 

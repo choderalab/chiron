@@ -180,7 +180,9 @@ class ThermodynamicState:
         """
         beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin))
         reduced_potential = (
-            self.potential.compute_energy(sampler_state.x0) * unit.kilocalories_per_mole
+            unit.Quantity(
+                self.potential.compute_energy(sampler_state.x0), unit.kilojoule_per_mole
+            )
         ) / unit.AVOGADRO_CONSTANT_NA
 
         if self.pressure is not None:
