@@ -20,5 +20,5 @@ dependencies:
   - codecov
 
     # Pip-only installs
-  - pip:
+  # - pip:
   #  - codecov
