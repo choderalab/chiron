@@ -401,9 +401,8 @@ class MetropolizedMove(MCMove):
             proposed_positions
         )
         proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        proposed_energy = thermodynamic_state.kT_to_kJ_per_mol(
-            proposed_energy
-        ).value_in_unit_system(unit.md_unit_system)
+        proposed_energy = thermodynamic_state.kT_to_kJ_per_mol(proposed_energy)
+        proposed_energy = proposed_energy.value_in_unit_system(unit.md_unit_system)
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
         log.debug(f"Delta energy is {delta_energy} kJ/mol.")
