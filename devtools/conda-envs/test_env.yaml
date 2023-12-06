@@ -12,6 +12,7 @@ dependencies:
   - loguru
   - openmm
   - openmmtools
+  - h5py
 
     # Testing
   - pytest
@@ -20,5 +21,4 @@ dependencies:
 
     # Pip-only installs
   - pip:
-     - h5py
   #  - codecov

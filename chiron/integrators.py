@@ -112,8 +112,8 @@ class LangevinIntegrator:
         x = x0
         v = v0
 
-        random_noise_v = random.normal(key, (n_steps, x.shape[-1]))
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
+            key, subkey = random.split(key)
             # v
             v += (stepsize_unitless * 0.5) * potential.compute_force(x) / mass_unitless
             # r
@@ -122,7 +122,9 @@ class LangevinIntegrator:
             if self.box_vectors is not None:
                 x = x - self.box_vectors * jnp.floor(x / self.box_vectors)
             # o
-            v = (a * v) + (b * sigma_v * random_noise_v[step])
+            random_noise_v = random.normal(subkey, x.shape)
+
+            v = (a * v) + (b * sigma_v * random_noise_v)
             # r
             x += (stepsize_unitless * 0.5) * v
 

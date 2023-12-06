@@ -1,4 +1,4 @@
-# This module implements reproters that can be used to report data from the simulation.
+# This module implements classes that report simulation data.
 from loguru import logger as log
 
 import h5py
@@ -22,6 +22,7 @@ class SimulationReporter:
         self.buffer_size = buffer_size
         self.buffer = {}
         self.h5file = h5py.File(filename, "w")
+        log.info(f"Writing simulation data to {filename}")
 
     def report(self, data_dict):
         """
@@ -60,7 +61,6 @@ class SimulationReporter:
             dset = self.h5file[key]
             dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
             dset[-data.shape[0] :] = data
-            log.debug(f"Writing {key} to {self.filename}")
         else:
             log.debug(f"Creating {key} in {self.filename}")
             self.h5file.create_dataset(
