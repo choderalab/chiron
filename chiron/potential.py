@@ -46,7 +46,7 @@ class LJPotential(NeuralNetworkPotential):
         self.topology = model.potential.topology  # The topology of the system
 
         sigma: unit.Quantity = (1.0 * unit.kilocalories_per_mole,)
-        epsilon: unit.Quantity = (3.350 * unit.angstroms,)
+        epsilon: unit.Quantity = 3.350 * unit.angstroms
         assert isinstance(sigma, unit.Quantity)
         assert isinstance(epsilon, unit.Quantity)
 

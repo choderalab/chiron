@@ -80,7 +80,7 @@ class LangevinIntegrator:
 
         potential = thermodynamic_state.potential
 
-        self.mass = get_list_of_mass(potential.topology)
+        mass = get_list_of_mass(potential.topology)
 
         self.box_vectors = sampler_state.box_vectors
         self.progress_bar = progress_bar
@@ -94,7 +94,7 @@ class LangevinIntegrator:
         log.info(f"Using seed: {key}")
 
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
-        mass_unitless = jnp.array(self.mass.value_in_unit_system(unit.md_unit_system))
+        mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))
         sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
         stepsize_unitless = self.stepsize.value_in_unit_system(unit.md_unit_system)
         collision_rate_unitless = self.collision_rate.value_in_unit_system(
@@ -114,6 +114,7 @@ class LangevinIntegrator:
         v = v0
 
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
+            key, subkey = random.split(key)
             # v
             v += (stepsize_unitless * 0.5) * potential.compute_force(x) / mass_unitless
             # r
@@ -122,7 +123,7 @@ class LangevinIntegrator:
             if self.box_vectors is not None:
                 x = x - self.box_vectors * jnp.floor(x / self.box_vectors)
             # o
-            random_noise_v = random.normal(key, x.shape)
+            random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
             # r
             x += (stepsize_unitless * 0.5) * v
@@ -132,7 +133,7 @@ class LangevinIntegrator:
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             if step % self.save_frequency == 0:
-                log.debug(f"Step {step}")
+                log.debug(f"Saving at step {step}")
                 if self.reporter is not None:
                     d = {"traj": x, "energy": potential.compute_energy(x), "step": step}
                     log.debug(d)

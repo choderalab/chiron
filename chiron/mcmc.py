@@ -109,7 +109,6 @@ class LangevinDynamicsMove(StateUpdateMove):
         Args:
             state_variables (StateVariablesCollection): State variables of the system.
         """
-        import jax.random as jrandom
 
         self.integrator.run(
             thermodynamic_state=thermodynamic_state,
@@ -313,7 +312,7 @@ class GibbsSampler(object):
         for iteration in range(n_iterations):
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
-                log.info(f"Performing: {move_name}")
+                log.debug(f"Performing: {move_name}")
                 move.run(self.sampler_state, self.thermodynamic_state)
 
         log.info("Finished running Gibbs sampler")
@@ -392,13 +391,8 @@ class MetropolizedMove(MCMove):
         initial_positions = jnp.copy(x0[jnp.array(atom_subset)])
         log.debug(f"Initial positions are {initial_positions}.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
-        proposed_positions = self._propose_positions(
-            unit.Quantity(initial_positions, sampler_state.distance_unit)
-        )
+        proposed_positions = self._propose_positions(initial_positions)
         log.debug(f"Proposed positions are {proposed_positions}.")
-        proposed_positions = proposed_positions.value_in_unit(
-            sampler_state.distance_unit
-        )
         # Compute the energy of the proposed positions.
         sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
             proposed_positions
@@ -435,14 +429,14 @@ class MetropolizedMove(MCMove):
             )
         self.n_proposed += 1
 
-    def _propose_positions(self, positions: unit.Quantity):
+    def _propose_positions(self, positions: jnp.array):
         """Return new proposed positions.
 
         These method must be implemented in subclasses.
 
         Parameters
         ----------
-        positions : nx3 jnp.ndarray unit.Quantity
+        positions : nx3 jnp.ndarray
             The original positions of the subset of atoms that these move
             applied to.
 
@@ -528,7 +522,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
             )
 
     def displace_positions(
-        self, positions: unit.Quantity, displacement_sigma=1.0 * unit.nanometer
+        self, positions: jnp.array, displacement_sigma=1.0 * unit.nanometer
     ):
         """Return the positions after applying a random displacement to them.
 
@@ -549,9 +543,10 @@ class MetropolisDisplacementMove(MetropolizedMove):
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
-        distance_unit = positions.unit
-        x0 = positions.value_in_unit(distance_unit)
-        unitless_displacement_sigma = displacement_sigma.value_in_unit(distance_unit)
+        x0 = positions
+        unitless_displacement_sigma = displacement_sigma.value_in_unit_system(
+            unit.md_unit_system
+        )
         if self.slice_dim is not None:
             displacement_vector = (
                 jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
@@ -567,9 +562,9 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
         updated_position = x0 + displacement_vector
 
-        return unit.Quantity(updated_position, distance_unit)
+        return updated_position
 
-    def _propose_positions(self, initial_positions: unit.Quantity):
+    def _propose_positions(self, initial_positions: jnp.array) -> jnp.array:
         """Implement MetropolizedMove._propose_positions for apply()."""
         return self.displace_positions(initial_positions, self.displacement_sigma)
 
@@ -580,10 +575,14 @@ class MetropolisDisplacementMove(MetropolizedMove):
     ):
         for trials in range(self.nr_of_moves):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
-            log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-            self.simulation_reporter.report(
-                {
-                    "Acceptance rate": self.n_accepted / self.n_proposed,
-                    "step": self.n_proposed,
-                }
-            )
+            if trials % 100 == 0:
+                log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+                if self.simulation_reporter is not None:
+                    self.simulation_reporter.report(
+                        {
+                            "Acceptance rate": self.n_accepted / self.n_proposed,
+                            "step": self.n_proposed,
+                        }
+                    )
+
+        log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")

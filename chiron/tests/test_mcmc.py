@@ -57,12 +57,14 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
     print(energy)
 
     reference_energy = jnp.array(
-        [0.00019432, 0.00079258, 0.00181795, 0.00329402, 0.00524471]
+        [0.00019308, 0.00077772, 0.00174247, 0.00307798, 0.00479007]
     )
     assert jnp.allclose(energy, reference_energy)
 
 
-def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics(remove_h5_file):
+def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics(
+    remove_h5_file,
+):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Langevin dynamics.
 
@@ -96,7 +98,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     simulation_reporter = SimulationReporter("test.h5", 1)
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=100, seed=0, simulation_reporter=simulation_reporter
+        nr_of_steps=1_000, seed=1234, simulation_reporter=simulation_reporter
     )
 
     move_set = MoveSet([("LangevinMove", langevin_move)])
@@ -108,7 +110,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     sampler.run(n_iterations=2)  # how many times to repeat
 
 
-def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(remove_h5_file):
+def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(
+    remove_h5_file,
+):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
 
@@ -147,7 +151,6 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
         simulation_reporter=simulation_reporter,
-        # slice_dim=0,
     )
 
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])

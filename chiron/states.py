@@ -1,5 +1,5 @@
 from openmm import unit
-from typing import List, Optional
+from typing import List, Optional, Union
 from jax import numpy as jnp
 from loguru import logger as log
 from .potential import NeuralNetworkPotential
@@ -26,16 +26,13 @@ class SamplerState:
         x0: unit.Quantity,
         velocities: Optional[unit.Quantity] = None,
         box_vectors: Optional[unit.Quantity] = None,
-        traj_file_name: Optional[str] = None,
-        property_file_name: Optional[str] = None,
     ) -> None:
-        import jax.numpy as jnp
-        from mdtraj.formats import DCDTrajectoryFile
-
-        self._distance_unit = x0.unit
+        # NOTE: all units are internally in the openMM units system as documented here:
+        # http://docs.openmm.org/latest/userguide/theory/01_introduction.html#units
         self._x0 = x0
         self._velocities = velocities
         self._box_vectors = box_vectors
+        self._distance_unit = unit.nanometer
 
     @property
     def x0(self) -> jnp.array:
@@ -54,8 +51,11 @@ class SamplerState:
         return self._convert_to_jnp(self._box_vectors)
 
     @x0.setter
-    def x0(self, x0: jnp.array) -> None:
-        self._x0 = unit.Quantity(x0, self._distance_unit)
+    def x0(self, x0: Union[jnp.array, unit.Quantity]) -> None:
+        if isinstance(x0, unit.Quantity):
+            self._x0 = x0
+        else:
+            self._x0 = unit.Quantity(x0, self._distance_unit)
 
     @property
     def distance_unit(self) -> unit.Unit:
@@ -67,7 +67,7 @@ class SamplerState:
         """
         import jax.numpy as jnp
 
-        array_ = array / self.distance_unit
+        array_ = array.value_in_unit_system(unit.md_unit_system)
         return jnp.array(array_)
 
 
