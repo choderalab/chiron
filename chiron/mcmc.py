@@ -382,11 +382,10 @@ class MetropolizedMove(MCMove):
         import jax.numpy as jnp
 
         # Compute initial energy
-        initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        initial_energy = thermodynamic_state.kT_to_kJ_per_mol(
-            initial_energy
-        ).value_in_unit_system(unit.md_unit_system)
-        log.debug(f"Initial energy is {initial_energy} kJ/mol.")
+        initial_energy = thermodynamic_state.get_reduced_potential(
+            sampler_state
+        )  # NOTE: in kT
+        log.debug(f"Initial energy is {initial_energy} kT.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
         atom_subset = self.atom_subset
@@ -400,12 +399,12 @@ class MetropolizedMove(MCMove):
         sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
             proposed_positions
         )
-        proposed_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        proposed_energy = thermodynamic_state.kT_to_kJ_per_mol(proposed_energy)
-        proposed_energy = proposed_energy.value_in_unit_system(unit.md_unit_system)
+        proposed_energy = thermodynamic_state.get_reduced_potential(
+            sampler_state
+        )  # NOTE: in kT
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
-        log.debug(f"Delta energy is {delta_energy} kJ/mol.")
+        log.debug(f"Delta energy is {delta_energy} kT.")
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
@@ -417,11 +416,13 @@ class MetropolizedMove(MCMove):
             self.n_accepted += 1
             log.debug(f"Check suceeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
             log.debug(
-                f"Move accepted. Energy change: {delta_energy:.3f} kJ/mol. Number of accepted moves: {self.n_accepted}."
+                f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
             reporter.report(
                 {
-                    "energy": proposed_energy,
+                    "energy": thermodynamic_state.kT_to_kJ_per_mol(
+                        proposed_energy
+                    ).value_in_unit_system(unit.md_unit_system),
                     "step": self.n_proposed,
                     "traj": sampler_state.x0,
                 }
@@ -432,7 +433,7 @@ class MetropolizedMove(MCMove):
                 initial_positions
             )
             log.debug(
-                f"Move rejected. Energy change: {delta_energy:.3f} kJ/mol. Number of rejected moves: {self.n_proposed - self.n_accepted}."
+                f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
         self.n_proposed += 1
 
