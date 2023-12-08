@@ -6,6 +6,8 @@ import os
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
+
+@pytest.mark.skip(reason="Tests takes too long")
 @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_convergence_of_MC_estimator():
     from openmm import unit

@@ -162,6 +162,57 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     sampler.run(n_iterations=2)  # how many times to repeat
 
 
+def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_MetropolisDisplacementMove(
+    remove_h5_file,
+):
+    """
+    Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
+
+    This test initializes a harmonic oscillator, sets up the thermodynamic and
+    sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
+    """
+    from openmm import unit
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, GibbsSampler
+
+    # Initalize the testsystem
+    from openmmtools.testsystems import HarmonicOscillatorArray
+
+    ho = HarmonicOscillatorArray()
+
+    # Initalize the potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
+
+    # Initalize the sampler and thermodynamic state
+    from chiron.states import ThermodynamicState, SamplerState
+
+    thermodynamic_state = ThermodynamicState(
+        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+    )
+    sampler_state = SamplerState(ho.positions)
+
+    # Initalize the move set and reporter
+    from chiron.reporters import SimulationReporter
+
+    simulation_reporter = SimulationReporter("test.h5", 1)
+
+    mc_displacement_move = MetropolisDisplacementMove(
+        nr_of_moves=10,
+        displacement_sigma=0.1 * unit.angstrom,
+        atom_subset=None,
+        simulation_reporter=simulation_reporter,
+    )
+
+    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+
+    # Initalize the sampler
+    sampler = GibbsSampler(move_set, sampler_state, thermodynamic_state)
+
+    # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+    sampler.run(n_iterations=2)  # how many times to repeat
+
+
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
     # define two harmonic oscillators with different spring constants and equilibrium positions
     # sample from the joint distribution of the two HO using local langevin moves
