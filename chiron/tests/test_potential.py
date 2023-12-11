@@ -61,22 +61,30 @@ def test_harmonic_oscillator_potential():
     """
     k = 100.0 * unit.kilocalories_per_mole / unit.angstroms**2
     U0 = 0.0 * unit.kilocalories_per_mole
-    x0 = 0.0 * unit.angstrom
+    x0 = unit.Quantity(jnp.array([[0.0, 0.0, 0.0]]), unit.angstrom)
 
     from openmmtools.testsystems import HarmonicOscillator as ho
 
     harmonic_potential = HarmonicOscillatorPotential(ho.topology, k, x0, U0)
     test_positions = [
-        jnp.array([0.0, 0.0, 0.0]) * unit.angstrom,
-        jnp.array([0.2, 0.2, 0.2]) * unit.angstrom,
-        jnp.array([0.2, 0.0, 0.0]) * unit.angstrom,
-        jnp.array([-0.2, 0.0, 0.0]) * unit.angstrom,
-        jnp.array([-0.0, 0.2, 0.0]) * unit.angstrom
+        jnp.array([[0.0, 0.0, 0.0]]) * unit.angstrom,
+        jnp.array([[0.2, 0.2, 0.2]]) * unit.angstrom,
+        jnp.array([[0.2, 0.0, 0.0]]) * unit.angstrom,
+        jnp.array([[-0.2, 0.0, 0.0]]) * unit.angstrom,
+        jnp.array([[-0.0, 0.2, 0.0]]) * unit.angstrom,
     ]
-    expected_energies = [0.0, 8.368000984191895, 8.368000984191895, 8.368000984191895, 0.0]
+    expected_energies = [
+        0.0,
+        25.10400390625,
+        8.368000984191895,
+        8.368000984191895,
+        8.368000984191895,
+    ]
 
     for pos, expected_energy in zip(test_positions, expected_energies):
-        positions_without_unit = jnp.array(pos.value_in_unit_system(unit.md_unit_system))
+        positions_without_unit = jnp.array(
+            pos.value_in_unit_system(unit.md_unit_system)
+        )
         energy = float(harmonic_potential.compute_energy(positions_without_unit))
         assert jnp.isclose(energy, expected_energy), f"Energy at {pos} is incorrect."
 
