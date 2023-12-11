@@ -316,7 +316,11 @@ class GibbsSampler(object):
                 move.run(self.sampler_state, self.thermodynamic_state)
 
         log.info("Finished running Gibbs sampler")
-
+        log.debug('Closing reporter')
+        for _, move in self.move.move_schedule:
+            if move.simulation_reporter is not None:
+                move.simulation_reporter.close()
+                log.debug(f"Closed reporter {move.simulation_reporter.filename}")
 
 class MetropolizedMove(MCMove):
     """A base class for metropolized moves.
