@@ -77,6 +77,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
+
     ho = HarmonicOscillatorArray()
 
     # Initalize the potential
@@ -95,9 +96,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", 1)
+    simulation_reporter = SimulationReporter("test.h5", None, 1)
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=1_000, seed=1234, simulation_reporter=simulation_reporter
+        nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
     )
 
     move_set = MoveSet([("LangevinMove", langevin_move)])

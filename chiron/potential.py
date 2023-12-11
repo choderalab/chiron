@@ -106,10 +106,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors
-        log.debug(f"{positions=}")
-        log.debug(f"{self.x0=}")
         displacement_vectors = positions - self.x0
-        log.debug(f"{displacement_vectors=}")
         # Uue the 3D harmonic oscillator potential to compute the potential energy
         potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
         return potential_energy
