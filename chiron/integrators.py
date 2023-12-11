@@ -94,7 +94,7 @@ class LangevinIntegrator:
         log.info(f"Using seed: {key}")
 
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
-        mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))
+        mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[:, None]
         sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
         stepsize_unitless = self.stepsize.value_in_unit_system(unit.md_unit_system)
         collision_rate_unitless = self.collision_rate.value_in_unit_system(
@@ -138,3 +138,6 @@ class LangevinIntegrator:
                     d = {"traj": x, "energy": potential.compute_energy(x), "step": step}
                     log.debug(d)
                     self.reporter.report(d)
+
+        log.debug("Finished running Langevin dynamics")
+        self.reporter.close()
