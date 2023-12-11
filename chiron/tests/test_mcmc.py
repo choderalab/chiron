@@ -76,14 +76,13 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     from chiron.mcmc import LangevinDynamicsMove, MoveSet, GibbsSampler
 
     # Initalize the testsystem
-    from openmmtools.testsystems import HarmonicOscillator
-
-    ho = HarmonicOscillator()
+    from openmmtools.testsystems import HarmonicOscillatorArray
+    ho = HarmonicOscillatorArray()
 
     # Initalize the potential
     from chiron.potential import HarmonicOscillatorPotential
 
-    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
 
     # Initalize the sampler and thermodynamic state
     from chiron.states import ThermodynamicState, SamplerState

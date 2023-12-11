@@ -1,3 +1,19 @@
+def compute_openmm_reference_energy(testsystem, positions):
+    from openmm import unit
+    from openmm.app import Simulation
+    from openmm import LangevinIntegrator
+
+    system = testsystem.system
+    integrator = LangevinIntegrator(
+        300 * unit.kelvin, 1 / unit.picosecond, 0.1 * unit.femtosecond
+    )
+    sim = Simulation(testsystem.topology, system, integrator)
+    sim.context.setPositions(positions)
+    e = sim.context.getState(getEnergy=True).getPotentialEnergy()
+    print(e)
+    return e
+
+
 def test_HO():
     """
     Test the harmonic oscillator system using a Langevin integrator.
@@ -8,26 +24,95 @@ def test_HO():
     from openmm.unit import kelvin
 
     # initialize testystem
-    from openmmtools.testsystems import HarmonicOscillator
+    from openmmtools.testsystems import HarmonicOscillator, HarmonicOscillatorArray
 
     ho = HarmonicOscillator()
     # initialize potential
     from chiron.potential import HarmonicOscillatorPotential
 
-    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
-    # initialize states
-    from chiron.states import SamplerState, ThermodynamicState
-
-    thermodynamic_state = ThermodynamicState(
-        potential=harmonic_potential, temperature=300 * kelvin
-    )
-
-    # don't do anything, just check that we get the right expectation value for the testsystem
-    # NOTE: this doesn't actually test anything meaningful, but it's a good starting point
-    expectation = ho.get_potential_standard_deviation(thermodynamic_state)
-    from openmm import unit
     import jax.numpy as jnp
+    from openmm import unit
 
-    assert jnp.isclose(
-        expectation.value_in_unit_system(unit.md_unit_system), 3.741508178
+    harmonic_potential = HarmonicOscillatorPotential(
+        ho.topology,
+        ho.K,
+        x0=unit.Quantity(jnp.array([[0.0, 0.0, 0.0]]), unit.angstrom),
+        U0=ho.U0,
     )
+    ###############################
+    # Harmonic Oscillator
+    ###############################
+    # calculate the energy
+    # at the equilibrium position, the energy should be zero
+    pos = jnp.array([[0.0, 0.0, 0.0]])
+    e_chiron = harmonic_potential.compute_energy(pos)
+    assert jnp.isclose(e_chiron, 0.0), "Energy at equilibrium position is not zero"
+
+    # calculate the energy
+    # off-equilibrium
+    pos = jnp.array([[0.1, 0.0, 0.0]])
+    e_chiron = harmonic_potential.compute_energy(pos)
+    # compare with openmm reference for same system
+    e_ref = compute_openmm_reference_energy(ho, pos)
+    e_ref = e_ref.value_in_unit_system(unit.md_unit_system)
+    assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"
+
+    pos = jnp.array([[0.0, 0.1, 0.0]])
+    e_chiron = harmonic_potential.compute_energy(pos)
+    # compare with openmm reference for same system
+    e_ref = compute_openmm_reference_energy(ho, pos)
+    e_ref = e_ref.value_in_unit_system(unit.md_unit_system)
+    assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"
+
+    ###############################
+    # Harmonic OscillatorArray
+    ###############################
+    ho = HarmonicOscillatorArray()
+    # initialize potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    import jax.numpy as jnp
+    from openmm import unit
+
+    harmonic_potential = HarmonicOscillatorPotential(
+        ho.topology,
+        ho.K,
+        x0=unit.Quantity(
+            jnp.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                ]
+            ),
+            unit.nanometer,
+        ),
+    )
+
+    # calculate the energy
+    # at the equilibrium position, the energy should be zero
+    pos = ho.positions.value_in_unit_system(unit.md_unit_system)
+    e_chiron = harmonic_potential.compute_energy(pos)
+
+    assert jnp.isclose(e_chiron, 0.0), "Energy at equilibrium position is not zero"
+    pos = unit.Quantity(
+        jnp.array(
+            [
+                [0.1, 0.0, 0.0],
+                [1.1, 0.0, 0.0],
+                [2.1, 0.0, 0.0],
+                [3.1, 0.0, 0.0],
+                [4.1, 0.0, 0.0],
+            ]
+        ),
+        unit.nanometer,
+    )
+    pos = pos.value_in_unit_system(unit.md_unit_system)
+
+    e_chiron = harmonic_potential.compute_energy(pos)
+
+    e_ref = compute_openmm_reference_energy(ho, pos)
+    e_ref = e_ref.value_in_unit_system(unit.md_unit_system)
+    assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"

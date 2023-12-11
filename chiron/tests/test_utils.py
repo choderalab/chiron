@@ -28,9 +28,9 @@ def test_reporter():
     import numpy as np
     from chiron.utils import get_data_file_path
 
-
-    h5_file = "test.h5"
+    h5_file = "test_md.h5"
     h5_test_file = get_data_file_path(h5_file)
+    print(h5_test_file)
 
     # Read the h5 file manually and check values
     h5 = h5py.File(h5_test_file, "r")
@@ -40,9 +40,9 @@ def test_reporter():
     assert "step" in keys, "Step not in keys"
     assert "traj" in keys, "Traj not in keys"
 
-    energy = h5["energy"][:]
+    energy = h5["energy"][:5]
     reference_energy = np.array(
-        [0.00492691, 0.08072066, 0.14170173, 0.5773072, 1.8576853]
+        [1.9328993e-06, 2.0289978e-02, 8.3407544e-02, 1.7832418e-01, 2.8428176e-01]
     )
     assert np.allclose(
         energy,
@@ -50,9 +50,20 @@ def test_reporter():
     ), "Energy not correct"
 
     h5.close()
-    
+
     # Use the reporter class and check values
     from chiron.reporters import SimulationReporter
 
-    reporter = SimulationReporter(h5_test_file, 1)
-    assert np.allclose(reference_energy, reporter.get_property("energy"))
+    reporter = SimulationReporter(h5_test_file, None, 1)
+    assert np.allclose(reference_energy, reporter.get_property("energy")[:5])
+
+    # test the topology
+    from openmmtools.testsystems import HarmonicOscillatorArray
+
+    ho = HarmonicOscillatorArray()
+    topology = ho.topology
+    reporter = SimulationReporter(h5_test_file, topology, 1)
+    traj = reporter.get_mdtraj_trajectory()
+    import mdtraj as md
+
+    assert isinstance(traj, md.Trajectory), "Trajectory not correct type"
