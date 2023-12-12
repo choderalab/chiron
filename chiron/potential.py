@@ -17,11 +17,7 @@ class NeuralNetworkPotential:
 
     def compute_energy(self, positions):
         # Compute the pair distances and displacement vectors
-        pair_distances = pdist(positions)
-        displacement_vectors = squareform(pair_distances)
-        # Use the model to compute the potential energy
-        potential_energy = self.model(displacement_vectors)
-        return potential_energy
+        raise NotImplementedError
 
     def compute_force(self, positions) -> jnp.ndarray:
         # Compute the force as the negative gradient of the potential energy
@@ -42,11 +38,11 @@ class NeuralNetworkPotential:
 
 
 class LJPotential(NeuralNetworkPotential):
-    def __init__(self, model, **kwargs):
-        self.topology = model.potential.topology  # The topology of the system
-
-        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole
-        epsilon: unit.Quantity = 3.350 * unit.angstroms
+    def __init__(
+        self,
+        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole,
+        epsilon: unit.Quantity = 3.350 * unit.angstroms,
+    ):
         assert isinstance(sigma, unit.Quantity)
         assert isinstance(epsilon, unit.Quantity)
 
@@ -59,25 +55,23 @@ class LJPotential(NeuralNetworkPotential):
 
     def compute_energy(
         self,
-        positions: unit.Quantity,
+        positions: jnp.array,
         cutoff: unit.Quantity = unit.Quantity(1.0, unit.nanometer),
     ):
         # Compute the pair distances and displacement vectors
-        positions = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
         cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
-        
+
         idx_i, idx_j = self.compute_pairlist(positions, cutoff)
         displacement_vectors = positions[idx_i] - positions[idx_j]
+        r_ij = jnp.linalg.norm(displacement_vectors, axis=1)
         # Use the Lennard-Jones potential to compute the potential energy
         potential_energy = (
-            4
-            * self.epsilon
-            * (
-                (self.sigma / displacement_vectors) ** 12
-                - (self.sigma / displacement_vectors) ** 6
-            )
+            4 * self.epsilon * ((self.sigma / r_ij) ** 12 - (self.sigma / r_ij) ** 6)
         )
         return potential_energy
+
+    def compute_force(self, positions: jnp.array) -> jnp.array:
+        return super().compute_force(positions)
 
 
 class HarmonicOscillatorPotential(NeuralNetworkPotential):
