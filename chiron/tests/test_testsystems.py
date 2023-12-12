@@ -21,8 +21,6 @@ def test_HO():
     This function initializes a harmonic oscillator from openmmtools.testsystems,
     sets up a harmonic potential, and uses the Langevin integrator to run the simulation.
     """
-    from openmm.unit import kelvin
-
     # initialize testystem
     from openmmtools.testsystems import HarmonicOscillator, HarmonicOscillatorArray
 
@@ -116,3 +114,17 @@ def test_HO():
     e_ref = compute_openmm_reference_energy(ho, pos)
     e_ref = e_ref.value_in_unit_system(unit.md_unit_system)
     assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"
+
+
+def test_LJ_fluid():
+    # initialize testystem
+    from openmmtools.testsystems import LennardJonesFluid
+
+    from chiron.potential import LJPotential
+    from openmm import unit
+
+    lj = LennardJonesFluid()
+    lj_pot = LJPotential()
+    post = lj.positions.value_in_unit_system(unit.md_unit_system)
+    lj_pot.compute_energy(post)
+    lj_pot.compute_force(post)
