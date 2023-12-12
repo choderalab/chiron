@@ -316,11 +316,12 @@ class GibbsSampler(object):
                 move.run(self.sampler_state, self.thermodynamic_state)
 
         log.info("Finished running Gibbs sampler")
-        log.debug('Closing reporter')
+        log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
             if move.simulation_reporter is not None:
                 move.simulation_reporter.close()
                 log.debug(f"Closed reporter {move.simulation_reporter.filename}")
+
 
 class MetropolizedMove(MCMove):
     """A base class for metropolized moves.
@@ -397,7 +398,6 @@ class MetropolizedMove(MCMove):
         log.debug(f"Initial energy is {initial_energy} kT.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
-        from jax.lax import slice, slice_in_dim
 
         x0 = sampler_state.x0
         atom_subset = self.atom_subset
@@ -565,17 +565,19 @@ class MetropolisDisplacementMove(MetropolizedMove):
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
-        x0 = positions
-        nr_of_atoms = x0.shape[0]
-        log.debug(f"Number of atoms is {nr_of_atoms}.")
+        nr_of_atoms = positions.shape[0]
+        # log.debug(f"Number of atoms is {nr_of_atoms}.")
         unitless_displacement_sigma = displacement_sigma.value_in_unit_system(
             unit.md_unit_system
         )
+        # log.debug(f"Displacement sigma is {unitless_displacement_sigma}.")
         displacement_vector = (
-            jrandom.normal(subkey, shape=(nr_of_atoms, 3)) * unitless_displacement_sigma
-        )
-
-        updated_position = x0 + displacement_vector
+            jrandom.normal(subkey, shape=(nr_of_atoms, 3)) * 0.1
+        )  # NOTE: convert from Angstrom to nm
+        scaled_displacement_vector = displacement_vector * unitless_displacement_sigma
+        # log.debug(f"Unscaled Displacement vector is {displacement_vector}.")
+        # log.debug(f"Scaled Displacement vector is {scaled_displacement_vector}.")
+        updated_position = positions + scaled_displacement_vector
 
         return updated_position
 
@@ -587,8 +589,15 @@ class MetropolisDisplacementMove(MetropolizedMove):
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        progress_bar=True,
     ):
-        for trials in range(self.nr_of_moves):
+        from tqdm import tqdm
+
+        for trials in (
+            tqdm(range(self.nr_of_moves))
+            if self.progress_bar
+            else range(self.nr_of_moves)
+        ):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")

@@ -45,23 +45,29 @@ class LJPotential(NeuralNetworkPotential):
     def __init__(self, model, **kwargs):
         self.topology = model.potential.topology  # The topology of the system
 
-        sigma: unit.Quantity = (1.0 * unit.kilocalories_per_mole,)
+        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole
         epsilon: unit.Quantity = 3.350 * unit.angstroms
         assert isinstance(sigma, unit.Quantity)
         assert isinstance(epsilon, unit.Quantity)
 
-        self.sigma = sigma.value_in_unit(
-            unit.kilocalories_per_mole
+        self.sigma = sigma.value_in_unit_system(
+            unit.md_unit_system
         )  # The distance at which the potential is zero
-        self.epsilon = epsilon.value_in_unit(
-            unit.angstrom
+        self.epsilon = epsilon.value_in_unit_system(
+            unit.md_unit_system
         )  # The depth of the potential well
 
-    def compute_energy(self, positions: unit.Quantity):
+    def compute_energy(
+        self,
+        positions: unit.Quantity,
+        cutoff: unit.Quantity = unit.Quantity(1.0, unit.nanometer),
+    ):
         # Compute the pair distances and displacement vectors
-        positions = jnp.array(positions.value_in_unit(unit.angstrom))
-        pair_distances = pdist(positions)
-        displacement_vectors = squareform(pair_distances)
+        positions = jnp.array(positions.value_in_unit_system(unit.md_unit_system))
+        cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
+        
+        idx_i, idx_j = self.compute_pairlist(positions, cutoff)
+        displacement_vectors = positions[idx_i] - positions[idx_j]
         # Use the Lennard-Jones potential to compute the potential energy
         potential_energy = (
             4
