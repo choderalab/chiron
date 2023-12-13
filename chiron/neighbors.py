@@ -246,7 +246,6 @@ class NeighborListNsqrd:
 
         del r_ij, dist
         return neighbor_list_mask, neighbor_list, n_neighbors
-
     def build(self, sampler_state: SamplerState):
         # set our reference coordinates
         # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
@@ -354,22 +353,22 @@ class NeighborListNsqrd:
         -------
         n_neighbors: jnp.array
             Array of number of neighbors for each particle
-        mask: jnp.array
+        padding_mask: jnp.array
             Array of masks to exclude padding from the neighbor list of each particle
-        dist_full: jnp.array
+        dist: jnp.array
             Array of distances between each particle and its neighbors
-        r_ij_full: jnp.array
-
+        r_ij: jnp.array
+            Array of displacement vectors between each particle and its neighbors
         """
         #coordinates = sampler_state.x0
         #note, we assume the box vectors do not change between building and calculating the neighbor list
         #changes to the box vectors require rebuilding the neighbor list
 
-        n_neighbors, mask, dist_full, r_ij_full = jax.vmap(
+        n_neighbors, padding_mask, dist, r_ij = jax.vmap(
             self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
         )(self.particle_ids, self.neighbor_list, self.neighbor_mask, coordinates)
         # mask = mask.reshape(-1, self.n_max_neighbors)
-        return n_neighbors, mask, dist_full, r_ij_full
+        return n_neighbors, padding_mask, dist, r_ij
 
     @partial(jax.jit, static_argnums=(0,))
     def _calculate_particle_displacement(self, particle, coordinates, ref_coordinates):

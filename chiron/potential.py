@@ -15,16 +15,36 @@ class NeuralNetworkPotential:
             self.model = model  # The trained neural network model
             self.topology = model.potential.topology  # The topology of the system
 
-    def compute_energy(self, positions):
+    def compute_energy(self, positions, nbr_list=None):
         # Compute the pair distances and displacement vectors
         raise NotImplementedError
 
-    def compute_force(self, positions) -> jnp.ndarray:
+    def compute_force(self, positions, nbr_list=None) -> jnp.ndarray:
         # Compute the force as the negative gradient of the potential energy
-        force = -jax.grad(self.compute_energy)(positions)
+        force = -jax.grad(self.compute_energy)(positions, nbr_list)
         return force
 
     def compute_pairlist(self, positions, cutoff) -> jnp.array:
+        """
+        Compute the pairlist for a given set of positions and a cutoff distance
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        cutoff : float
+            The cutoff distance for the pairlist
+
+        Returns
+        -------
+        distance : jnp.array
+            The distances between all pairs of particles
+        displacement_vectors : jnp.array
+            The displacement vectors between all pairs of particles
+        pairs : jnp.array
+            An array of the particle pairs shaped (2, n_pairs)
+
+        """
         # Compute the pairlist for a given set of positions and a cutoff distance
         # Need to replace this with jax compatible code
         # from scipy.spatial.distance import cdist
@@ -43,8 +63,8 @@ class NeuralNetworkPotential:
         interacting_mask = jnp.where(distance < cutoff)
 
         # exclude case where i ==j and duplicate pairs
-
-        return distance[interacting_mask], displacement_vectors[interacting_mask], pairs1[interacting_mask], pairs2[interacting_mask]
+        pairs = jnp.stack((pairs1[interacting_mask], pairs2[interacting_mask]), axis=0)
+        return distance[interacting_mask], displacement_vectors[interacting_mask], pairs
 
 
 class LJPotential(NeuralNetworkPotential):
@@ -69,8 +89,23 @@ class LJPotential(NeuralNetworkPotential):
         # something I think we should be changing dynamically.
         self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
 
+    from functools import partial
 
+    @partial(jax.jit, static_argnums=(0,))
     def _compute_energy_masked(self, distance, mask):
+        """
+        Compute the LJ energy based on an array representing the distances between a given particle and its neighbors.
+        Since the distance array is padded to a fixed length, we need to mask out the padded values before summing the energy.
+
+        Parameters
+        ----------
+        distance : jnp.array
+            The distances between a given particle and its neighbors
+        mask : jnp.array
+            An array indicating which values in the distance array are valid and which are padded [1.0 or 0.0]
+        """
+
+        # we can just multiply by the mask rather than using jnp.where to mask.
         energy = mask * (
             4
             * self.epsilon
@@ -82,11 +117,31 @@ class LJPotential(NeuralNetworkPotential):
         positions: jnp.array,
         nbr_list=None,
     ):
+        """
+        Compute the LJ energy.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        potential_energy : float
+            The total potential energy of the system.
+
+        """
         # Compute the pair distances and displacement vectors
 
-        #todo: implement a pairlist with similar API to neighborlist
         if nbr_list is None:
-            distances, r_ij, pairs1, pairs2 = self.compute_pairlist(positions, self.cutoff)
+            # Compute the pairlist for a given set of positions and a cutoff distance
+            # Note in this case, we do not need the pairs or displacement vectors
+            # Since we already calculate the distance in the pairlist computation
+            # Pairs and displacement vectors are needed for an analytical evaluation of the force
+            # which we will do as part of testing
+            distances, displacement_vectors, pairs  = self.compute_pairlist(positions, self.cutoff)
             # if our pairlist is empty, the particles are non-interacting and
             # the energy will be 0
             if distances.shape[0] == 0:
@@ -99,12 +154,13 @@ class LJPotential(NeuralNetworkPotential):
             return potential_energy.sum()
 
         else:
-
+            # ensure the neighborlist has been constructed before trying to use it
             assert(nbr_list.is_built)
+            # ensure that the cutoff in the neighbor list is the same as the cutoff in the potential
             assert(nbr_list.cutoff == self.cutoff)
 
             n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(positions)
-            potential_energy = jax.vmap(jax.jit(self._compute_energy_masked), in_axes=(0))(
+            potential_energy = jax.vmap(self._compute_energy_masked, in_axes=(0))(
                 dist, mask.astype(jnp.float32)
             )
             return potential_energy.sum()
@@ -112,23 +168,54 @@ class LJPotential(NeuralNetworkPotential):
 
 
     def compute_force(self, positions: jnp.array, nbr_list=None) -> jnp.array:
-        force = -jax.grad(self.compute_energy)(positions, nbr_list)
-        return force
-        #return super().compute_force(positions)
+        """
+        Compute the LJ force using the negative of jax.grad.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        force : jnp.array
+            The forces on the particles in the system
+
+        """
+        #force = -jax.grad(self.compute_energy)(positions, nbr_list)
+        #return force
+        return super().compute_force(positions, nbr_list=nbr_list)
 
     def compute_force_analytical(self, positions: jnp.array, nbr_list=None) -> jnp.array:
-        # Compute the pair distances and displacement vectors
+        """
+        Compute the LJ force using the analytical expression.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        force : jnp.array
+            The forces on the particles in the system
+
+        """
         if nbr_list is None:
-            dist, rij,pairs1, pairs2 = self.compute_pairlist(positions, self.cutoff)
+            dist, displacement_vector, pairs = self.compute_pairlist(positions, self.cutoff)
 
             forces = (
                              24
                              * (self.epsilon / (dist * dist))
                              * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
-                     ).reshape(-1, 1) * rij
+                     ).reshape(-1, 1) * displacement_vector
 
             force_array = jnp.zeros((positions.shape[0], 3))
-            for force, p1, p2 in zip(forces, pairs1, pairs2):
+            for force, p1, p2 in zip(forces, pairs[0], pairs[1]):
                 force_array = force_array.at[p1].add(force)
                 force_array = force_array.at[p2].add(-force)
             return force_array
@@ -161,7 +248,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         )  # offset potential energy
         self.topology = topology
 
-    def compute_energy(self, positions: jnp.array):
+    def compute_energy(self, positions: jnp.array, nbr_list=None):
         # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 

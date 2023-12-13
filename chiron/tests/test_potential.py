@@ -33,7 +33,7 @@ def test_neural_network_pairlist():
     cutoffs = [0.2, 0.1]
     expected_pairs = [(1, 1), (0, 0)]
     for cutoff, expected in zip(cutoffs, expected_pairs):
-        pairlist = nn_potential.compute_pairlist(positions, cutoff)
+        distances, displacement_vectors, pairlist = nn_potential.compute_pairlist(positions, cutoff)
         assert pairlist[0].size == expected[0] and pairlist[1].size == expected[1]
 
     # Test with ethanol molecule
@@ -44,7 +44,7 @@ def test_neural_network_pairlist():
 
     # Test compute_pairlist method
     cutoff = 0.2
-    pairlist = nn_potential.compute_pairlist(positions, cutoff)
+    distances, displacement_vectors, pairlist = nn_potential.compute_pairlist(positions, cutoff)
     print(pairlist)
     assert (
         pairlist[0].size == 12 and pairlist[1].size == 12
