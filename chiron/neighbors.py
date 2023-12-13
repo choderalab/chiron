@@ -12,21 +12,15 @@ from openmm import unit
 # split out the displacement calculation from the neighborlist for flexibility
 
 DisplacementFn = Callable[[jnp.array, jnp.array, jnp.array], [jnp.array, jnp.array]]
-def orthogonal_periodic_system(periodicity: Tuple[bool, bool, bool]=[True, True, True]) -> DisplacementFn:
+def orthogonal_periodic_system() -> DisplacementFn:
     """
     Calculate the periodic distance between two points.
-
-    Parameters
-    ----------
-    periodicity: Tuple[bool, bool, bool]
-        Periodicity of the system
 
     Returns
     -------
     Callable
         Function that calculates the periodic displacement and distance between two points
     """
-    box_mask = jnp.array(periodicity).astype(int)
 
     @jax.jit
     def displacement_fn(xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
@@ -55,13 +49,11 @@ def orthogonal_periodic_system(periodicity: Tuple[bool, bool, bool]=[True, True,
 
         box_lengths = jnp.array([box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]])
 
-        # 0 if dimension i is not periodic, box_lengths[i] if periodic
-        box_length_periodicity = box_lengths * box_mask
 
         # calculated corrected displacement vector
         r_ij = (
-            jnp.mod(r_ij + box_length_periodicity * 0.5, box_lengths)
-            - box_length_periodicity * 0.5
+            jnp.mod(r_ij + box_lengths * 0.5, box_lengths)
+            - box_lengths * 0.5
         )
         # calculate the scalar distance
         dist = jnp.linalg.norm(r_ij, axis=-1)
