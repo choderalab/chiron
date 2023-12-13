@@ -257,3 +257,4 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         # Uue the 3D harmonic oscillator potential to compute the potential energy
         potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
         return potential_energy
+

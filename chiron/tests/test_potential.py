@@ -91,3 +91,55 @@ def test_harmonic_oscillator_potential():
     # Test compute_force method
     forces = harmonic_potential.compute_force(positions_without_unit)
     assert forces.shape == positions_without_unit.shape, "Forces shape mismatch."
+
+def test_lennard_jones():
+    # This will evaluate two LJ particles to ensure the energy and force are correct
+    from chiron.neighbors import NeighborListNsqrd, orthogonal_periodic_system
+    from chiron.states import SamplerState
+
+    sigma = 1.0
+    epsilon = 1.0
+    cutoff = 3.0
+    skin = 0.5
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    displacement_fn = orthogonal_periodic_system()
+
+    lj_pot = LJPotential(unit.Quantity(sigma, unit.nanometer), unit.Quantity(epsilon, unit.kilojoules_per_mole),
+                         unit.Quantity(cutoff, unit.nanometer))
+
+    for i in range(1, 11):
+        positions = jnp.array([[0, 0, 0], [i * 0.25 * 2 ** (1 / 6), 0, 0]])
+
+        state = SamplerState(x0=unit.Quantity(positions, unit.nanometer), box_vectors = unit.Quantity(box_vectors,
+                            unit.nanometer))
+        nbr_list = NeighborListNsqrd(displacement_fn, cutoff = unit.Quantity(cutoff, unit.nanometer), skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
+        nbr_list.build(state)
+        # first use the pairlist
+        energy_chiron = lj_pot.compute_energy(positions)
+        energy_chiron_nbr = lj_pot.compute_energy(positions, nbr_list)
+
+        displacement_vector = positions[0]-positions[1]
+        dist = jnp.linalg.norm(displacement_vector)
+
+        energy_analytical = 4.0*epsilon*((sigma/dist)**12-(sigma/dist)**6)
+
+        assert jnp.isclose(energy_chiron, energy_analytical)
+        assert jnp.isclose(energy_chiron_nbr, energy_analytical)
+
+        force_chiron = lj_pot.compute_force(positions)
+        force_chiron_nbr = lj_pot.compute_force(positions, nbr_list)
+
+        # this uses the pairlist to calculate the analytical force
+        force_chiron_analytical = lj_pot.compute_force_analytical(positions)
+
+        force = (
+                         24
+                         * (epsilon / (dist * dist))
+                         * (2 * (sigma / dist) ** 12 - (sigma / dist) ** 6)
+                 ) * displacement_vector
+
+        forces_analytical = jnp.array([force, -force])
+
+        assert jnp.allclose(force_chiron, forces_analytical, atol=1e-5)
+        assert jnp.allclose(force_chiron_nbr, forces_analytical, atol=1e-5)
+        assert jnp.allclose(force_chiron_analytical, forces_analytical, atol=1e-5)
