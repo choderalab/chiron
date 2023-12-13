@@ -32,6 +32,32 @@ def test_initialize_state():
         jnp.array([[0.0, 0.0, 0.0]]),
     )
 
+def test_sampler_state_conversion():
+    """Test converting a sampler state to jnp arrays.
+    Note, testing the conversion of x0, where internal unit length is nanometers
+    and thus output jnp.arrays (with units dropped) should reflect this.
+    """
+    from chiron.states import SamplerState
+    from openmm import unit
+    import jax.numpy as jnp
+
+    sampler_state = SamplerState(
+        unit.Quantity(jnp.array([[10.0, 10.0, 10.0]]), unit.nanometer)
+    )
+
+    assert jnp.allclose(
+        sampler_state.x0,
+        jnp.array([[10.0, 10.0, 10.0]]),
+    )
+
+    sampler_state = SamplerState(
+        unit.Quantity(jnp.array([[10.0, 10.0, 10.0]]), unit.angstrom)
+    )
+
+    assert jnp.allclose(
+        sampler_state.x0,
+        jnp.array([[1.0, 1.0, 1.0]]),
+    )
 
 def test_reduced_potential():
     """Test the reduced potential function."""

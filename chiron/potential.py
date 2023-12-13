@@ -26,23 +26,36 @@ class NeuralNetworkPotential:
 
     def compute_pairlist(self, positions, cutoff) -> jnp.array:
         # Compute the pairlist for a given set of positions and a cutoff distance
-        from scipy.spatial.distance import cdist
+        # Need to replace this with jax compatible code
+        # from scipy.spatial.distance import cdist
+        #
+        # pair_distances = cdist(positions, positions)
+        pids = jnp.arange(positions.shape[0])
+        pairs1, pairs2 = jnp.meshgrid(pids, pids)
+        pairs1 = pairs1.flatten()
+        pairs2 = pairs2.flatten()
+        mask = jnp.where(pairs1 < pairs2)
 
-        pair_distances = cdist(positions, positions)
-        pairs = jnp.where(pair_distances < cutoff)
+        pairs1 = pairs1[mask]
+        pairs2 = pairs2[mask]
+        displacement_vectors = positions[pairs1] - positions[pairs2]
+        distance = jnp.linalg.norm(displacement_vectors, axis=1)
+        interacting_mask = jnp.where(distance < cutoff)
 
         # exclude case where i ==j and duplicate pairs
-        mask = jnp.where(pairs[0] < pairs[1])
 
-        return pairs[0][mask], pairs[1][mask]
+        return distance[interacting_mask], displacement_vectors[interacting_mask], pairs1[interacting_mask], pairs2[interacting_mask]
 
 
 class LJPotential(NeuralNetworkPotential):
     def __init__(
         self,
-        sigma: unit.Quantity = 1.0 * unit.kilocalories_per_mole,
-        epsilon: unit.Quantity = 3.350 * unit.angstroms,
+        sigma: unit.Quantity = 3.350 * unit.angstroms,
+        epsilon: unit.Quantity = 1.0 * unit.kilocalories_per_mole,
+        cutoff: unit.Quantity = unit.Quantity(1.0, unit.nanometer),
+
     ):
+
         assert isinstance(sigma, unit.Quantity)
         assert isinstance(epsilon, unit.Quantity)
 
@@ -52,26 +65,73 @@ class LJPotential(NeuralNetworkPotential):
         self.epsilon = epsilon.value_in_unit_system(
             unit.md_unit_system
         )  # The depth of the potential well
+        # The cutoff for a potential is often linked with the parameters and isn't really
+        # something I think we should be changing dynamically.
+        self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
 
+
+    def _compute_energy_masked(self, distance, mask):
+        energy = mask * (
+            4
+            * self.epsilon
+            * ((self.sigma / distance) ** 12 - (self.sigma / distance) ** 6)
+        )
+        return energy.sum()
     def compute_energy(
         self,
         positions: jnp.array,
-        cutoff: unit.Quantity = unit.Quantity(1.0, unit.nanometer),
+        nbr_list=None,
     ):
         # Compute the pair distances and displacement vectors
-        cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
 
-        idx_i, idx_j = self.compute_pairlist(positions, cutoff)
-        displacement_vectors = positions[idx_i] - positions[idx_j]
-        r_ij = jnp.linalg.norm(displacement_vectors, axis=1)
-        # Use the Lennard-Jones potential to compute the potential energy
-        potential_energy = (
-            4 * self.epsilon * ((self.sigma / r_ij) ** 12 - (self.sigma / r_ij) ** 6)
-        )
-        return potential_energy
+        #todo: implement a pairlist with similar API to neighborlist
+        if nbr_list is None:
+            distances, r_ij, pairs1, pairs2 = self.compute_pairlist(positions, self.cutoff)
+            # if our pairlist is empty, the particles are non-interacting and
+            # the energy will be 0
+            if distances.shape[0] == 0:
+                return 0.0
 
-    def compute_force(self, positions: jnp.array) -> jnp.array:
-        return super().compute_force(positions)
+            potential_energy = (
+                    4 * self.epsilon * ((self.sigma / distances) ** 12 - (self.sigma / distances) ** 6)
+            )
+            # sum over all pairs to get the total potential energy
+            return potential_energy.sum()
+
+        else:
+
+            assert(nbr_list.is_built)
+            assert(nbr_list.cutoff == self.cutoff)
+
+            n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(positions)
+            potential_energy = jax.vmap(jax.jit(self._compute_energy_masked), in_axes=(0))(
+                dist, mask.astype(jnp.float32)
+            )
+            return potential_energy.sum()
+
+
+
+    def compute_force(self, positions: jnp.array, nbr_list=None) -> jnp.array:
+        force = -jax.grad(self.compute_energy)(positions, nbr_list)
+        return force
+        #return super().compute_force(positions)
+
+    def compute_force_analytical(self, positions: jnp.array, nbr_list=None) -> jnp.array:
+        # Compute the pair distances and displacement vectors
+        if nbr_list is None:
+            dist, rij,pairs1, pairs2 = self.compute_pairlist(positions, self.cutoff)
+
+            forces = (
+                             24
+                             * (self.epsilon / (dist * dist))
+                             * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
+                     ).reshape(-1, 1) * rij
+
+            force_array = jnp.zeros((positions.shape[0], 3))
+            for force, p1, p2 in zip(forces, pairs1, pairs2):
+                force_array = force_array.at[p1].add(force)
+                force_array = force_array.at[p2].add(-force)
+            return force_array
 
 
 class HarmonicOscillatorPotential(NeuralNetworkPotential):

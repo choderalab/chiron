@@ -61,7 +61,7 @@ class SamplerState:
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
 
-    def _convert_to_jnp(self, array: unit.Quantity) -> unit.Quantity:
+    def _convert_to_jnp(self, array: unit.Quantity) -> jnp.array:
         """
         Convert the sampler state to jnp arrays.
         """
