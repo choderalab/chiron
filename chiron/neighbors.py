@@ -10,9 +10,19 @@ from openmm import unit
 
 
 # split out the displacement calculation from the neighborlist for flexibility
+from abc import ABC, abstractmethod
+class Space(ABC):
+    def __init__(self):
+        pass
+    @abstractmethod
+    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
+        pass
 
-DisplacementFn = Callable[[jnp.array, jnp.array, jnp.array], [jnp.array, jnp.array]]
-def orthogonal_periodic_system() -> DisplacementFn:
+    @abstractmethod
+    def wrap(self, xyz: jnp.array, box_vectors: jnp.array) -> jnp.array:
+        pass
+
+class OrthogonalPeriodicSpace(Space):
     """
     Calculate the periodic distance between two points.
 
@@ -22,8 +32,8 @@ def orthogonal_periodic_system() -> DisplacementFn:
         Function that calculates the periodic displacement and distance between two points
     """
 
-    @jax.jit
-    def displacement_fn(xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
+    @partial(jax.jit, static_argnums=(0,))
+    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
         """
         Calculate the periodic distance between two points.
 
@@ -59,24 +69,32 @@ def orthogonal_periodic_system() -> DisplacementFn:
         dist = jnp.linalg.norm(r_ij, axis=-1)
 
         return r_ij, dist
+    @partial(jax.jit, static_argnums=(0,))
+    def wrap(self, xyz: jnp.array, box_vectors: jnp.array) -> jnp.array:
+        """
+        Wrap the coordinates of the system.
 
-    return displacement_fn
+        Parameters
+        ----------
+        xyz: jnp.array
+            Coordinates of the system
+        box_vectors: jnp.array
+            Box vectors of the system
 
-def orthogonal_nonperiodic_system() -> DisplacementFn:
-    """
-    Calculate the periodic distance between two points.
+        Returns
+        -------
+        jnp.array
+            Wrapped coordinates of the system
 
-    Parameters
-    ----------
-    p
-    Returns
-    -------
-    Callable
-        Function that calculates the  displacement and distance between two points
-    """
+        """
+        box_lengths = jnp.array([box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]])
+        xyz = xyz - jnp.floor(xyz/box_lengths) * box_lengths
 
-    @jax.jit
-    def displacement_fn(xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
+        return xyz
+class OrthogonalNonperiodicSpace(Space):
+
+    @partial(jax.jit, static_argnums=(0,))
+    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array, box_vectors: jnp.array) -> Tuple[jnp.array, jnp.array]:
         """
         Calculate the periodic distance between two points.
 
@@ -105,7 +123,26 @@ def orthogonal_nonperiodic_system() -> DisplacementFn:
 
         return r_ij, dist
 
-    return displacement_fn
+    @partial(jax.jit, static_argnums=(0,))
+    def wrap(self, xyz: jnp.array, box_vectors: jnp.array) -> jnp.array:
+        """
+        Wrap the coordinates of the system.
+        For the Non-periodic system, this does not alter the coordinates
+
+        Parameters
+        ----------
+        xyz: jnp.array
+            Coordinates of the system
+        box_vectors: jnp.array
+            Box vectors of the system
+
+        Returns
+        -------
+        jnp.array
+            Wrapped coordinates of the system
+
+        """
+        return xyz
 
 class NeighborListNsqrd:
     """
@@ -130,7 +167,7 @@ class NeighborListNsqrd:
 
     def __init__(
         self,
-        displacement_fn: DisplacementFn,
+        space: Space,
         cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
         skin: unit.Quantity = unit.Quantity(0.4, unit.nanometer),
         n_max_neighbors: float=200,
@@ -139,7 +176,7 @@ class NeighborListNsqrd:
         self.skin = skin.value_in_unit_system(unit.md_unit_system)
         self.cutoff_and_skin = self.cutoff + self.skin
         self.n_max_neighbors = n_max_neighbors
-        self.displacement_fn = displacement_fn
+        self.space = space
 
         # set a a simple variable to know if this has at least been built once as opposed to just initialized
         # this does not imply that the neighborlist is up to date
@@ -209,7 +246,7 @@ class NeighborListNsqrd:
         """
 
         # calculate the displacement between particle i and all other particles
-        r_ij, dist = self.displacement_fn(particle_i, coordinates, self.box_vectors)
+        r_ij, dist = self.space.displacement(particle_i, coordinates, self.box_vectors)
 
         # neighbor_mask will be an array of length n_particles (i.e., length of coordinates)
         # where each element is True if the particle is a neighbor, False if it is not
@@ -320,7 +357,7 @@ class NeighborListNsqrd:
         particles1 = jnp.repeat(particle1, neighbors.shape[0])
 
         # calculate the displacement between particle i and all  neighbors
-        r_ij, dist = self.displacement_fn(
+        r_ij, dist = self.space.displacement(
             coordinates[particles1], coordinates[neighbors], self.box_vectors
         )
         # calculate the mask to determine if the particle is a neighbor
@@ -386,7 +423,7 @@ class NeighborListNsqrd:
         """
         # calculate the displacement of a particle from the initial coordinates
 
-        r_ij, displacement = self.displacement_fn(
+        r_ij, displacement = self.space.displacement(
             coordinates[particle], ref_coordinates[particle], self.box_vectors
         )
 

@@ -26,7 +26,7 @@ class NeuralNetworkPotential:
 
     def compute_pairlist(self, positions, cutoff) -> jnp.array:
         """
-        Compute the pairlist for a given set of positions and a cutoff distance
+        Compute the pairlist for a given set of positions and a cutoff distance.
 
         Parameters
         ----------
@@ -45,11 +45,7 @@ class NeuralNetworkPotential:
             An array of the particle pairs shaped (2, n_pairs)
 
         """
-        # Compute the pairlist for a given set of positions and a cutoff distance
-        # Need to replace this with jax compatible code
-        # from scipy.spatial.distance import cdist
-        #
-        # pair_distances = cdist(positions, positions)
+
         pids = jnp.arange(positions.shape[0])
         pairs1, pairs2 = jnp.meshgrid(pids, pids)
         pairs1 = pairs1.flatten()

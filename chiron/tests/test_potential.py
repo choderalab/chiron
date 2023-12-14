@@ -94,7 +94,7 @@ def test_harmonic_oscillator_potential():
 
 def test_lennard_jones():
     # This will evaluate two LJ particles to ensure the energy and force are correct
-    from chiron.neighbors import NeighborListNsqrd, orthogonal_periodic_system
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
     from chiron.states import SamplerState
 
     sigma = 1.0
@@ -102,7 +102,7 @@ def test_lennard_jones():
     cutoff = 3.0
     skin = 0.5
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
-    displacement_fn = orthogonal_periodic_system()
+    space = OrthogonalPeriodicSpace()
 
     lj_pot = LJPotential(unit.Quantity(sigma, unit.nanometer), unit.Quantity(epsilon, unit.kilojoules_per_mole),
                          unit.Quantity(cutoff, unit.nanometer))
@@ -112,7 +112,7 @@ def test_lennard_jones():
 
         state = SamplerState(x0=unit.Quantity(positions, unit.nanometer), box_vectors = unit.Quantity(box_vectors,
                             unit.nanometer))
-        nbr_list = NeighborListNsqrd(displacement_fn, cutoff = unit.Quantity(cutoff, unit.nanometer), skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
+        nbr_list = NeighborListNsqrd(space, cutoff = unit.Quantity(cutoff, unit.nanometer), skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
         nbr_list.build(state)
         # first use the pairlist
         energy_chiron = lj_pot.compute_energy(positions)

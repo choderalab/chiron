@@ -57,6 +57,7 @@ class LangevinIntegrator:
         thermodynamic_state: ThermodynamicState,
         n_steps: int = 5_000,
         key=random.PRNGKey(0),
+        nbr_list = None,
         progress_bar=False,
     ):
         """
@@ -112,11 +113,13 @@ class LangevinIntegrator:
 
         x = x0
         v = v0
+        if nbr_list is not None:
+            nbr_list.build(sampler_state)
 
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             key, subkey = random.split(key)
             # v
-            v += (stepsize_unitless * 0.5) * potential.compute_force(x) / mass_unitless
+            v += (stepsize_unitless * 0.5) * potential.compute_force(x, nbr_list) / mass_unitless
             # r
             x += (stepsize_unitless * 0.5) * v
 
