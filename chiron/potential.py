@@ -122,7 +122,8 @@ class LJPotential(NeuralNetworkPotential):
             The positions of the particles in the system
         nbr_list : NeighborList, optional
             Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
-
+        shift : bool, optional
+            Whether to shift the potential energy at the cutoff, by default False
         Returns
         -------
         potential_energy : float
@@ -156,6 +157,7 @@ class LJPotential(NeuralNetworkPotential):
             assert(nbr_list.cutoff == self.cutoff)
 
             n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(positions)
+
             potential_energy = jax.vmap(self._compute_energy_masked, in_axes=(0))(
                 dist, mask.astype(jnp.float32)
             )

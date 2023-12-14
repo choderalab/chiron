@@ -128,3 +128,5 @@ def test_LJ_fluid():
     post = lj.positions.value_in_unit_system(unit.md_unit_system)
     lj_pot.compute_energy(post)
     lj_pot.compute_force(post)
+
+    energy = compute_openmm_reference_energy(lj, post)

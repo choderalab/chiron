@@ -116,29 +116,39 @@ class LangevinIntegrator:
         if nbr_list is not None:
             nbr_list.build(sampler_state)
 
+        F = potential.compute_force(x, nbr_list)
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             key, subkey = random.split(key)
             # v
-            v += (stepsize_unitless * 0.5) * potential.compute_force(x, nbr_list) / mass_unitless
+            v += (stepsize_unitless * 0.5) *  F/ mass_unitless
             # r
             x += (stepsize_unitless * 0.5) * v
 
-            if self.box_vectors is not None:
-                x = x - self.box_vectors * jnp.floor(x / self.box_vectors)
+            if nbr_list is not None:
+                x = nbr_list.space.wrap(x)
+                # check if we need to rebuild the neighborlist after moving the particles
+                if nbr_list.check(x):
+                    nbr_list.build(x, self.box_vectors)
             # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
-            # r
-            x += (stepsize_unitless * 0.5) * v
 
-            F = potential.compute_force(x)
+
+            x += (stepsize_unitless * 0.5) * v
+            if nbr_list is not None:
+                x = nbr_list.space.wrap(x)
+                # check if we need to rebuild the neighborlist after moving the particles
+                if nbr_list.check(x):
+                    nbr_list.build(x, self.box_vectors)
+
+            F = potential.compute_force(x, nbr_list)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             if step % self.save_frequency == 0:
                 log.debug(f"Saving at step {step}")
                 if self.reporter is not None:
-                    d = {"traj": x, "energy": potential.compute_energy(x), "step": step}
+                    d = {"traj": x, "energy": potential.compute_energy(x, nbr_list), "step": step}
                     log.debug(d)
                     self.reporter.report(d)
 

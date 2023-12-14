@@ -6,42 +6,49 @@ from chiron.states import SamplerState
 from openmm import unit
 
 def test_orthogonal_periodic_displacement():
-    space = OrthogonalPeriodicSpace()
+    space = OrthogonalPeriodicSpace(jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+
+    assert jnp.all(space._box_lengths == jnp.array([10.0, 10.0, 10.0]))
+
     p1 = jnp.array([[0, 0, 0], [0,0,0]])
     p2 = jnp.array([[1, 0, 0], [6,0,0]])
 
-    r_ij, distance = space.displacement(p1, p2, jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    r_ij, distance = space.displacement(p1, p2)
 
     assert jnp.all(r_ij == jnp.array([[-1.,  0.,  0.],
         [ 4.,  0.,  0.]]))
 
-    assert jnp.all(distance == jnp.array([1,4]))
+    assert jnp.all(distance == jnp.array([1,4]) )
 
-    wrapped_x = space.wrap(jnp.array([11, 0, 0]), jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    wrapped_x = space.wrap(jnp.array([11, 0, 0]))
     assert jnp.all(wrapped_x == jnp.array([1,0,0]))
 
-    wrapped_x = space.wrap(jnp.array([-1, 0, 0]), jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    wrapped_x = space.wrap(jnp.array([-1, 0, 0]))
     assert jnp.all(wrapped_x == jnp.array([9, 0, 0]))
 
-    wrapped_x = space.wrap(jnp.array([5, 0, 0]), jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    wrapped_x = space.wrap(jnp.array([5, 0, 0]))
     assert jnp.all(wrapped_x == jnp.array([5, 0, 0]))
 
-    wrapped_x = space.wrap(jnp.array([5, 12, -1]), jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    wrapped_x = space.wrap(jnp.array([5, 12, -1]))
     assert jnp.all(wrapped_x == jnp.array([5, 2, 9]))
 
+    space.box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 30.0]])
+    assert jnp.all(space._box_vectors == jnp.array([[10.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 30.0]]))
+    assert jnp.all(space._box_lengths == jnp.array([10.0, 20.0, 30.0]))
+
 def test_orthogonal_nonperiodic_displacement():
-    space = OrthogonalNonperiodicSpace()
+    space = OrthogonalNonperiodicSpace(jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
     p1 = jnp.array([[0, 0, 0], [0, 0, 0]])
     p2 = jnp.array([[1, 0, 0], [6, 0, 0]])
 
-    r_ij, distance = space.displacement(p1, p2, jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    r_ij, distance = space.displacement(p1, p2)
 
     assert jnp.all(r_ij == jnp.array([[-1., 0., 0.],
                                       [-6., 0., 0.]]))
 
     assert jnp.all(distance == jnp.array([1, 6]))
 
-    wrapped_x = space.wrap(jnp.array([11, -1, 2]), jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]))
+    wrapped_x = space.wrap(jnp.array([11, -1, 2]) )
     assert jnp.all(wrapped_x == jnp.array([11,-1,2]))
 def test_neighborlist_pair():
     """
