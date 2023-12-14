@@ -116,17 +116,83 @@ def test_HO():
     assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"
 
 
+def test_LJ_two_particle_system():
+    # initialize testystem
+    from openmmtools.testsystems import LennardJonesFluid
+    from openmm import unit
+    import jax.numpy as jnp
+
+    # start with a 2 particle system
+    from chiron.potential import LJPotential
+
+    lj = LennardJonesFluid(reduced_density=1.5, nparticles=2)
+    lj_pot = LJPotential()
+    post = lj.positions.value_in_unit_system(unit.md_unit_system)
+    e_chrion = lj_pot.compute_energy(post)
+
+    # calculate the potential energy
+    pos = jnp.array([[0.0, 0.0, 0.0], [0.18710922, 0.18710922, 0.18710922]])
+
+    def calc_energy_for_2_particle_LJ(pos):
+        # calculate energy
+        sigma = unit.Quantity(3.350, unit.angstroms).value_in_unit_system(
+            unit.md_unit_system
+        )
+        epsilon = unit.Quantity(1.0, unit.kilocalories_per_mole).value_in_unit_system(
+            unit.md_unit_system
+        )
+        distances = jnp.linalg.norm(pos[0] - pos[1])
+        return 4 * epsilon * ((sigma / distances) ** 12 - (sigma / distances) ** 6)
+
+    e_ref = calc_energy_for_2_particle_LJ(pos)
+    assert jnp.isclose(e_chrion, e_ref), "LJ two particle energy is not correct"
+
+    # compare forces
+    import jax
+
+    e_ref_force = -jax.grad(calc_energy_for_2_particle_LJ)(pos)
+    e_chrion_force = lj_pot.compute_force(post)
+    assert jnp.allclose(
+        e_chrion_force, e_ref_force
+    ), "LJ two particle force is not correct"
+    
+
 def test_LJ_fluid():
     # initialize testystem
     from openmmtools.testsystems import LennardJonesFluid
-
-    from chiron.potential import LJPotential
     from openmm import unit
+    import jax.numpy as jnp
 
-    lj = LennardJonesFluid()
+    # start with a 2 particle system
+    from chiron.potential import LJPotential
+
+    lj = LennardJonesFluid(reduced_density=1.5, nparticles=200)
     lj_pot = LJPotential()
     post = lj.positions.value_in_unit_system(unit.md_unit_system)
-    lj_pot.compute_energy(post)
-    lj_pot.compute_force(post)
+    e_chrion = lj_pot.compute_energy(post)
 
-    energy = compute_openmm_reference_energy(lj, post)
+    # calculate the potential energy
+    pos = jnp.array([[0.0, 0.0, 0.0], [0.18710922, 0.18710922, 0.18710922]])
+
+    def calc_energy_for_2_particle_LJ(pos):
+        # calculate energy
+        sigma = unit.Quantity(3.350, unit.angstroms).value_in_unit_system(
+            unit.md_unit_system
+        )
+        epsilon = unit.Quantity(1.0, unit.kilocalories_per_mole).value_in_unit_system(
+            unit.md_unit_system
+        )
+        distances = jnp.linalg.norm(pos[0] - pos[1])
+        return 4 * epsilon * ((sigma / distances) ** 12 - (sigma / distances) ** 6)
+
+    e_ref = calc_energy_for_2_particle_LJ(pos)
+    assert jnp.isclose(e_chrion, e_ref), "LJ two particle energy is not correct"
+
+    # compare forces
+    import jax
+
+    e_ref_force = -jax.grad(calc_energy_for_2_particle_LJ)(pos)
+    e_chrion_force = lj_pot.compute_force(post)
+    assert jnp.allclose(
+        e_chrion_force, e_ref_force
+    ), "LJ two particle force is not correct"
