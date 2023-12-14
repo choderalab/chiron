@@ -113,7 +113,7 @@ def test_lennard_jones():
         state = SamplerState(x0=unit.Quantity(positions, unit.nanometer), box_vectors = unit.Quantity(box_vectors,
                             unit.nanometer))
         nbr_list = NeighborListNsqrd(space, cutoff = unit.Quantity(cutoff, unit.nanometer), skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
-        nbr_list.build(state)
+        nbr_list.build_from_state(state)
         # first use the pairlist
         energy_chiron = lj_pot.compute_energy(positions)
         energy_chiron_nbr = lj_pot.compute_energy(positions, nbr_list)
@@ -123,8 +123,8 @@ def test_lennard_jones():
 
         energy_analytical = 4.0*epsilon*((sigma/dist)**12-(sigma/dist)**6)
 
-        assert jnp.isclose(energy_chiron, energy_analytical)
-        assert jnp.isclose(energy_chiron_nbr, energy_analytical)
+        assert jnp.isclose(energy_chiron, energy_analytical), "Energy from chiron using a pair list does not match the analytical energy calculation"
+        assert jnp.isclose(energy_chiron_nbr, energy_analytical), "Energy from chiron using a neighbor list does not match the analytical energy calculation"
 
         force_chiron = lj_pot.compute_force(positions)
         force_chiron_nbr = lj_pot.compute_force(positions, nbr_list)
@@ -140,6 +140,6 @@ def test_lennard_jones():
 
         forces_analytical = jnp.array([force, -force])
 
-        assert jnp.allclose(force_chiron, forces_analytical, atol=1e-5)
-        assert jnp.allclose(force_chiron_nbr, forces_analytical, atol=1e-5)
-        assert jnp.allclose(force_chiron_analytical, forces_analytical, atol=1e-5)
+        assert jnp.allclose(force_chiron, forces_analytical, atol=1e-5), "Force from chiron using pair list does not match analytical force"
+        assert jnp.allclose(force_chiron_nbr, forces_analytical, atol=1e-5), "Force from chiron using neighbor list does not match analytical force"
+        assert jnp.allclose(force_chiron_analytical, forces_analytical, atol=1e-5), "Force from chiron analytical using pair list does not match analytical force"

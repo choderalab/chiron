@@ -227,9 +227,9 @@ class NeighborListNsqrd:
 
         return temp_mask
 
-    @partial(jax.jit, static_argnums=(0, 4))
+    @partial(jax.jit, static_argnums=(0, 5))
     def _build_neighborlist(
-        self, particle_i, reduction_mask, coordinates, n_max_neighbors
+        self, particle_i, reduction_mask, pid, coordinates, n_max_neighbors
     ):
         """
         Jitted function to build the neighbor list for a single particle
@@ -268,6 +268,7 @@ class NeighborListNsqrd:
         # this choice was made such that when we use the neighbor list in the masked energy calculat
         # the padded values will result in reasonably well defined values
         fill_value = jnp.argmax(neighbor_mask)
+        fill_value = jnp.where(fill_value== pid, fill_value + 1, fill_value)
 
         # count up the number of neighbors
         n_neighbors = jnp.where(neighbor_mask, 1, 0).sum()
@@ -285,11 +286,46 @@ class NeighborListNsqrd:
 
         del r_ij, dist
         return neighbor_list_mask, neighbor_list, n_neighbors
-    def build(self, sampler_state: SamplerState):
+
+    def build_from_state(self, sampler_state: SamplerState):
+        """
+        Build the neighbor list from a SamplerState object
+
+        Parameters
+        ----------
+        sampler_state: SamplerState
+            SamplerState object containing the coordinates and box vectors
+
+        Returns
+        -------
+        None
+        """
+        coordinates = sampler_state.x0
+        box_vectors = sampler_state.box_vectors
+
+        self.build(coordinates, box_vectors)
+
+    def build(self, coordinates:jnp.array, box_vectors:jnp.array):
+        """
+        Build the neighborlist from an array of coordinates and box vectors.
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Shape[N,3] array of particle coordinates
+        box_vectors: jnp.array
+            Shape[3,3] array of box vectors
+
+        Returns
+        -------
+        None
+
+        """
+
         # set our reference coordinates
         # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
-        self.ref_coordinates = sampler_state.x0
-        self.box_vectors = sampler_state.box_vectors
+        self.ref_coordinates = coordinates
+        self.box_vectors = box_vectors
 
         # the neighborlist assumes that the box vectors do not change between building and calculating the neighbor list
         # changes to the box vectors require rebuilding the neighbor list
@@ -309,10 +345,11 @@ class NeighborListNsqrd:
         # n_neighbors: an array of shape (n_particles) where each element is the number of neighbors for that particle
 
         self.neighbor_mask, self.neighbor_list, self.n_neighbors = jax.vmap(
-            self._build_neighborlist, in_axes=(0, 0, None, None)
+            self._build_neighborlist, in_axes=(0, 0, 0, None, None)
         )(
             self.ref_coordinates,
             reduction_mask,
+            self.particle_ids,
             self.ref_coordinates,
             self.n_max_neighbors,
         )
@@ -325,10 +362,11 @@ class NeighborListNsqrd:
                 f"Increasing n_max_neighbors from {self.n_max_neighbors} to at  {jnp.max(self.n_neighbors)+10}"
             )
             self.neighbor_mask, self.neighbor_list, self.n_neighbors = jax.vmap(
-                self._build_neighborlist, in_axes=(0, 0, None, None)
+                self._build_neighborlist, in_axes=(0, 0, 0, None, None)
             )(
                 self.ref_coordinates,
                 reduction_mask,
+                self.particle_ids,
                 self.ref_coordinates,
                 self.n_max_neighbors,
             )

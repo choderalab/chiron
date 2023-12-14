@@ -70,7 +70,13 @@ def test_neighborlist_pair():
     assert nbr_list.cutoff_and_skin == cutoff + skin
     assert nbr_list.n_max_neighbors == 5
 
-    nbr_list.build(state)
+    nbr_list.build_from_state(state)
+
+    assert jnp.all(nbr_list.ref_coordinates == coordinates)
+    assert jnp.all(nbr_list.box_vectors == box_vectors)
+    assert nbr_list.is_built == True
+
+    nbr_list.build(state.x0, state.box_vectors)
 
     assert jnp.all(nbr_list.ref_coordinates == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
@@ -130,7 +136,7 @@ def test_neighborlist_pair2():
     skin = 0.1
     nbr_list = NeighborListNsqrd(space, cutoff=unit.Quantity(cutoff, unit.nanometer),
                                  skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
-    nbr_list.build(state)
+    nbr_list.build_from_state(state)
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
@@ -142,7 +148,14 @@ def test_neighborlist_pair2():
     skin = 1.1
     nbr_list = NeighborListNsqrd(space, cutoff=unit.Quantity(cutoff, unit.nanometer),
                                  skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
-    nbr_list.build(state)
+    nbr_list.build_from_state(state)
+
+    assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
+
+    n_interacting, mask, dist, rij = nbr_list.calculate(coordinates)
+    assert jnp.all(n_interacting == jnp.array([3, 2, 2, 1, 2, 1, 1, 0]))
+
+    nbr_list.build(state.x0, state.box_vectors)
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 

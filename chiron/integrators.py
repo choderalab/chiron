@@ -114,7 +114,7 @@ class LangevinIntegrator:
         x = x0
         v = v0
         if nbr_list is not None:
-            nbr_list.build(sampler_state)
+            nbr_list.build_from_state(sampler_state)
 
         F = potential.compute_force(x, nbr_list)
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
