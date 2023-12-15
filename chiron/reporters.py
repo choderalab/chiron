@@ -50,8 +50,6 @@ class SimulationReporter:
             self.buffer[key].append(value)
 
             if len(self.buffer[key]) >= self.buffer_size:
-                log.debug(f"Writing {key} to disk")
-                log.debug(f"Buffer: {self.buffer[key]}")
                 self._write_to_disk(key)
 
     def _write_to_disk(self, key):
