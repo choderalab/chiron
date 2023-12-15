@@ -104,7 +104,7 @@ def test_lennard_jones():
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
     space = OrthogonalPeriodicSpace()
 
-    lj_pot = LJPotential(unit.Quantity(sigma, unit.nanometer), unit.Quantity(epsilon, unit.kilojoules_per_mole),
+    lj_pot = LJPotential(None, unit.Quantity(sigma, unit.nanometer), unit.Quantity(epsilon, unit.kilojoules_per_mole),
                          unit.Quantity(cutoff, unit.nanometer))
 
     for i in range(1, 11):
