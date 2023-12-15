@@ -127,13 +127,11 @@ def test_LJ_two_particle_system():
     from chiron.potential import LJPotential
 
     lj = LennardJonesFluid(reduced_density=1.5, nparticles=2)
-    lj_pot = LJPotential()
+    lj_pot = LJPotential(lj.topology)
     post = lj.positions.value_in_unit_system(unit.md_unit_system)
     e_chrion = lj_pot.compute_energy(post)
 
     # calculate the potential energy
-    pos = jnp.array([[0.0, 0.0, 0.0], [0.18710922, 0.18710922, 0.18710922]])
-
     def calc_energy_for_2_particle_LJ(pos):
         # calculate energy
         sigma = unit.Quantity(3.350, unit.angstroms).value_in_unit_system(
@@ -145,13 +143,13 @@ def test_LJ_two_particle_system():
         distances = jnp.linalg.norm(pos[0] - pos[1])
         return 4 * epsilon * ((sigma / distances) ** 12 - (sigma / distances) ** 6)
 
-    e_ref = calc_energy_for_2_particle_LJ(pos)
+    e_ref = calc_energy_for_2_particle_LJ(post)
     assert jnp.isclose(e_chrion, e_ref), "LJ two particle energy is not correct"
 
     # compare forces
     import jax
 
-    e_ref_force = -jax.grad(calc_energy_for_2_particle_LJ)(pos)
+    e_ref_force = -jax.grad(calc_energy_for_2_particle_LJ)(post)
     e_chrion_force = lj_pot.compute_force(post)
     assert jnp.allclose(
         e_chrion_force, e_ref_force
@@ -196,7 +194,7 @@ def test_LJ_fluid():
         nbr_list = NeighborListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180)
         nbr_list.build_from_state(state)
 
-        lj_chiron= LJPotential(sigma=sigma, epsilon=epsilon, cutoff=cutoff)
+        lj_chiron= LJPotential(lj_openmm.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
 
         e_chiron_energy = lj_chiron.compute_energy(post, nbr_list)
         e_openmm_energy = compute_openmm_reference_energy(lj_openmm, post)
