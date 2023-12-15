@@ -153,4 +153,4 @@ class LangevinIntegrator:
                     self.reporter.report(d)
 
         log.debug("Finished running Langevin dynamics")
-        self.reporter.close()
+        #self.reporter.close()

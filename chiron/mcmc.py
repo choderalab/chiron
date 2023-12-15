@@ -591,11 +591,12 @@ class MetropolisDisplacementMove(MetropolizedMove):
         thermodynamic_state: ThermodynamicState,
         progress_bar=True,
     ):
+
         from tqdm import tqdm
 
         for trials in (
             tqdm(range(self.nr_of_moves))
-            if self.progress_bar
+            if progress_bar
             else range(self.nr_of_moves)
         ):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)

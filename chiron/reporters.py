@@ -65,7 +65,6 @@ class SimulationReporter:
 
         """
         data = np.array(self.buffer[key])
-
         if key in self.h5file:
             dset = self.h5file[key]
             dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
