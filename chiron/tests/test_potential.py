@@ -92,6 +92,58 @@ def test_harmonic_oscillator_potential():
     forces = harmonic_potential.compute_force(positions_without_unit)
     assert forces.shape == positions_without_unit.shape, "Forces shape mismatch."
 
+def test_harmonic_oscillator_input_checking():
+    #topology check
+    with pytest.raises(TypeError):
+        HarmonicOscillatorPotential(1)
+    with pytest.raises(TypeError):
+        HarmonicOscillatorPotential(None, k=1.0)
+    with pytest.raises(TypeError):
+        HarmonicOscillatorPotential(None, x0=1.0)
+    with pytest.raises(TypeError):
+        HarmonicOscillatorPotential(None, U0=1.0)
+
+    with pytest.raises(ValueError):
+        HarmonicOscillatorPotential(None, k=1.0*unit.nanometer)
+    with pytest.raises(ValueError):
+        HarmonicOscillatorPotential(None, x0=1.0*unit.kilocalories_per_mole)
+    with pytest.raises(ValueError):
+        HarmonicOscillatorPotential(None, U0=1.0*unit.nanometer)
+
+def test_lj_input_checking():
+    #topology check
+    with pytest.raises(TypeError):
+        LJPotential(1)
+    with pytest.raises(TypeError):
+        LJPotential(None, sigma=1.0)
+    with pytest.raises(TypeError):
+        LJPotential(None, epsilon=1.0)
+    with pytest.raises(TypeError):
+        LJPotential(None, cutoff=1.0)
+
+    with pytest.raises(ValueError):
+        LJPotential(None, sigma=1.0*unit.kilocalories_per_mole)
+    with pytest.raises(ValueError):
+        LJPotential(None, epsilon=1.0*unit.nanometer)
+    with pytest.raises(ValueError):
+        LJPotential(None, cutoff=1.0*unit.kilocalories_per_mole)
+
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+    positions = jnp.array([[0, 0, 0], [1, 0, 0]])
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+
+    lj = LJPotential(None, sigma=1.0*unit.nanometer)
+    nbr_list = NeighborListNsqrd(OrthogonalPeriodicSpace(), cutoff=2.0*unit.nanometer)
+
+    #capture the error associated with not building the neighborlist
+    with pytest.raises(ValueError):
+        lj.compute_energy(positions, nbr_list)
+    nbr_list.build(positions, box_vectors)
+
+    #capture the error associated cutoffs not matching
+    with pytest.raises(ValueError):
+        lj.compute_energy(positions, nbr_list)
+
 def test_lennard_jones():
     # This will evaluate two LJ particles to ensure the energy and force are correct
     from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
@@ -143,3 +195,4 @@ def test_lennard_jones():
         assert jnp.allclose(force_chiron, forces_analytical, atol=1e-5), "Force from chiron using pair list does not match analytical force"
         assert jnp.allclose(force_chiron_nbr, forces_analytical, atol=1e-5), "Force from chiron using neighbor list does not match analytical force"
         assert jnp.allclose(force_chiron_analytical, forces_analytical, atol=1e-5), "Force from chiron analytical using pair list does not match analytical force"
+

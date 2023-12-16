@@ -116,6 +116,53 @@ def test_neighborlist_pair():
     # shift coordinates, which should require a rebuild
     coordinates = coordinates + 0.1
     assert nbr_list.check(coordinates) == True
+def test_inputs():
+    space = OrthogonalPeriodicSpace()
+    # every particle should interact with every other particle
+    cutoff = 2.1
+    skin = 0.1
+    nbr_list = NeighborListNsqrd(space, cutoff=unit.Quantity(cutoff, unit.nanometer),
+                                 skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
+    # check that the state is of the correct type
+    with pytest.raises(TypeError):
+        nbr_list.build_from_state(123)
+
+    coordinates = jnp.array([[1,2,3], [0,0,0]])
+    state = SamplerState(x0=unit.Quantity(coordinates, unit.nanometer),
+                         box_vectors=None)
+
+    # check that boxvectors are defined in the state
+    with pytest.raises(ValueError):
+        nbr_list.build_from_state(state)
+
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0], [0.0, 0.0, 10.0]])
+
+    # test the shape of the box vectors
+    with pytest.raises(ValueError):
+        nbr_list.build(coordinates, box_vectors)
+
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+
+    # test units of coordinates
+    with pytest.raises(ValueError):
+        nbr_list.build(unit.Quantity(coordinates, unit.radians), box_vectors)
+
+    # test units of box vector
+    with pytest.raises(ValueError):
+        nbr_list.build(unit.Quantity(coordinates, unit.nanometers), unit.Quantity(box_vectors, unit.radians))
+
+    # check type of space
+    with pytest.raises(TypeError):
+        NeighborListNsqrd(123, cutoff=unit.Quantity(cutoff, unit.nanometer),
+                                     skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
+    #check units of cutoff
+    with pytest.raises(ValueError):
+        NeighborListNsqrd(space, cutoff=unit.Quantity(cutoff, unit.radian),
+                          skin=unit.Quantity(skin, unit.nanometer), n_max_neighbors=5)
+    #check units of skin
+    with pytest.raises(ValueError):
+        NeighborListNsqrd(space, cutoff=unit.Quantity(cutoff, unit.nanometer),
+                          skin=unit.Quantity(skin, unit.radian), n_max_neighbors=5)
 def test_neighborlist_pair2():
     n_xyz = 2
     scale_factor = 2.0

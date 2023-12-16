@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 from functools import partial
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from .states import SamplerState
 from loguru import logger as log
 from openmm import unit
@@ -182,6 +182,13 @@ class NeighborListNsqrd:
         skin: unit.Quantity = unit.Quantity(0.4, unit.nanometer),
         n_max_neighbors: float=200,
     ):
+        if not isinstance(space, Space):
+            raise TypeError(f"space must be of type Space, found {type(space)}")
+        if not cutoff.unit.is_compatible(unit.angstrom):
+            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+        if not skin.unit.is_compatible(unit.angstrom):
+            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}")
+
         self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
         self.skin = skin.value_in_unit_system(unit.md_unit_system)
         self.cutoff_and_skin = self.cutoff + self.skin
@@ -300,12 +307,21 @@ class NeighborListNsqrd:
         -------
         None
         """
+        if not isinstance(sampler_state, SamplerState):
+            raise TypeError(
+                f"Expected SamplerState, got {type(sampler_state)} instead"
+            )
+
         coordinates = sampler_state.x0
+        if sampler_state.box_vectors is None:
+            raise ValueError(
+                f"SamplerState does not contain box vectors"
+            )
         box_vectors = sampler_state.box_vectors
 
         self.build(coordinates, box_vectors)
 
-    def build(self, coordinates:jnp.array, box_vectors:jnp.array):
+    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
         """
         Build the neighborlist from an array of coordinates and box vectors.
 
@@ -324,6 +340,19 @@ class NeighborListNsqrd:
 
         # set our reference coordinates
         # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
+        if isinstance(coordinates, unit.Quantity):
+            if not coordinates.unit.is_compatible(unit.nanometer):
+                raise ValueError(f"Coordinates require distance units, not {coordinates.unit}")
+            coordinates = coordinates.value_in_unit_system(unit.md_unit_system)
+
+        if isinstance(box_vectors, unit.Quantity):
+            if not box_vectors.unit.is_compatible(unit.nanometer):
+                raise ValueError(f"Box vectors require distance unit, not {box_vectors.unit}")
+            box_vectors = box_vectors.value_in_unit_system(unit.md_unit_system)
+
+        if box_vectors.shape != (3,3):
+            raise ValueError(f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}")
+
         self.ref_coordinates = coordinates
         self.box_vectors = box_vectors
 
