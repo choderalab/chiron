@@ -13,6 +13,7 @@ dependencies:
   - openmm
   - openmmtools
   - h5py
+  - jaxopt
 
     # Testing
   - pytest
