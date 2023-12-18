@@ -2,8 +2,7 @@ import jax
 import jax.numpy as jnp
 from jaxopt import GradientDescent
 
-
-def minimize_energy(coordinates, potential_fn, nbr_list=None):
+def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
     """
     Minimize the potential energy of a system using JAXopt.
 
@@ -15,6 +14,8 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None):
         The potential energy function of the system, which takes coordinates as input.
     nbr_list : NeighborList, optional
         The neighbor list object (if required by the potential function).
+    maxiter: int, optional
+        The maximum number of iterations to run the minimizer.
 
     Returns
     -------
@@ -23,13 +24,14 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None):
     """
 
     def objective_fn(x):
-        x_reshaped = x.reshape(coordinates.shape)
         if nbr_list is not None:
-            return potential_fn(x_reshaped, nbr_list)
+            return potential_fn(x, nbr_list)
         else:
-            return potential_fn(x_reshaped)
+            return potential_fn(x)
 
-    optimizer = GradientDescent(fun=jax.value_and_grad(objective_fn), maxiter=500)
-    result = optimizer.run(jnp.array(coordinates.flatten()))
+    optimizer = GradientDescent(
+        fun=jax.value_and_grad(objective_fn), value_and_grad=True, maxiter=maxiter
+    )
+    result = optimizer.run(coordinates)
 
-    return result.params.reshape(coordinates.shape)
+    return result.params
