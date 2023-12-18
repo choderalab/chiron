@@ -56,8 +56,3 @@ def provide_testsystems_and_potentials():
     return TESTSYSTEM_AND_POTENTIAL
 
 
-@pytest.fixture(scope="session")
-def prep_temp_dir(tmpdir_factory):
-    """Create a temporary directory for the test."""
-    tmpdir = tmpdir_factory.mktemp("test_langevin")
-    return tmpdir

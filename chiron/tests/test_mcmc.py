@@ -1,4 +1,15 @@
-def test_sample_from_harmonic_osciallator(remove_h5_file):
+import pytest
+import uuid
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_mcmc")
+    return tmpdir
+
+
+def test_sample_from_harmonic_osciallator(prep_temp_dir):
     """
     Test sampling from a harmonic oscillator using local moves.
 
@@ -30,7 +41,9 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
 
     from chiron.reporters import SimulationReporter
 
-    reporter = SimulationReporter("test.h5", 1)
+    id = uuid.uuid4()
+    h5_file = f"test_{id}.h5"
+    reporter = SimulationReporter(f"{prep_temp_dir}/{h5_file}", 1)
 
     integrator = LangevinIntegrator(
         stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
@@ -45,8 +58,7 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
     import jax.numpy as jnp
     import h5py
 
-    h5_file = "test.h5"
-    h5 = h5py.File(h5_file, "r")
+    h5 = h5py.File(f"{prep_temp_dir}/{h5_file}", "r")
     keys = h5.keys()
 
     assert "energy" in keys, "Energy not in keys"
@@ -63,7 +75,7 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics(
-    remove_h5_file,
+    prep_temp_dir,
 ):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Langevin dynamics.
@@ -96,7 +108,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", None, 1)
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", None, 1
+    )
     langevin_move = LangevinDynamicsMove(
         nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
     )
@@ -111,7 +125,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(
-    remove_h5_file,
+    prep_temp_dir,
 ):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
@@ -144,7 +158,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     # Initalize the move set and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", 1)
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
+    )
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
@@ -163,7 +179,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
 
 
 def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_MetropolisDisplacementMove(
-    remove_h5_file,
+    prep_temp_dir,
 ):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
@@ -195,7 +211,9 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     # Initalize the move set and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", 1)
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
+    )
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,

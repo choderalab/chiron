@@ -1,5 +1,11 @@
 import pytest
 
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_langevin")
+    return tmpdir
+
 def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
     """
     Test the Langevin integrator with a set of test systems.
