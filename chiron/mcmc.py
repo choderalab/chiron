@@ -268,7 +268,7 @@ class MoveSet:
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
 
 
-class GibbsSampler(object):
+class MCMCSampler(object):
     """
     Basic Markov chain Monte Carlo Gibbs sampler.
 
@@ -591,13 +591,10 @@ class MetropolisDisplacementMove(MetropolizedMove):
         thermodynamic_state: ThermodynamicState,
         progress_bar=True,
     ):
-
         from tqdm import tqdm
 
         for trials in (
-            tqdm(range(self.nr_of_moves))
-            if progress_bar
-            else range(self.nr_of_moves)
+            tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
         ):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
             if trials % 100 == 0:

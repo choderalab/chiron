@@ -44,7 +44,7 @@ def test_convergence_of_MC_estimator():
     simulation_reporter = SimulationReporter("test_mc.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, GibbsSampler
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=100_000,
@@ -56,7 +56,7 @@ def test_convergence_of_MC_estimator():
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = GibbsSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=5)  # how many times to repeat

@@ -8,7 +8,7 @@ def test_initialize_state():
 
     ho = HarmonicOscillator()
 
-    potential = HarmonicOscillatorPotential(ho.topology, ho.K, ho.U0)
+    potential = HarmonicOscillatorPotential(ho.topology, k=ho.K, U0=ho.U0)
 
     thermodynamic_state = ThermodynamicState(potential)
     assert thermodynamic_state.temperature is None
@@ -31,6 +31,7 @@ def test_initialize_state():
         sampler_state.x0,
         jnp.array([[0.0, 0.0, 0.0]]),
     )
+
 
 def test_sampler_state_conversion():
     """Test converting a sampler state to jnp arrays.
@@ -58,6 +59,7 @@ def test_sampler_state_conversion():
         sampler_state.x0,
         jnp.array([[1.0, 1.0, 1.0]]),
     )
+
 
 def test_reduced_potential():
     """Test the reduced potential function."""
