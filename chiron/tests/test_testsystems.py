@@ -167,15 +167,6 @@ def test_LJ_fluid():
 
     from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
 
-    def convert_to_jnp(box):
-        box_vec = []
-        for i in range(0, 3):
-            layer = []
-            for j in range(0, 3):
-                layer.append(box[i].value_in_unit_system(unit.md_unit_system)[j])
-            box_vec.append(layer)
-        return jnp.array(box_vec)
-
     sigma = 0.34 * unit.nanometer  # argon
     epsilon = 0.238 * unit.kilocalories_per_mole
     cutoff = 3 * 0.34 * unit.nanometer
@@ -186,7 +177,7 @@ def test_LJ_fluid():
                                dispersion_correction=False, shift=False)
         post = lj_openmm.positions.value_in_unit_system(unit.md_unit_system)
 
-        box_vectors = convert_to_jnp(lj_openmm.system.getDefaultPeriodicBoxVectors()) * unit.nanometer
+        box_vectors = lj_openmm.system.getDefaultPeriodicBoxVectors()
 
         state = SamplerState(x0=post * unit.nanometer,
                              box_vectors=box_vectors)
