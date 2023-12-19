@@ -116,7 +116,6 @@ def test_HO():
     assert jnp.isclose(e_chiron, e_ref), "Energy at equilibrium position is not zero"
 
 
-
 def test_LJ_two_particle_system():
     # initialize testystem
     from openmmtools.testsystems import LennardJonesFluid
@@ -173,21 +172,34 @@ def test_LJ_fluid():
     skin = 0.5 * unit.nanometer
 
     for density in [0.5, 0.05, 0.005, 0.001]:
-        lj_openmm = LennardJonesFluid(1000, reduced_density=density, sigma=sigma, epsilon=epsilon, cutoff=cutoff, switch_width=None,
-                               dispersion_correction=False, shift=False)
-        post = lj_openmm.positions.value_in_unit_system(unit.md_unit_system)
+        lj_openmm = LennardJonesFluid(
+            1000,
+            reduced_density=density,
+            sigma=sigma,
+            epsilon=epsilon,
+            cutoff=cutoff,
+            switch_width=None,
+            dispersion_correction=False,
+            shift=False,
+        )
+        state = SamplerState(
+            x0=lj_openmm.positions,
+            box_vectors=lj_openmm.system.getDefaultPeriodicBoxVectors(),
+        )
 
-        box_vectors = lj_openmm.system.getDefaultPeriodicBoxVectors()
-
-        state = SamplerState(x0=post * unit.nanometer,
-                             box_vectors=box_vectors)
-
-        nbr_list = NeighborListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180)
+        nbr_list = NeighborListNsqrd(
+            OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
+        )
         nbr_list.build_from_state(state)
 
-        lj_chiron= LJPotential(lj_openmm.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
+        lj_chiron = LJPotential(
+            lj_openmm.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff
+        )
 
-        e_chiron_energy = lj_chiron.compute_energy(post, nbr_list)
-        e_openmm_energy = compute_openmm_reference_energy(lj_openmm, post)
-        assert jnp.isclose(e_chiron_energy, e_openmm_energy.value_in_unit_system(unit.md_unit_system)), "Chiron LJ fluid energy does not match openmm"
-
+        e_chiron_energy = lj_chiron.compute_energy(state.x0, nbr_list)
+        e_openmm_energy = compute_openmm_reference_energy(
+            lj_openmm, lj_openmm.positions
+        )
+        assert jnp.isclose(
+            e_chiron_energy, e_openmm_energy.value_in_unit_system(unit.md_unit_system)
+        ), "Chiron LJ fluid energy does not match openmm"
