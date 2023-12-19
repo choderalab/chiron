@@ -75,9 +75,6 @@ class SamplerState:
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
 
-        self.x0 = x0
-        self._velocities = velocities
-        self.box_vectors = box_vectors
 
     @property
     def x0(self) -> jnp.array:
@@ -94,17 +91,6 @@ class SamplerState:
         if self._box_vectors is None:
             return None
         return self._convert_to_jnp(self._box_vectors)
-
-    @box_vectors.setter
-    def box_vectors(self, box_vectors: Union[unit.Quantity, List]) -> None:
-        if isinstance(box_vectors, List):
-            print("Converting box_vectors to unit.Quantity")
-            box_vectors = (
-                jnp.array([[vec.x, vec.y, vec.z] for vec in box_vectors])
-                * self._distance_unit
-            )
-
-        self._box_vectors = box_vectors
 
     @x0.setter
     def x0(self, x0: Union[jnp.array, unit.Quantity]) -> None:
@@ -127,6 +113,7 @@ class SamplerState:
         return jnp.array(array_)
 
     def _convert_from_openmm_box(self, openmm_box_vectors:List)->unit.Quantity:
+
         box_vec = []
         for i in range(0, 3):
             layer = []
