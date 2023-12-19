@@ -1,15 +1,24 @@
 # Tests convergence of protocols. This is not intended to be part of the CI GH action tests.
 import pytest
+import uuid
 
 # check if the test is run on a local machine
 import os
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_convergence")
+    return tmpdir
+
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 @pytest.mark.skip(reason="Tests takes too long")
 @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
-def test_convergence_of_MC_estimator():
+def test_convergence_of_MC_estimator(prep_temp_dir):
     from openmm import unit
 
     # Initalize the testsystem
@@ -41,7 +50,9 @@ def test_convergence_of_MC_estimator():
 
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test_mc.h5")
+    id = uuid.uuid4()
+
+    simulation_reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
     from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
@@ -99,4 +110,59 @@ def test_convergence_of_MC_estimator():
             State(300 * unit.kelvin)
         ).value_in_unit_system(unit.md_unit_system),
         atol=0.1,
+    )
+
+
+@pytest.mark.skip(reason="Tests takes too long")
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
+    from chiron.integrators import LangevinIntegrator
+    from chiron.states import SamplerState, ThermodynamicState
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+    from openmm import unit
+    from openmmtools.testsystems import LennardJonesFluid
+
+    lj_fluid = LennardJonesFluid(reduced_density=0.1, nparticles=5000)
+    # initialize potential
+    from chiron.potential import LJPotential
+
+    cutoff = 3 * 0.34 * unit.nanometer
+    skin = 0.5 * unit.nanometer
+    lj_potential = LJPotential(
+        lj_fluid.topology, sigma=0.34 * unit.nanometer, cutoff=cutoff
+    )
+
+    print(lj_fluid.system.getDefaultPeriodicBoxVectors())
+
+    sampler_state = SamplerState(
+        x0=lj_fluid.positions,
+        box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
+    )
+    print(sampler_state.x0.shape)
+    print(sampler_state.box_vectors)
+
+    nbr_list = NeighborListNsqrd(
+        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
+    )
+    nbr_list.build_from_state(sampler_state)
+
+    # initialize states and integrator
+    from chiron.integrators import LangevinIntegrator
+
+    thermodynamic_state = ThermodynamicState(
+        potential=lj_potential, temperature=300 * unit.kelvin
+    )
+
+    from chiron.reporters import SimulationReporter
+
+    id = uuid.uuid4()
+    reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+
+    integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
+    integrator.run(
+        sampler_state,
+        thermodynamic_state,
+        n_steps=2000,
+        nbr_list=nbr_list,
+        progress_bar=True,
     )
