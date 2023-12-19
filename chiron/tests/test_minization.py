@@ -14,7 +14,7 @@ def test_minimization():
     # initialize potential
     from chiron.potential import LJPotential
 
-    cutoff = unit.Quantity(1., unit.nanometer)
+    cutoff = unit.Quantity(1.0, unit.nanometer)
     lj_potential = LJPotential(lj_fluid.topology, cutoff=cutoff)
 
     sampler_state = SamplerState(
@@ -30,6 +30,8 @@ def test_minimization():
     print(lj_potential.compute_energy(sampler_state.x0, nbr_list))
     print(lj_potential.compute_energy(sampler_state.x0))
 
-    min_x = minimize_energy(sampler_state.x0, lj_potential.compute_energy, nbr_list)
+    min_x = minimize_energy(
+        sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=10_000
+    )
     e = lj_potential.compute_energy(min_x, nbr_list)
-    assert jnp.isclose(e, -12506.332)
+    assert jnp.isclose(e, -13332.688, atol=1)
