@@ -100,7 +100,11 @@ class SimulationReporter:
             The property.
 
         """
-        return np.array(self.h5file[name])
+        if name not in self.h5file:
+            log.debug(f"{name} not in HDF5 file")
+            return None
+        else:
+            return np.array(self.h5file[name])
 
     def get_mdtraj_trajectory(self):
         import mdtraj as md
@@ -108,6 +112,6 @@ class SimulationReporter:
         return md.Trajectory(
             xyz=self.get_property("traj"),
             topology=md.Topology.from_openmm(self.topology),
-            # unitcell_lengths=self.get_property("box_vectors"),
-            # unitcell_angles=self.get_property("box_angles"),
+            unitcell_lengths=self.get_property("box_vectors"),
+            unitcell_angles=self.get_property("box_angles"),
         )
