@@ -154,7 +154,119 @@ class OrthogonalNonperiodicSpace(Space):
         """
         return xyz
 
-class NeighborListNsqrd:
+class PairsBase(ABC):
+    """
+    Base class for pairlist implementations that returns the particle pair ids, displacement vectors, and distances.
+
+    Parameters
+    ----------
+    space: Space
+        Class that defines how to calculate the displacement between two points and apply the boundary conditions
+    cutoff: float, default = 2.5
+        Cutoff distance for the neighborlist
+
+    Examples"""
+
+    def __init__(
+        self,
+        space: Space,
+        cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
+    ):
+        if not isinstance(space, Space):
+            raise TypeError(f"space must be of type Space, found {type(space)}")
+        if not cutoff.unit.is_compatible(unit.angstrom):
+            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+        self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
+        self.space = space
+
+    @abstractmethod
+    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
+        """
+        Build the neighborlist from an array of coordinates and box vectors.
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Shape[N,3] array of particle coordinates
+        box_vectors: jnp.array
+            Shape[3,3] array of box vectors
+
+        Returns
+        -------
+        None
+
+        """
+        pass
+    def build_from_state(self, sampler_state: SamplerState):
+        """
+        Build the neighbor list from a SamplerState object
+
+        Parameters
+        ----------
+        sampler_state: SamplerState
+            SamplerState object containing the coordinates and box vectors
+
+        Returns
+        -------
+        None
+        """
+        if not isinstance(sampler_state, SamplerState):
+            raise TypeError(
+                f"Expected SamplerState, got {type(sampler_state)} instead"
+            )
+
+        coordinates = sampler_state.x0
+        if sampler_state.box_vectors is None:
+            raise ValueError(
+                f"SamplerState does not contain box vectors"
+            )
+        box_vectors = sampler_state.box_vectors
+
+        self.build(coordinates, box_vectors)
+
+    @abstractmethod
+    def calculate(self, coordinates:jnp.array):
+        """
+        Calculate the neighbor list for the current state
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Shape[N,3] array of particle coordinates
+
+        Returns
+        -------
+        n_neighbors: jnp.array
+            Array of number of neighbors for each particle
+        padding_mask: jnp.array
+            Array of masks to exclude padding from the neighbor list of each particle
+        dist: jnp.array
+            Array of distances between each particle and its neighbors
+        r_ij: jnp.array
+            Array of displacement vectors between each particle and its neighbors
+        """
+        pass
+
+    @abstractmethod
+    def check(self, coordinates:jnp.array)->bool:
+        """
+        Check if the internal variables need to be reset. E.g., rebuilding a neighborlist
+        Should do nothing for a simple pairlist.
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Array of particle coordinates
+        Returns
+        -------
+        bool
+            True if the neighbor list needs to be rebuilt, False if it does not.
+        """
+        pass
+
+
+
+class NeighborListNsqrd(PairsBase):
     """
     N^2 neighborlist implementation that returns the particle pair ids, displacement vectors, and distances.
 
@@ -293,33 +405,6 @@ class NeighborListNsqrd:
 
         del r_ij, dist
         return neighbor_list_mask, neighbor_list, n_neighbors
-
-    def build_from_state(self, sampler_state: SamplerState):
-        """
-        Build the neighbor list from a SamplerState object
-
-        Parameters
-        ----------
-        sampler_state: SamplerState
-            SamplerState object containing the coordinates and box vectors
-
-        Returns
-        -------
-        None
-        """
-        if not isinstance(sampler_state, SamplerState):
-            raise TypeError(
-                f"Expected SamplerState, got {type(sampler_state)} instead"
-            )
-
-        coordinates = sampler_state.x0
-        if sampler_state.box_vectors is None:
-            raise ValueError(
-                f"SamplerState does not contain box vectors"
-            )
-        box_vectors = sampler_state.box_vectors
-
-        self.build(coordinates, box_vectors)
 
     def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
         """
@@ -537,3 +622,236 @@ class NeighborListNsqrd:
         else:
             del status
             return False
+
+
+class PairList(PairsBase):
+    """
+    N^2 pairlist implementation that returns the particle pair ids, displacement vectors, and distances.
+
+    Parameters
+    ----------
+    space: Space
+        Class that defines how to calculate the displacement between two points and apply the boundary conditions
+    cutoff: float, default = 2.5
+        Cutoff distance for the neighborlist
+    n_max_neighbors: int, default=200
+        Maximum number of neighbors for each particle.  Used for padding arrays for efficient jax computations
+        This will be checked and dynamically updated during the build stage
+    Examples
+    --------
+
+
+    """
+
+    def __init__(
+        self,
+        space: Space,
+        cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
+        skin: unit.Quantity = unit.Quantity(0.4, unit.nanometer),
+        n_max_neighbors: float=200,
+    ):
+        if not isinstance(space, Space):
+            raise TypeError(f"space must be of type Space, found {type(space)}")
+        if not cutoff.unit.is_compatible(unit.angstrom):
+            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+        if not skin.unit.is_compatible(unit.angstrom):
+            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}")
+
+        self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
+        self.skin = skin.value_in_unit_system(unit.md_unit_system)
+        self.cutoff_and_skin = self.cutoff + self.skin
+        self.n_max_neighbors = n_max_neighbors
+        self.space = space
+
+        # set a a simple variable to know if this has at least been built once as opposed to just initialized
+        # this does not imply that the neighborlist is up to date
+        self.is_built= False
+
+    # note, we need to use the partial decorator in order to use the jit decorate
+    # so that it knows to ignore the `self` argument
+    @partial(jax.jit, static_argnums=(0,))
+    def _pairs_and_mask(self, particle_ids: jnp.array):
+        """
+        Jitted function to generate mask that allows us to remove self-interactions and double-counting of pairs
+
+        Parameters
+        ----------
+        particle_ids: jnp.array
+            Array of particle ids
+
+        Returns
+        -------
+        jnp.array
+            Bool mask to remove self-interactions and double-counting of pairs
+
+        """
+        # for the nsq approach, we consider the distance between a particle and all other particles in the system
+        # if we used a cell list the possible_neighbors would be a smaller list, i.e., only those in the neigboring cells
+
+        possible_neighbors = particle_ids
+
+        particles_j = jnp.broadcast_to(
+            possible_neighbors,
+            (particle_ids.shape[0], possible_neighbors.shape[0]),
+        )
+
+        # reshape the particle_ids
+        particles_i = jnp.reshape(particle_ids, (particle_ids.shape[0], 1))
+        # create a mask to exclude self interactions and double counting
+        temp_mask = particles_i != particles_j
+
+        all_pairs = jax.vmap(self._remove_self_interactions, in_axes=(0, 0))(particles_j, temp_mask)
+
+        temp_mask = jnp.where(particles_i < all_pairs[0], True, False)
+
+        return all_pairs[0], temp_mask
+
+    @partial(jax.jit, static_argnums = (0,))
+    def _remove_self_interactions(self, particles, temp_mask):
+        return jnp.where(temp_mask, size=particles.shape[0] - 1, fill_value=particles.shape[0]-1)
+
+
+    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
+        """
+        Build the neighborlist from an array of coordinates and box vectors.
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Shape[N,3] array of particle coordinates
+        box_vectors: jnp.array
+            Shape[3,3] array of box vectors
+
+        Returns
+        -------
+        None
+
+        """
+
+        # set our reference coordinates
+        # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
+        if isinstance(coordinates, unit.Quantity):
+            if not coordinates.unit.is_compatible(unit.nanometer):
+                raise ValueError(f"Coordinates require distance units, not {coordinates.unit}")
+            coordinates = coordinates.value_in_unit_system(unit.md_unit_system)
+
+        if isinstance(box_vectors, unit.Quantity):
+            if not box_vectors.unit.is_compatible(unit.nanometer):
+                raise ValueError(f"Box vectors require distance unit, not {box_vectors.unit}")
+            box_vectors = box_vectors.value_in_unit_system(unit.md_unit_system)
+
+        if box_vectors.shape != (3,3):
+            raise ValueError(f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}")
+
+        self.ref_coordinates = coordinates
+        self.box_vectors = box_vectors
+
+        # the neighborlist assumes that the box vectors do not change between building and calculating the neighbor list
+        # changes to the box vectors require rebuilding the neighbor list
+        self.space.box_vectors = self.box_vectors
+
+        # store the ids of all the particles
+        self.particle_ids = jnp.array(range(0, self.ref_coordinates.shape[0]), dtype=jnp.uint16)
+
+        # calculate which pairs to exclude
+        self.all_pairs, self.reduction_mask = self._pairs_and_mask(self.particle_ids)
+        self.n_max_neighbors = self.particle_ids.shape[0]-1
+
+        #temp_mask = particles_i < new_particles
+
+
+        self.is_built = True
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _calc_distance_per_particle(
+        self, particle1, neighbors, neighbor_mask, coordinates
+    ):
+        """
+        Jitted function to calculate the distance between a particle and its neighbors
+
+        Parameters
+        ----------
+        particle1: int
+            Particle id
+        neighbors: jnp.array
+            Array of particle ids for the neighbors of particle1
+        neighbor_mask: jnp.array
+            Mask to exclude padding from the neighbor list of particle1
+        coordinates: jnp.array
+            X,Y,Z coordinates of all particles
+
+        Returns
+        -------
+        n_pairs: int
+            Number of interacting pairs for the particle
+        mask: jnp.array
+            Mask to exclude padding from the neighbor list of particle1.
+            If a particle is within the interaction cutoff, the mask is 1, otherwise it is 0
+        dist: jnp.array
+            Array of distances between the particle and its neighbors
+        r_ij: jnp.array
+            Array of displacement vectors between the particle and its neighbors
+        """
+        # repeat the particle id for each neighbor
+        particles1 = jnp.repeat(particle1, neighbors.shape[0])
+
+        # calculate the displacement between particle i and all  neighbors
+        r_ij, dist = self.space.displacement(
+            coordinates[particles1], coordinates[neighbors]
+        )
+        # calculate the mask to determine if the particle is a neighbor
+        # this will be done based on the interaction cutoff and using the neighbor_mask to exclude padding
+        mask = jnp.where((dist < self.cutoff) & (neighbor_mask), 1, 0)
+
+        # calculate the number of pairs
+        n_pairs = mask.sum()
+
+        return n_pairs, mask, dist, r_ij
+
+    def calculate(self, coordinates:jnp.array):
+        """
+        Calculate the neighbor list for the current state
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Shape[N,3] array of particle coordinates
+
+        Returns
+        -------
+        n_neighbors: jnp.array
+            Array of number of neighbors for each particle
+        padding_mask: jnp.array
+            Array of masks to exclude padding from the neighbor list of each particle
+        dist: jnp.array
+            Array of distances between each particle and its neighbors
+        r_ij: jnp.array
+            Array of displacement vectors between each particle and its neighbors
+        """
+        #coordinates = sampler_state.x0
+        #note, we assume the box vectors do not change between building and calculating the neighbor list
+        #changes to the box vectors require rebuilding the neighbor list
+
+        n_neighbors, padding_mask, dist, r_ij = jax.vmap(
+            self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
+        )(self.particle_ids, self.all_pairs, self.reduction_mask, coordinates)
+        # mask = mask.reshape(-1, self.n_max_neighbors)
+
+
+        return n_neighbors, padding_mask, dist, r_ij
+
+
+    def check(self, coordinates:jnp.array)->bool:
+        """
+        Always returns false, as there are no internal lists to be rebuilt for a pairlist
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Array of particle coordinates
+        Returns
+        -------
+        bool
+            True if the neighbor list needs to be rebuilt, False if it does not.
+        """
+        return False

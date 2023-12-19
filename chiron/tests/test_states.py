@@ -60,7 +60,50 @@ def test_sampler_state_conversion():
         jnp.array([[1.0, 1.0, 1.0]]),
     )
 
+def test_sampler_state_inputs():
+    from chiron.states import SamplerState
+    from openmm import unit
+    import jax.numpy as jnp
+    import pytest
 
+    # test input of positions
+    # should have units
+    with pytest.raises(TypeError):
+        SamplerState(x0=jnp.array([1,2,3]))
+    # throw and error because of incompatible units
+    with pytest.raises(ValueError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.radians))
+
+    # test input of velocities
+    # velocities should have units
+    with pytest.raises(TypeError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), velocities=jnp.array([1,2,3]))
+    # velocities should have units of distance/time
+    with pytest.raises(ValueError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),  velocities=unit.Quantity(jnp.array([1,2,3]), unit.nanometers))
+
+    # test input of box_vectors
+    # box_vectors should have units
+    with pytest.raises(TypeError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), box_vectors=jnp.array([1,2,3]))
+    # box_vectors should have units of distance
+    with pytest.raises(ValueError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), box_vectors=unit.Quantity(jnp.array([[1,0,0], [0,1,0], [0,0,1]]), unit.radians))
+    #check to see that the size of the box vectors are correct
+    with pytest.raises(ValueError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), box_vectors=unit.Quantity(jnp.array([[1,0,0], [0,1,0]]), unit.nanometers))
+
+    openmm_box = [unit.Quantity([4.031145745088737, 0.0, 0.0], unit.nanometer),
+                  unit.Quantity([0.0, 4.031145745088737, 0.0], unit.nanometer),
+                unit.Quantity([0.0, 0.0, 4.031145745088737],unit.nanometer)]
+
+    #check openmm_box conversion:
+    state = SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), box_vectors=openmm_box)
+    assert jnp.all(state.box_vectors == jnp.array([[4.0311456, 0.,        0.       ],[0.,        4.0311456, 0.       ],[0.,        0.,        4.0311456]]))
+
+    # openmm box vectors end up as a list with contents; check to make sure we capture an error if we pass a bad list
+    with pytest.raises(TypeError):
+        SamplerState(x0=unit.Quantity(jnp.array([[1,2,3]]), unit.nanometers), box_vectors=[123])
 def test_reduced_potential():
     """Test the reduced potential function."""
     from chiron.states import ThermodynamicState, SamplerState

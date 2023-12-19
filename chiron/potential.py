@@ -98,11 +98,11 @@ class LJPotential(NeuralNetworkPotential):
             raise TypeError(f"cutoff must be a unit.Quantity, type(cutoff) = {type(cutoff)}")
 
         if not sigma.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"sigma must be a unit.Quantity with units of distance, sigma.unit = {sigma.unit}")
+            raise ValueError(f"sigma must have units of distance, got {sigma.unit}")
         if not epsilon.unit.is_compatible(unit.kilocalories_per_mole):
-            raise ValueError(f"epsilon must be a unit.Quantity with units of energy, epsilon.unit = {epsilon.unit}")
+            raise ValueError(f"epsilon must have units of energy, got  {epsilon.unit}")
         if not cutoff.unit.is_compatible(unit.nanometer):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+            raise ValueError(f"cutoff must have units of distance, got {cutoff.unit}")
 
 
 
