@@ -63,7 +63,8 @@ where = ["."]
 # Ref https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
 [tool.setuptools.package-data]
 chiron = [
-    "py.typed"
+    "py.typed",
+    "data/*",
 ]
 
 [tool.versioningit]
