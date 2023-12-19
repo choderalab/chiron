@@ -25,7 +25,8 @@ class NeuralNetworkPotential:
 
     def compute_pairlist(self, positions, cutoff) -> jnp.array:
         """
-        Compute the pairlist for a given set of positions and a cutoff distance.
+        Compute the pairlist for a given set of positions and a cutoff distance
+        without using periodic boundary conditions or any specific optimizations.
 
         Parameters
         ----------
@@ -89,13 +90,21 @@ class LJPotential(NeuralNetworkPotential):
         if not isinstance(topology, Topology):
             if not isinstance(topology, property):
                 if topology is not None:
-                    raise TypeError(f"Topology must be a Topology object or None, type(topology) = {type(topology)}")
+                    raise TypeError(
+                        f"Topology must be a Topology object or None, type(topology) = {type(topology)}"
+                    )
         if not isinstance(sigma, unit.Quantity):
-            raise TypeError(f"sigma must be a unit.Quantity, type(sigma) = {type(sigma)}")
+            raise TypeError(
+                f"sigma must be a unit.Quantity, type(sigma) = {type(sigma)}"
+            )
         if not isinstance(epsilon, unit.Quantity):
-            raise TypeError(f"epsilon must be a unit.Quantity, type(epsilon) = {type(epsilon)}")
+            raise TypeError(
+                f"epsilon must be a unit.Quantity, type(epsilon) = {type(epsilon)}"
+            )
         if not isinstance(cutoff, unit.Quantity):
-            raise TypeError(f"cutoff must be a unit.Quantity, type(cutoff) = {type(cutoff)}")
+            raise TypeError(
+                f"cutoff must be a unit.Quantity, type(cutoff) = {type(cutoff)}"
+            )
 
         if not sigma.unit.is_compatible(unit.angstrom):
             raise ValueError(f"sigma must have units of distance, got {sigma.unit}")
@@ -103,8 +112,6 @@ class LJPotential(NeuralNetworkPotential):
             raise ValueError(f"epsilon must have units of energy, got  {epsilon.unit}")
         if not cutoff.unit.is_compatible(unit.nanometer):
             raise ValueError(f"cutoff must have units of distance, got {cutoff.unit}")
-
-
 
         self.sigma = sigma.value_in_unit_system(
             unit.md_unit_system
@@ -141,11 +148,7 @@ class LJPotential(NeuralNetworkPotential):
         )
         return energy.sum()
 
-    def compute_energy(
-        self,
-        positions: jnp.array,
-        nbr_list=None,
-    ):
+    def compute_energy(self, positions: jnp.array, nbr_list=None, debug_mode=False):
         """
         Compute the LJ energy.
 
@@ -153,10 +156,9 @@ class LJPotential(NeuralNetworkPotential):
         ----------
         positions : jnp.array
             The positions of the particles in the system
-        nbr_list : NeighborList, optional
-            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
-        shift : bool, optional
-            Whether to shift the potential energy at the cutoff, by default False
+        nbr_list : NeighborList, default=None
+            Instance of a neighbor list or pair list class to use.
+            If None, an unoptimized N^2 pairlist will be used without PBC conditions.
         Returns
         -------
         potential_energy : float
@@ -166,6 +168,9 @@ class LJPotential(NeuralNetworkPotential):
         # Compute the pair distances and displacement vectors
 
         if nbr_list is None:
+            log.debug(
+                "nbr_list is None, computing pairlist using N^2 method without PBC."
+            )
             # Compute the pairlist for a given set of positions and a cutoff distance
             # Note in this case, we do not need the pairs or displacement vectors
             # Since we already calculate the distance in the pairlist computation
@@ -194,8 +199,10 @@ class LJPotential(NeuralNetworkPotential):
                 raise ValueError("Neighborlist must be built before use")
 
             # ensure that the cutoff in the neighbor list is the same as the cutoff in the potential
-            if  nbr_list.cutoff != self.cutoff:
-                raise ValueError(f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})")
+            if nbr_list.cutoff != self.cutoff:
+                raise ValueError(
+                    f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
+                )
 
             n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(
                 positions
@@ -273,9 +280,13 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         U0: unit.Quantity = 0.0 * unit.kilocalories_per_mole,
     ):
         if not isinstance(topology, Topology):
-            if not isinstance(topology, property): #importing from the topology from the model results in it being a property object
+            if not isinstance(
+                topology, property
+            ):  # importing from the topology from the model results in it being a property object
                 if topology is not None:
-                    raise TypeError(f"Topology must be a Topology object or None, type(topology) = {type(topology)}")
+                    raise TypeError(
+                        f"Topology must be a Topology object or None, type(topology) = {type(topology)}"
+                    )
         if not isinstance(k, unit.Quantity):
             raise TypeError(f"k must be a unit.Quantity, type(k) = {type(k)}")
         if not isinstance(x0, unit.Quantity):
@@ -284,11 +295,17 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             raise TypeError(f"U0 must be a unit.Quantity, type(U0) = {type(U0)}")
 
         if not k.unit.is_compatible(unit.kilocalories_per_mole / unit.angstrom**2):
-            raise ValueError(f"k must be a unit.Quantity with units of energy per distance squared, k.unit = {k.unit}")
+            raise ValueError(
+                f"k must be a unit.Quantity with units of energy per distance squared, k.unit = {k.unit}"
+            )
         if not x0.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}")
+            raise ValueError(
+                f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}"
+            )
         if not U0.unit.is_compatible(unit.kilocalories_per_mole):
-            raise ValueError(f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}")
+            raise ValueError(
+                f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"
+            )
 
         log.info("Initializing HarmonicOscillatorPotential")
         log.info(f"k = {k}")
