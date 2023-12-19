@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import pytest
 from chiron.neighbors import (
     NeighborListNsqrd,
+    PairList,
     OrthogonalPeriodicSpace,
     OrthogonalNonperiodicSpace,
 )
@@ -67,7 +68,7 @@ def test_orthogonal_nonperiodic_displacement():
 
 def test_neighborlist_pair():
     """
-    This simple test test aspects of the neighborlist for 2 particles
+    This simple test of the neighborlist for 2 particles
     """
 
     coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
@@ -151,6 +152,10 @@ def test_neighborlist_pair():
     coordinates = coordinates + 0.1
     assert nbr_list.check(coordinates) == True
 
+    coordinates = jnp.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    # we changed number of particles, and thus should rebuild
+    assert nbr_list.check(coordinates) == True
+
 
 def test_inputs():
     space = OrthogonalPeriodicSpace()
@@ -223,7 +228,10 @@ def test_inputs():
         )
 
 
-def test_neighborlist_pair2():
+def test_neighborlist_pair_multiple_particles():
+    """
+    Test the neighborlist for multiple particles
+    """
     n_xyz = 2
     scale_factor = 2.0
 
@@ -277,3 +285,107 @@ def test_neighborlist_pair2():
 
     n_interacting, mask, dist, rij = nbr_list.calculate(coordinates)
     assert jnp.all(n_interacting == jnp.array([3, 2, 2, 1, 2, 1, 1, 0]))
+
+
+def test_pairlist_pair():
+    """
+    This simple test of the neighborlist for 2 particles
+    """
+
+    coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    state = SamplerState(
+        x0=unit.Quantity(coordinates, unit.nanometer),
+        box_vectors=unit.Quantity(box_vectors, unit.nanometer),
+    )
+
+    space = OrthogonalPeriodicSpace()
+    cutoff = 1.1
+    skin = 0.1
+    pair_list = PairList(
+        space,
+        cutoff=unit.Quantity(cutoff, unit.nanometer),
+    )
+
+    assert pair_list.cutoff == cutoff
+
+    pair_list.build_from_state(state)
+    assert jnp.all(pair_list.all_pairs == jnp.array([[1], [0]], dtype=jnp.int32))
+    assert jnp.all(pair_list.reduction_mask == jnp.array([[True], [False]]))
+    assert pair_list.is_built == True
+
+    n_pairs, mask, dist, displacement = pair_list.calculate(coordinates)
+
+    assert jnp.all(n_pairs == jnp.array([1, 0]))
+    assert jnp.all(mask == jnp.array([[1], [0]]))
+    assert jnp.all(dist == jnp.array([[1.0], [1.0]]))
+    assert displacement.shape == (2, 1, 3)
+    assert jnp.all(displacement == jnp.array([[[-1.0, 0.0, 0.0]], [[1.0, 0.0, 0.0]]]))
+
+    assert pair_list.check(coordinates) == False
+
+    coordinates = coordinates = jnp.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    # we changed number of particles, and thus should rebuild
+    assert pair_list.check(coordinates) == True
+
+
+def test_pair_list_multiple_particles():
+    # test the pair list for multiple particles
+    # will compare to neighborlist
+    n_xyz = 2
+    scale_factor = 2.0
+
+    coord_mesh = jnp.mgrid[0:n_xyz, 0:n_xyz, 0:n_xyz] * scale_factor / n_xyz
+
+    # transform the mesh into a list of coordinates shape (n_atoms, 3)
+    coordinates = jnp.stack(coord_mesh.reshape(3, -1), axis=1, dtype=jnp.float32)
+
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    state = SamplerState(
+        x0=unit.Quantity(coordinates, unit.nanometer),
+        box_vectors=unit.Quantity(box_vectors, unit.nanometer),
+    )
+
+    space = OrthogonalPeriodicSpace()
+    # every particle should interact with every other particle
+    cutoff = 2.1
+    skin = 0.1
+    pair_list = PairList(
+        space,
+        cutoff=unit.Quantity(cutoff, unit.nanometer),
+    )
+    pair_list.build_from_state(state)
+
+    n_interacting, mask, dist, rij = pair_list.calculate(coordinates)
+    assert jnp.all(n_interacting == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
+
+    assert jnp.all(mask.shape == (coordinates.shape[0], coordinates.shape[0] - 1))
+
+    # compare to nbr_list
+    nbr_list = NeighborListNsqrd(
+        space,
+        cutoff=unit.Quantity(cutoff, unit.nanometer),
+        skin=unit.Quantity(skin, unit.nanometer),
+        n_max_neighbors=20,
+    )
+    nbr_list.build_from_state(state)
+    n_interacting1, mask1, dist1, rij1 = nbr_list.calculate(coordinates)
+
+    # sum up all the distances within range, see if they match those in the nlist
+    assert jnp.where(mask, dist, 0).sum() == jnp.where(mask1, dist1, 0).sum()
+
+    assert jnp.where(
+        dist
+        == jnp.array(
+            [
+                [1.0, 1.0, 1.4142135, 1.0, 1.4142135, 1.4142135, 1.7320508],
+                [1.0, 1.4142135, 1.0, 1.4142135, 1.0, 1.7320508, 1.4142135],
+                [1.0, 1.4142135, 1.0, 1.4142135, 1.7320508, 1.0, 1.4142135],
+                [1.4142135, 1.0, 1.0, 1.7320508, 1.4142135, 1.4142135, 1.0],
+                [1.0, 1.4142135, 1.4142135, 1.7320508, 1.0, 1.0, 1.4142135],
+                [1.4142135, 1.0, 1.7320508, 1.4142135, 1.0, 1.4142135, 1.0],
+                [1.4142135, 1.7320508, 1.0, 1.4142135, 1.0, 1.4142135, 1.0],
+                [1.7320508, 1.4142135, 1.4142135, 1.0, 1.4142135, 1.0, 1.0],
+            ],
+        )
+    )
