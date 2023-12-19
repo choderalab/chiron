@@ -56,7 +56,7 @@ def test_reporter():
 
     reporter = SimulationReporter(h5_test_file, None, 1)
     assert np.allclose(reference_energy, reporter.get_property("energy")[:5])
-
+    reporter.close()
     # test the topology
     from openmmtools.testsystems import HarmonicOscillatorArray
 
