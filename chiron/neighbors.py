@@ -11,10 +11,13 @@ from openmm import unit
 
 # split out the displacement calculation from the neighborlist for flexibility
 from abc import ABC, abstractmethod
+
+
 class Space(ABC):
-    def __init__(self, box_vectors: Optional[jnp.array]=None) -> None:
+    def __init__(self, box_vectors: Optional[jnp.array] = None) -> None:
         if box_vectors is not None:
             self.box_vectors = box_vectors
+
     @property
     def box_vectors(self) -> jnp.array:
         return self._box_vectors
@@ -24,12 +27,15 @@ class Space(ABC):
         self._box_vectors = box_vectors
 
     @abstractmethod
-    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array) -> Tuple[jnp.array, jnp.array]:
+    def displacement(
+        self, xyz_1: jnp.array, xyz_2: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
         pass
 
     @abstractmethod
     def wrap(self, xyz: jnp.array) -> jnp.array:
         pass
+
 
 class OrthogonalPeriodicSpace(Space):
     """
@@ -40,10 +46,13 @@ class OrthogonalPeriodicSpace(Space):
     Callable
         Function that calculates the periodic displacement and distance between two points
     """
-    def __init__(self, box_vectors: Optional[jnp.array]=None) -> None:
+
+    def __init__(self, box_vectors: Optional[jnp.array] = None) -> None:
         super().__init__(box_vectors)
         if box_vectors is not None:
-            self.box_lengths = jnp.array([box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]])
+            self.box_lengths = jnp.array(
+                [box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]]
+            )
 
     @property
     def box_vectors(self) -> jnp.array:
@@ -52,10 +61,14 @@ class OrthogonalPeriodicSpace(Space):
     @box_vectors.setter
     def box_vectors(self, box_vectors: jnp.array) -> None:
         self._box_vectors = box_vectors
-        self._box_lengths = jnp.array([box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]])
+        self._box_lengths = jnp.array(
+            [box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]]
+        )
 
     @partial(jax.jit, static_argnums=(0,))
-    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array) -> Tuple[jnp.array, jnp.array]:
+    def displacement(
+        self, xyz_1: jnp.array, xyz_2: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
         """
         Calculate the periodic distance between two points.
 
@@ -77,7 +90,7 @@ class OrthogonalPeriodicSpace(Space):
         # calculate uncorrect r_ij
         r_ij = xyz_1 - xyz_2
 
-                # calculated corrected displacement vector
+        # calculated corrected displacement vector
         r_ij = (
             jnp.mod(r_ij + self._box_lengths * 0.5, self._box_lengths)
             - self._box_lengths * 0.5
@@ -86,6 +99,7 @@ class OrthogonalPeriodicSpace(Space):
         dist = jnp.linalg.norm(r_ij, axis=-1)
 
         return r_ij, dist
+
     @partial(jax.jit, static_argnums=(0,))
     def wrap(self, xyz: jnp.array) -> jnp.array:
         """
@@ -102,13 +116,18 @@ class OrthogonalPeriodicSpace(Space):
             Wrapped coordinates of the system
 
         """
-        xyz = xyz - jnp.floor(xyz/self._box_lengths) * self._box_lengths
+        xyz = xyz - jnp.floor(xyz / self._box_lengths) * self._box_lengths
 
         return xyz
-class OrthogonalNonperiodicSpace(Space):
 
+
+class OrthogonalNonperiodicSpace(Space):
     @partial(jax.jit, static_argnums=(0,))
-    def displacement(self, xyz_1: jnp.array, xyz_2: jnp.array, ) -> Tuple[jnp.array, jnp.array]:
+    def displacement(
+        self,
+        xyz_1: jnp.array,
+        xyz_2: jnp.array,
+    ) -> Tuple[jnp.array, jnp.array]:
         """
         Calculate the periodic distance between two points.
 
@@ -154,6 +173,7 @@ class OrthogonalNonperiodicSpace(Space):
         """
         return xyz
 
+
 class PairsBase(ABC):
     """
     Base class for pairlist implementations that returns the particle pair ids, displacement vectors, and distances.
@@ -175,12 +195,18 @@ class PairsBase(ABC):
         if not isinstance(space, Space):
             raise TypeError(f"space must be of type Space, found {type(space)}")
         if not cutoff.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+            raise ValueError(
+                f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}"
+            )
         self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
         self.space = space
 
     @abstractmethod
-    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
+    def build(
+        self,
+        coordinates: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity],
+    ):
         """
         Build the neighborlist from an array of coordinates and box vectors.
 
@@ -197,6 +223,7 @@ class PairsBase(ABC):
 
         """
         pass
+
     def build_from_state(self, sampler_state: SamplerState):
         """
         Build the neighbor list from a SamplerState object
@@ -211,21 +238,17 @@ class PairsBase(ABC):
         None
         """
         if not isinstance(sampler_state, SamplerState):
-            raise TypeError(
-                f"Expected SamplerState, got {type(sampler_state)} instead"
-            )
+            raise TypeError(f"Expected SamplerState, got {type(sampler_state)} instead")
 
         coordinates = sampler_state.x0
         if sampler_state.box_vectors is None:
-            raise ValueError(
-                f"SamplerState does not contain box vectors"
-            )
+            raise ValueError(f"SamplerState does not contain box vectors")
         box_vectors = sampler_state.box_vectors
 
         self.build(coordinates, box_vectors)
 
     @abstractmethod
-    def calculate(self, coordinates:jnp.array):
+    def calculate(self, coordinates: jnp.array):
         """
         Calculate the neighbor list for the current state
 
@@ -248,7 +271,7 @@ class PairsBase(ABC):
         pass
 
     @abstractmethod
-    def check(self, coordinates:jnp.array)->bool:
+    def check(self, coordinates: jnp.array) -> bool:
         """
         Check if the internal variables need to be reset. E.g., rebuilding a neighborlist
         Should do nothing for a simple pairlist.
@@ -263,7 +286,6 @@ class PairsBase(ABC):
             True if the neighbor list needs to be rebuilt, False if it does not.
         """
         pass
-
 
 
 class NeighborListNsqrd(PairsBase):
@@ -292,14 +314,18 @@ class NeighborListNsqrd(PairsBase):
         space: Space,
         cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
         skin: unit.Quantity = unit.Quantity(0.4, unit.nanometer),
-        n_max_neighbors: float=200,
+        n_max_neighbors: float = 200,
     ):
         if not isinstance(space, Space):
             raise TypeError(f"space must be of type Space, found {type(space)}")
         if not cutoff.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+            raise ValueError(
+                f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}"
+            )
         if not skin.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}")
+            raise ValueError(
+                f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}"
+            )
 
         self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
         self.skin = skin.value_in_unit_system(unit.md_unit_system)
@@ -309,7 +335,7 @@ class NeighborListNsqrd(PairsBase):
 
         # set a a simple variable to know if this has at least been built once as opposed to just initialized
         # this does not imply that the neighborlist is up to date
-        self.is_built= False
+        self.is_built = False
 
     # note, we need to use the partial decorator in order to use the jit decorate
     # so that it knows to ignore the `self` argument
@@ -387,7 +413,7 @@ class NeighborListNsqrd(PairsBase):
         # this choice was made such that when we use the neighbor list in the masked energy calculat
         # the padded values will result in reasonably well defined values
         fill_value = jnp.argmax(neighbor_mask)
-        fill_value = jnp.where(fill_value== pid, fill_value + 1, fill_value)
+        fill_value = jnp.where(fill_value == pid, fill_value + 1, fill_value)
 
         # count up the number of neighbors
         n_neighbors = jnp.where(neighbor_mask, 1, 0).sum()
@@ -401,12 +427,18 @@ class NeighborListNsqrd(PairsBase):
         )
         # we need to generate a new mask associatd with the padded neighbor list
         # to be able to quickly exclude the padded values from the neighbor list
-        neighbor_list_mask = jnp.where(jnp.arange(self.n_max_neighbors) < n_neighbors, 1, 0)
+        neighbor_list_mask = jnp.where(
+            jnp.arange(self.n_max_neighbors) < n_neighbors, 1, 0
+        )
 
         del r_ij, dist
         return neighbor_list_mask, neighbor_list, n_neighbors
 
-    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
+    def build(
+        self,
+        coordinates: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity],
+    ):
         """
         Build the neighborlist from an array of coordinates and box vectors.
 
@@ -427,16 +459,22 @@ class NeighborListNsqrd(PairsBase):
         # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
         if isinstance(coordinates, unit.Quantity):
             if not coordinates.unit.is_compatible(unit.nanometer):
-                raise ValueError(f"Coordinates require distance units, not {coordinates.unit}")
+                raise ValueError(
+                    f"Coordinates require distance units, not {coordinates.unit}"
+                )
             coordinates = coordinates.value_in_unit_system(unit.md_unit_system)
 
         if isinstance(box_vectors, unit.Quantity):
             if not box_vectors.unit.is_compatible(unit.nanometer):
-                raise ValueError(f"Box vectors require distance unit, not {box_vectors.unit}")
+                raise ValueError(
+                    f"Box vectors require distance unit, not {box_vectors.unit}"
+                )
             box_vectors = box_vectors.value_in_unit_system(unit.md_unit_system)
 
-        if box_vectors.shape != (3,3):
-            raise ValueError(f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}")
+        if box_vectors.shape != (3, 3):
+            raise ValueError(
+                f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
+            )
 
         self.ref_coordinates = coordinates
         self.box_vectors = box_vectors
@@ -446,7 +484,9 @@ class NeighborListNsqrd(PairsBase):
         self.space.box_vectors = self.box_vectors
 
         # store the ids of all the particles
-        self.particle_ids = jnp.array(range(0, self.ref_coordinates.shape[0]), dtype=jnp.uint16)
+        self.particle_ids = jnp.array(
+            range(0, self.ref_coordinates.shape[0]), dtype=jnp.uint16
+        )
 
         # calculate which pairs to exclude
         reduction_mask = self._pairs_mask(self.particle_ids)
@@ -535,7 +575,7 @@ class NeighborListNsqrd(PairsBase):
 
         return n_pairs, mask, dist, r_ij
 
-    def calculate(self, coordinates:jnp.array):
+    def calculate(self, coordinates: jnp.array):
         """
         Calculate the neighbor list for the current state
 
@@ -555,9 +595,9 @@ class NeighborListNsqrd(PairsBase):
         r_ij: jnp.array
             Array of displacement vectors between each particle and its neighbors
         """
-        #coordinates = sampler_state.x0
-        #note, we assume the box vectors do not change between building and calculating the neighbor list
-        #changes to the box vectors require rebuilding the neighbor list
+        # coordinates = sampler_state.x0
+        # note, we assume the box vectors do not change between building and calculating the neighbor list
+        # changes to the box vectors require rebuilding the neighbor list
 
         n_neighbors, padding_mask, dist, r_ij = jax.vmap(
             self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
@@ -597,7 +637,7 @@ class NeighborListNsqrd(PairsBase):
         del displacement
         return status
 
-    def check(self, coordinates:jnp.array)->bool:
+    def check(self, coordinates: jnp.array) -> bool:
         """
         Check if the neighbor list needs to be rebuilt based on displacement of the particles from the reference coordinates.
         If a particle moves more than 0.5 skin distance, the neighborlist will be rebuilt.
@@ -648,14 +688,18 @@ class PairList(PairsBase):
         space: Space,
         cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
         skin: unit.Quantity = unit.Quantity(0.4, unit.nanometer),
-        n_max_neighbors: float=200,
+        n_max_neighbors: float = 200,
     ):
         if not isinstance(space, Space):
             raise TypeError(f"space must be of type Space, found {type(space)}")
         if not cutoff.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}")
+            raise ValueError(
+                f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}"
+            )
         if not skin.unit.is_compatible(unit.angstrom):
-            raise ValueError(f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}")
+            raise ValueError(
+                f"cutoff must be a unit.Quantity with units of distance, skin.unit = {skin.unit}"
+            )
 
         self.cutoff = cutoff.value_in_unit_system(unit.md_unit_system)
         self.skin = skin.value_in_unit_system(unit.md_unit_system)
@@ -665,7 +709,7 @@ class PairList(PairsBase):
 
         # set a a simple variable to know if this has at least been built once as opposed to just initialized
         # this does not imply that the neighborlist is up to date
-        self.is_built= False
+        self.is_built = False
 
     # note, we need to use the partial decorator in order to use the jit decorate
     # so that it knows to ignore the `self` argument
@@ -700,18 +744,25 @@ class PairList(PairsBase):
         # create a mask to exclude self interactions and double counting
         temp_mask = particles_i != particles_j
 
-        all_pairs = jax.vmap(self._remove_self_interactions, in_axes=(0, 0))(particles_j, temp_mask)
+        all_pairs = jax.vmap(self._remove_self_interactions, in_axes=(0, 0))(
+            particles_j, temp_mask
+        )
 
         temp_mask = jnp.where(particles_i < all_pairs[0], True, False)
 
         return all_pairs[0], temp_mask
 
-    @partial(jax.jit, static_argnums = (0,))
+    @partial(jax.jit, static_argnums=(0,))
     def _remove_self_interactions(self, particles, temp_mask):
-        return jnp.where(temp_mask, size=particles.shape[0] - 1, fill_value=particles.shape[0]-1)
+        return jnp.where(
+            temp_mask, size=particles.shape[0] - 1, fill_value=particles.shape[0] - 1
+        )
 
-
-    def build(self, coordinates:Union[jnp.array, unit.Quantity], box_vectors:Union[jnp.array, unit.Quantity]):
+    def build(
+        self,
+        coordinates: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity],
+    ):
         """
         Build the neighborlist from an array of coordinates and box vectors.
 
@@ -732,16 +783,22 @@ class PairList(PairsBase):
         # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
         if isinstance(coordinates, unit.Quantity):
             if not coordinates.unit.is_compatible(unit.nanometer):
-                raise ValueError(f"Coordinates require distance units, not {coordinates.unit}")
+                raise ValueError(
+                    f"Coordinates require distance units, not {coordinates.unit}"
+                )
             coordinates = coordinates.value_in_unit_system(unit.md_unit_system)
 
         if isinstance(box_vectors, unit.Quantity):
             if not box_vectors.unit.is_compatible(unit.nanometer):
-                raise ValueError(f"Box vectors require distance unit, not {box_vectors.unit}")
+                raise ValueError(
+                    f"Box vectors require distance unit, not {box_vectors.unit}"
+                )
             box_vectors = box_vectors.value_in_unit_system(unit.md_unit_system)
 
-        if box_vectors.shape != (3,3):
-            raise ValueError(f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}")
+        if box_vectors.shape != (3, 3):
+            raise ValueError(
+                f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
+            )
 
         self.ref_coordinates = coordinates
         self.box_vectors = box_vectors
@@ -751,14 +808,15 @@ class PairList(PairsBase):
         self.space.box_vectors = self.box_vectors
 
         # store the ids of all the particles
-        self.particle_ids = jnp.array(range(0, self.ref_coordinates.shape[0]), dtype=jnp.uint16)
+        self.particle_ids = jnp.array(
+            range(0, self.ref_coordinates.shape[0]), dtype=jnp.uint16
+        )
 
         # calculate which pairs to exclude
         self.all_pairs, self.reduction_mask = self._pairs_and_mask(self.particle_ids)
-        self.n_max_neighbors = self.particle_ids.shape[0]-1
+        self.n_max_neighbors = self.particle_ids.shape[0] - 1
 
-        #temp_mask = particles_i < new_particles
-
+        # temp_mask = particles_i < new_particles
 
         self.is_built = True
 
@@ -808,7 +866,7 @@ class PairList(PairsBase):
 
         return n_pairs, mask, dist, r_ij
 
-    def calculate(self, coordinates:jnp.array):
+    def calculate(self, coordinates: jnp.array):
         """
         Calculate the neighbor list for the current state
 
@@ -828,20 +886,18 @@ class PairList(PairsBase):
         r_ij: jnp.array
             Array of displacement vectors between each particle and its neighbors
         """
-        #coordinates = sampler_state.x0
-        #note, we assume the box vectors do not change between building and calculating the neighbor list
-        #changes to the box vectors require rebuilding the neighbor list
+        # coordinates = sampler_state.x0
+        # note, we assume the box vectors do not change between building and calculating the neighbor list
+        # changes to the box vectors require rebuilding the neighbor list
 
         n_neighbors, padding_mask, dist, r_ij = jax.vmap(
             self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
         )(self.particle_ids, self.all_pairs, self.reduction_mask, coordinates)
         # mask = mask.reshape(-1, self.n_max_neighbors)
 
-
         return n_neighbors, padding_mask, dist, r_ij
 
-
-    def check(self, coordinates:jnp.array)->bool:
+    def check(self, coordinates: jnp.array) -> bool:
         """
         Always returns false, as there are no internal lists to be rebuilt for a pairlist
 
