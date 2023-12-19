@@ -57,7 +57,7 @@ class LangevinIntegrator:
         thermodynamic_state: ThermodynamicState,
         n_steps: int = 5_000,
         key=random.PRNGKey(0),
-        nbr_list = None,
+        nbr_list=None,
         progress_bar=False,
     ):
         """
@@ -95,7 +95,9 @@ class LangevinIntegrator:
         log.info(f"Using seed: {key}")
 
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
-        mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[:, None]
+        mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[
+            :, None
+        ]
         sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
         stepsize_unitless = self.stepsize.value_in_unit_system(unit.md_unit_system)
         collision_rate_unitless = self.collision_rate.value_in_unit_system(
@@ -120,7 +122,7 @@ class LangevinIntegrator:
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             key, subkey = random.split(key)
             # v
-            v += (stepsize_unitless * 0.5) *  F/ mass_unitless
+            v += (stepsize_unitless * 0.5) * F / mass_unitless
             # r
             x += (stepsize_unitless * 0.5) * v
 
@@ -132,7 +134,6 @@ class LangevinIntegrator:
             # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
-
 
             x += (stepsize_unitless * 0.5) * v
             if nbr_list is not None:
@@ -146,11 +147,18 @@ class LangevinIntegrator:
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             if step % self.save_frequency == 0:
-                log.debug(f"Saving at step {step}")
+                # log.debug(f"Saving at step {step}")
                 if self.reporter is not None:
-                    d = {"traj": x, "energy": potential.compute_energy(x, nbr_list), "step": step}
-                    log.debug(d)
+                    d = {
+                        "traj": x,
+                        "energy": potential.compute_energy(x, nbr_list),
+                        "step": step,
+                    }
+                    if nbr_list is not None:
+                        d["box_vectors"] = nbr_list.space.box_vectors
+
+                    # log.debug(d)
                     self.reporter.report(d)
 
         log.debug("Finished running Langevin dynamics")
-        #self.reporter.close()
+        # self.reporter.close()
