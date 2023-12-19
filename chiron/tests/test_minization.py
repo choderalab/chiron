@@ -1,6 +1,5 @@
 def test_minimization():
     from chiron.minimze import minimize_energy
-    import jax
     import jax.numpy as jnp
 
     from chiron.states import SamplerState
@@ -32,4 +31,4 @@ def test_minimization():
 
     min_x = minimize_energy(sampler_state.x0, lj_potential.compute_energy, nbr_list)
     e = lj_potential.compute_energy(min_x, nbr_list)
-    assert jnp.isclose(e, -12506.332)
+    assert jnp.isclose(e, -12506.332)    
