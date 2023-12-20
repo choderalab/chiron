@@ -7,9 +7,10 @@ chiron
 
 Differentiable Markov Chain Monte Carlo
 
+
 ### Copyright
 
-Copyright (c) 2023, Chris Iacovella
+Copyright (c) 2023, Chodera Lab
 
 
 #### Acknowledgements
