@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
 from jaxopt import GradientDescent
+from loguru import logger as log
+
 
 def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
     """
@@ -25,8 +27,10 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
 
     def objective_fn(x):
         if nbr_list is not None:
+            log.debug("Using neighbor list")
             return potential_fn(x, nbr_list)
         else:
+            log.debug("Using NO neighbor list")
             return potential_fn(x)
 
     optimizer = GradientDescent(
@@ -34,4 +38,4 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
     )
     result = optimizer.run(coordinates)
 
-    return result.params
+    return result
