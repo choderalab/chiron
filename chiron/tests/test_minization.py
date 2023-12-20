@@ -28,7 +28,9 @@ def test_minimization():
     initial_e_without_nbr_list = lj_potential.compute_energy(sampler_state.x0)
     print(f"initial_e_with_nbr_list: {initial_e_with_nbr_list}")
     print(f"initial_e_without_nbr_list: {initial_e_without_nbr_list}")
-
+    assert not jnp.isclose(
+        initial_e_with_nbr_list, initial_e_without_nbr_list
+    ), "initial_e_with_nbr_list and initial_e_without_nbr_list should not be close"
     # minimize energy for 0 steps
     results = minimize_energy(
         sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=0
@@ -58,12 +60,13 @@ def test_minimization():
     )
 
     # after 100 steps of minimization
+    steps = 100
     results = minimize_energy(
-        sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=100
+        sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=steps
     )
     min_x = results.params
     e_min = lj_potential.compute_energy(min_x, nbr_list)
-    print(f"e_min: {e_min}")
+    print(f"e_min after {steps} of minimization: {e_min}")
     # test that e_min is smaller than initial_e_with_nbr_list
     assert e_min < initial_e_with_nbr_list
     # test that e is not Nan
