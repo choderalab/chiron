@@ -68,3 +68,47 @@ def test_minimization():
     assert e_min < initial_e_with_nbr_list
     # test that e is not Nan
     assert not jnp.isnan(lj_potential.compute_energy(min_x, nbr_list))
+
+
+def test_minimize_two_particles():
+    # this test will check to see if we can minimize the energy of two particles
+    # to the minimum of the LJ potential
+
+    from chiron.minimze import minimize_energy
+    import jax.numpy as jnp
+
+    from chiron.states import SamplerState
+    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from openmm import unit
+    from chiron.potential import LJPotential
+
+    sigma = 1.0 * unit.nanometer
+    epsilon = 1.0 * unit.kilojoules_per_mole
+    cutoff = 3.0 * sigma
+
+    lj_potential = LJPotential(None, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
+
+    coordinates = jnp.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0]])
+
+    # define the sampler state
+    sampler_state = SamplerState(
+        x0=coordinates * unit.nanometer,
+        box_vectors=jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+        * unit.nanometer,
+    )
+
+    pair_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    pair_list.build_from_state(sampler_state)
+
+    e_start = lj_potential.compute_energy(coordinates, pair_list)
+
+    min_x = minimize_energy(
+        coordinates, lj_potential.compute_energy, pair_list, maxiter=10_000
+    )
+    min_x = min_x.params
+    dist = jnp.linalg.norm(min_x[1] - min_x[0])
+
+    e_final = lj_potential.compute_energy(min_x, pair_list)
+
+    assert jnp.isclose(e_final, -1.0, atol=1e-3)
+    assert jnp.isclose(dist, 2 ** (1.0 / 6.0), atol=1e-3)

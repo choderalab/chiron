@@ -39,6 +39,9 @@ skin = 0.5 * unit.nanometer
 nbr_list = NeighborListNsqrd(
     OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
 )
+from chiron.neighbors import PairList
+
+
 # build the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
@@ -56,11 +59,12 @@ from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
 integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
+print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
 integrator.run(
     sampler_state,
     thermodynamic_state,
-    n_steps=2000,
+    n_steps=5000,
     nbr_list=nbr_list,
     progress_bar=True,
 )
@@ -80,3 +84,6 @@ plt.plot(steps, energies)
 plt.xlabel("Step (fs)")
 plt.ylabel("Energy (kj/mol)")
 plt.show()
+
+print(energies)
+print(steps)

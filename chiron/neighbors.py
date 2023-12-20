@@ -897,8 +897,10 @@ class PairList(PairsBase):
         if coordinates.shape[0] != self.n_particles:
             raise ValueError(
                 f"Number of particles cannot changes without rebuilding. "
-                f"Coordinates must have shape ({n_particles}, 3), found {coordinates.shape}"
+                f"Coordinates must have shape ({self.n_particles}, 3), found {coordinates.shape}"
             )
+
+        # coordinates = self.space.wrap(coordinates)
 
         n_neighbors, padding_mask, dist, r_ij = jax.vmap(
             self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
