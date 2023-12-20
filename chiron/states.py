@@ -29,10 +29,52 @@ class SamplerState:
     ) -> None:
         # NOTE: all units are internally in the openMM units system as documented here:
         # http://docs.openmm.org/latest/userguide/theory/01_introduction.html#units
+        if not isinstance(x0, unit.Quantity):
+            raise TypeError(
+                f"x0 must be a unit.Quantity, got {type(x0)} instead."
+            )
+        if velocities is not None and not isinstance(velocities, unit.Quantity):
+            raise TypeError(
+                f"velocities must be a unit.Quantity, got {type(velocities)} instead."
+            )
+        if box_vectors is not None and not isinstance(box_vectors, unit.Quantity):
+            if isinstance(box_vectors, List):
+                try:
+                    box_vectors = self._convert_from_openmm_box(box_vectors)
+                except:
+                    raise TypeError(
+                        f"Unable to parse box_vectors {box_vectors}."
+                    )
+            else:
+                raise TypeError(
+                    f"box_vectors must be a unit.Quantity or openMM box, got {type(box_vectors)} instead."
+                )
+        if not x0.unit.is_compatible(unit.nanometer):
+            raise ValueError(
+                f"x0 must have units of distance, got {x0.unit} instead."
+            )
+        if velocities is not None and not velocities.unit.is_compatible(
+            unit.nanometer / unit.picosecond
+        ):
+            raise ValueError(
+                f"velocities must have units of distance/time, got {velocities.unit} instead."
+            )
+        if box_vectors is not None and not box_vectors.unit.is_compatible(
+            unit.nanometer
+        ):
+            raise ValueError(
+                f"box_vectors must have units of distance, got {box_vectors.unit} instead."
+            )
+        if box_vectors is not None and box_vectors.shape != (3, 3):
+            raise ValueError(
+                f"box_vectors must be a 3x3 array, got {box_vectors.shape} instead."
+            )
+
         self._x0 = x0
         self._velocities = velocities
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
+
 
     @property
     def x0(self) -> jnp.array:
@@ -61,7 +103,7 @@ class SamplerState:
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
 
-    def _convert_to_jnp(self, array: unit.Quantity) -> unit.Quantity:
+    def _convert_to_jnp(self, array: unit.Quantity) -> jnp.array:
         """
         Convert the sampler state to jnp arrays.
         """
@@ -69,6 +111,16 @@ class SamplerState:
 
         array_ = array.value_in_unit_system(unit.md_unit_system)
         return jnp.array(array_)
+
+    def _convert_from_openmm_box(self, openmm_box_vectors:List)->unit.Quantity:
+
+        box_vec = []
+        for i in range(0, 3):
+            layer = []
+            for j in range(0, 3):
+                layer.append(openmm_box_vectors[i][j].value_in_unit(openmm_box_vectors[0].unit))
+            box_vec.append(layer)
+        return unit.Quantity(jnp.array(box_vec), openmm_box_vectors[0].unit)
 
 
 class ThermodynamicState:
@@ -188,13 +240,13 @@ class ThermodynamicState:
             self.beta = 1.0 / (
                 unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
             )
-
+        log.debug(f"sample state: {sampler_state.x0}")
         reduced_potential = (
             unit.Quantity(
                 self.potential.compute_energy(sampler_state.x0), unit.kilojoule_per_mole
             )
         ) / unit.AVOGADRO_CONSTANT_NA
-
+        log.debug(f"reduced potential: {reduced_potential}")
         if self.pressure is not None:
             reduced_potential += self.pressure * self.volume
 

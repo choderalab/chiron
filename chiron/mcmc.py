@@ -268,7 +268,7 @@ class MoveSet:
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
 
 
-class GibbsSampler(object):
+class MCMCSampler(object):
     """
     Basic Markov chain Monte Carlo Gibbs sampler.
 
@@ -316,6 +316,11 @@ class GibbsSampler(object):
                 move.run(self.sampler_state, self.thermodynamic_state)
 
         log.info("Finished running Gibbs sampler")
+        log.debug("Closing reporter")
+        for _, move in self.move.move_schedule:
+            if move.simulation_reporter is not None:
+                move.simulation_reporter.close()
+                log.debug(f"Closed reporter {move.simulation_reporter.filename}")
 
 
 class MetropolizedMove(MCMove):
@@ -343,7 +348,12 @@ class MetropolizedMove(MCMove):
     TBC
     """
 
-    def __init__(self, seed: int = 1234, atom_subset=None, nr_of_moves: int = 100):
+    def __init__(
+        self,
+        seed: int = 1234,
+        atom_subset: Optional[List[int]] = None,
+        nr_of_moves: int = 100,
+    ):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
@@ -388,17 +398,24 @@ class MetropolizedMove(MCMove):
         log.debug(f"Initial energy is {initial_energy} kT.")
         # Store initial positions of the atoms that are moved.
         # We'll use this also to recover in case the move is rejected.
-        atom_subset = self.atom_subset
+
         x0 = sampler_state.x0
-        initial_positions = jnp.copy(x0[jnp.array(atom_subset)])
+        atom_subset = self.atom_subset
+        if atom_subset is None:
+            initial_positions = jnp.copy(x0)
+        else:
+            initial_positions = jnp.copy(sampler_state.x0[jnp.array(atom_subset)])
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(initial_positions)
         log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
-        sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
-            proposed_positions
-        )
+        if atom_subset is None:
+            sampler_state.x0 = proposed_positions
+        else:
+            sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
+                proposed_positions
+            )
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state
         )  # NOTE: in kT
@@ -429,9 +446,12 @@ class MetropolizedMove(MCMove):
             )
         else:
             # Restore original positions.
-            sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
-                initial_positions
-            )
+            if atom_subset is None:
+                sampler_state.x0 = initial_positions
+            else:
+                sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
+                    initial_positions
+                )
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
@@ -492,7 +512,6 @@ class MetropolisDisplacementMove(MetropolizedMove):
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
-        slice_dim: Optional[int] = None,
         simulation_reporter: Optional[SimulationReporter] = None,
     ):
         """
@@ -508,8 +527,6 @@ class MetropolisDisplacementMove(MetropolizedMove):
             The number of moves to perform. Default is 100.
         atom_subset : list of int, optional
             A subset of atom indices to consider for the moves. Default is None.
-        slice_dim : int, optional
-            The dimension along which to slice the atom subset. Default is None.
         simulation_reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
         Returns
@@ -520,10 +537,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
-        self.slice_dim = slice_dim
         self.simulation_reporter = simulation_reporter
-        if slice_dim is not None:
-            log.info(f"Updating coordinates only along dimension {self.slice_dim}")
         if self.simulation_reporter is not None:
             log.info(
                 f"Using reporter {self.simulation_reporter} saving to {self.simulation_reporter.filename}"
@@ -551,24 +565,19 @@ class MetropolisDisplacementMove(MetropolizedMove):
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
-        x0 = positions
+        nr_of_atoms = positions.shape[0]
+        # log.debug(f"Number of atoms is {nr_of_atoms}.")
         unitless_displacement_sigma = displacement_sigma.value_in_unit_system(
             unit.md_unit_system
         )
-        if self.slice_dim is not None:
-            displacement_vector = (
-                jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
-            )
-            mask = jnp.ones(3, dtype=bool)
-            mask = mask.at[self.slice_dim].set(False)
-            displacement_vector = displacement_vector.at[mask].set(0)
-
-        else:
-            displacement_vector = (
-                jrandom.normal(subkey, shape=(3,)) * unitless_displacement_sigma
-            )
-
-        updated_position = x0 + displacement_vector
+        # log.debug(f"Displacement sigma is {unitless_displacement_sigma}.")
+        displacement_vector = (
+            jrandom.normal(subkey, shape=(nr_of_atoms, 3)) * 0.1
+        )  # NOTE: convert from Angstrom to nm
+        scaled_displacement_vector = displacement_vector * unitless_displacement_sigma
+        # log.debug(f"Unscaled Displacement vector is {displacement_vector}.")
+        # log.debug(f"Scaled Displacement vector is {scaled_displacement_vector}.")
+        updated_position = positions + scaled_displacement_vector
 
         return updated_position
 
@@ -580,8 +589,13 @@ class MetropolisDisplacementMove(MetropolizedMove):
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        progress_bar=True,
     ):
-        for trials in range(self.nr_of_moves):
+        from tqdm import tqdm
+
+        for trials in (
+            tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
+        ):
             self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")

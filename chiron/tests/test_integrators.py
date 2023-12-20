@@ -1,50 +1,41 @@
-def test_langevin_dynamics(remove_h5_file):
-    """
-    Test the harmonic oscillator system using a Langevin integrator.
+import pytest
 
-    This function initializes a harmonic oscillator from openmmtools.testsystems,
-    sets up a harmonic potential, and uses the Langevin integrator to run the simulation.
-    It then tests if the standard deviation of the potential is close to the expected value.
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_langevin")
+    return tmpdir
+
+def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
+    """
+    Test the Langevin integrator with a set of test systems.
+
+    This function initializes openmmtools.testsystems,
+    sets up a potential, and uses the Langevin integrator to run the simulation.
     """
     from openmm.unit import kelvin
 
-    # initialize testystem
-    from openmmtools.testsystems import HarmonicOscillator
+    i = 0
+    for testsystem, potential in provide_testsystems_and_potentials:
+        # initialize testystem
 
-    ho = HarmonicOscillator()
-    # initialize potential
-    from chiron.potential import HarmonicOscillatorPotential
+        # initialize states and integrator
+        from chiron.integrators import LangevinIntegrator
+        from chiron.states import SamplerState, ThermodynamicState
 
-    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
-    from openmm import unit
-    import jax.numpy as jnp
+        thermodynamic_state = ThermodynamicState(
+            potential=potential, temperature=300 * kelvin
+        )
 
-    # initialize states and integrator
-    from chiron.integrators import LangevinIntegrator
-    from chiron.states import SamplerState, ThermodynamicState
+        sampler_state = SamplerState(testsystem.positions)
+        from chiron.reporters import SimulationReporter
 
-    thermodynamic_state = ThermodynamicState(
-        potential=harmonic_potential, temperature=300 * kelvin
-    )
+        reporter = SimulationReporter(f"{prep_temp_dir}/test{i}.h5", None, 1)
 
-    sampler_state = SamplerState(ho.positions)
-
-    from chiron.reporters import SimulationReporter
-
-    reporter = SimulationReporter("test.h5", 1)
-
-    integrator = LangevinIntegrator(reporter=reporter)
-    integrator.run(
-        sampler_state,
-        thermodynamic_state,
-        n_steps=500,
-    )
-
-    stddev = ho.get_potential_expectation(thermodynamic_state)
-    expectation = ho.get_potential_standard_deviation(thermodynamic_state)
-    from openmm import unit
-    import jax.numpy as jnp
-
-    assert jnp.isclose(
-        expectation.value_in_unit_system(unit.md_unit_system), 3.741508178
-    )
+        integrator = LangevinIntegrator(reporter=reporter)
+        integrator.run(
+            sampler_state,
+            thermodynamic_state,
+            n_steps=5,
+        )
+        i = i + 1

@@ -1,4 +1,15 @@
-def test_sample_from_harmonic_osciallator(remove_h5_file):
+import pytest
+import uuid
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_mcmc")
+    return tmpdir
+
+
+def test_sample_from_harmonic_osciallator(prep_temp_dir):
     """
     Test sampling from a harmonic oscillator using local moves.
 
@@ -30,7 +41,9 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
 
     from chiron.reporters import SimulationReporter
 
-    reporter = SimulationReporter("test.h5", 1)
+    id = uuid.uuid4()
+    h5_file = f"test_{id}.h5"
+    reporter = SimulationReporter(f"{prep_temp_dir}/{h5_file}", 1)
 
     integrator = LangevinIntegrator(
         stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
@@ -45,8 +58,7 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
     import jax.numpy as jnp
     import h5py
 
-    h5_file = "test.h5"
-    h5 = h5py.File(h5_file, "r")
+    h5 = h5py.File(f"{prep_temp_dir}/{h5_file}", "r")
     keys = h5.keys()
 
     assert "energy" in keys, "Energy not in keys"
@@ -63,7 +75,7 @@ def test_sample_from_harmonic_osciallator(remove_h5_file):
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics(
-    remove_h5_file,
+    prep_temp_dir,
 ):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Langevin dynamics.
@@ -73,17 +85,17 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import LangevinDynamicsMove, MoveSet, GibbsSampler
+    from chiron.mcmc import LangevinDynamicsMove, MoveSet, MCMCSampler
 
     # Initalize the testsystem
-    from openmmtools.testsystems import HarmonicOscillator
+    from openmmtools.testsystems import HarmonicOscillatorArray
 
-    ho = HarmonicOscillator()
+    ho = HarmonicOscillatorArray()
 
     # Initalize the potential
     from chiron.potential import HarmonicOscillatorPotential
 
-    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K, U0=ho.U0)
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
 
     # Initalize the sampler and thermodynamic state
     from chiron.states import ThermodynamicState, SamplerState
@@ -96,22 +108,24 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", 1)
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", None, 1
+    )
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=1_000, seed=1234, simulation_reporter=simulation_reporter
+        nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
     )
 
     move_set = MoveSet([("LangevinMove", langevin_move)])
 
     # Initalize the sampler
-    sampler = GibbsSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(
-    remove_h5_file,
+    prep_temp_dir,
 ):
     """
     Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
@@ -121,7 +135,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, GibbsSampler
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillator
@@ -144,7 +158,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     # Initalize the move set and reporter
     from chiron.reporters import SimulationReporter
 
-    simulation_reporter = SimulationReporter("test.h5", 1)
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
+    )
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
@@ -156,7 +172,60 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = GibbsSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+
+    # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+    sampler.run(n_iterations=2)  # how many times to repeat
+
+
+def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_MetropolisDisplacementMove(
+    prep_temp_dir,
+):
+    """
+    Test sampling from a harmonic oscillator using MCMC classes and Metropolis displacement move.
+
+    This test initializes a harmonic oscillator, sets up the thermodynamic and
+    sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
+    """
+    from openmm import unit
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+
+    # Initalize the testsystem
+    from openmmtools.testsystems import HarmonicOscillatorArray
+
+    ho = HarmonicOscillatorArray()
+
+    # Initalize the potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
+
+    # Initalize the sampler and thermodynamic state
+    from chiron.states import ThermodynamicState, SamplerState
+
+    thermodynamic_state = ThermodynamicState(
+        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+    )
+    sampler_state = SamplerState(ho.positions)
+
+    # Initalize the move set and reporter
+    from chiron.reporters import SimulationReporter
+
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
+    )
+
+    mc_displacement_move = MetropolisDisplacementMove(
+        nr_of_moves=10,
+        displacement_sigma=0.1 * unit.angstrom,
+        atom_subset=None,
+        simulation_reporter=simulation_reporter,
+    )
+
+    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+
+    # Initalize the sampler
+    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
