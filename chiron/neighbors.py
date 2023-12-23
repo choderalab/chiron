@@ -327,6 +327,9 @@ class PairsBase(ABC):
         -------
         n_neighbors: jnp.array
             Array of number of neighbors for each particle
+        pairs: jnp.array
+            Array of particle ids for the possible neighbors of each particle.
+            The size of this array will depend on the underlying algorithm.
         padding_mask: jnp.array
             Array of masks to exclude padding from the neighbor list of each particle
         dist: jnp.array
@@ -493,9 +496,7 @@ class NeighborListNsqrd(PairsBase):
         )
         # we need to generate a new mask associatd with the padded neighbor list
         # to be able to quickly exclude the padded values from the neighbor list
-        neighbor_list_mask = jnp.where(
-            jnp.arange(self.n_max_neighbors) < n_neighbors, 1, 0
-        )
+        neighbor_list_mask = jnp.where(jnp.arange(n_max_neighbors) < n_neighbors, 1, 0)
 
         del r_ij, dist
         return neighbor_list_mask, neighbor_list, n_neighbors
@@ -576,11 +577,12 @@ class NeighborListNsqrd(PairsBase):
 
         self.neighbor_list = self.neighbor_list.reshape(-1, self.n_max_neighbors)
 
-        if jnp.any(self.n_neighbors == self.n_max_neighbors).block_until_ready():
-            self.n_max_neighbors = int(jnp.max(self.n_neighbors) + 10)
+        while jnp.any(self.n_neighbors == self.n_max_neighbors).block_until_ready():
             log.debug(
                 f"Increasing n_max_neighbors from {self.n_max_neighbors} to at  {jnp.max(self.n_neighbors)+10}"
             )
+            self.n_max_neighbors = int(jnp.max(self.n_neighbors) + 10)
+
             self.neighbor_mask, self.neighbor_list, self.n_neighbors = jax.vmap(
                 self._build_neighborlist, in_axes=(0, 0, 0, None, None)
             )(

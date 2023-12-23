@@ -169,7 +169,7 @@ class LJPotential(NeuralNetworkPotential):
 
         if nbr_list is None:
             log.debug(
-                "nbr_list is None, computing pairlist using N^2 method without PBC."
+                "nbr_list is None, computing  using inefficient N^2 pairlist without PBC."
             )
             # Compute the pairlist for a given set of positions and a cutoff distance
             # Note in this case, we do not need the pairs or displacement vectors
