@@ -204,7 +204,7 @@ class LJPotential(NeuralNetworkPotential):
                     f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
                 )
 
-            n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(
+            n_neighbors, pairs, mask, dist, displacement_vectors = nbr_list.calculate(
                 positions
             )
 
@@ -235,17 +235,16 @@ class LJPotential(NeuralNetworkPotential):
         return super().compute_force(positions, nbr_list=nbr_list)
 
     def compute_force_analytical(
-        self, positions: jnp.array, nbr_list=None
+        self,
+        positions: jnp.array,
     ) -> jnp.array:
         """
-        Compute the LJ force using the analytical expression.
+        Compute the LJ force using the analytical expression for testing purposes.
 
         Parameters
         ----------
         positions : jnp.array
             The positions of the particles in the system
-        nbr_list : NeighborList, optional
-            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
 
         Returns
         -------
