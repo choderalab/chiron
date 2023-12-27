@@ -101,7 +101,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -151,7 +153,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -204,7 +208,9 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -229,6 +235,23 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
+
+
+def test_thermodynamic_state_inputs():
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=None, temperature=300)
+
+    with pytest.raises(ValueError):
+        ThermodynamicState(potential=None, temperature=300 * unit.angstrom)
+
+    ThermodynamicState(potential=None, temperature=300 * unit.kelvin)
+
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=None, volume=1000)
+    with pytest.raises(ValueError):
+        ThermodynamicState(potential=None, volume=1000 * unit.kelvin)
+
+    ThermodynamicState(potential=None, volume=1000 * (unit.angstrom**3))
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

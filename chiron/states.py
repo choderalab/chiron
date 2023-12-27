@@ -30,9 +30,7 @@ class SamplerState:
         # NOTE: all units are internally in the openMM units system as documented here:
         # http://docs.openmm.org/latest/userguide/theory/01_introduction.html#units
         if not isinstance(x0, unit.Quantity):
-            raise TypeError(
-                f"x0 must be a unit.Quantity, got {type(x0)} instead."
-            )
+            raise TypeError(f"x0 must be a unit.Quantity, got {type(x0)} instead.")
         if velocities is not None and not isinstance(velocities, unit.Quantity):
             raise TypeError(
                 f"velocities must be a unit.Quantity, got {type(velocities)} instead."
@@ -42,17 +40,13 @@ class SamplerState:
                 try:
                     box_vectors = self._convert_from_openmm_box(box_vectors)
                 except:
-                    raise TypeError(
-                        f"Unable to parse box_vectors {box_vectors}."
-                    )
+                    raise TypeError(f"Unable to parse box_vectors {box_vectors}.")
             else:
                 raise TypeError(
                     f"box_vectors must be a unit.Quantity or openMM box, got {type(box_vectors)} instead."
                 )
         if not x0.unit.is_compatible(unit.nanometer):
-            raise ValueError(
-                f"x0 must have units of distance, got {x0.unit} instead."
-            )
+            raise ValueError(f"x0 must have units of distance, got {x0.unit} instead.")
         if velocities is not None and not velocities.unit.is_compatible(
             unit.nanometer / unit.picosecond
         ):
@@ -74,7 +68,6 @@ class SamplerState:
         self._velocities = velocities
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
-
 
     @property
     def x0(self) -> jnp.array:
@@ -112,13 +105,14 @@ class SamplerState:
         array_ = array.value_in_unit_system(unit.md_unit_system)
         return jnp.array(array_)
 
-    def _convert_from_openmm_box(self, openmm_box_vectors:List)->unit.Quantity:
-
+    def _convert_from_openmm_box(self, openmm_box_vectors: List) -> unit.Quantity:
         box_vec = []
         for i in range(0, 3):
             layer = []
             for j in range(0, 3):
-                layer.append(openmm_box_vectors[i][j].value_in_unit(openmm_box_vectors[0].unit))
+                layer.append(
+                    openmm_box_vectors[i][j].value_in_unit(openmm_box_vectors[0].unit)
+                )
             box_vec.append(layer)
         return unit.Quantity(jnp.array(box_vec), openmm_box_vectors[0].unit)
 
@@ -148,13 +142,33 @@ class ThermodynamicState:
         pressure: Optional[unit.Quantity] = None,
     ):
         self.potential = potential
-        self.temperature = temperature
-        if temperature:
-            self.beta = 1.0 / (
-                unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
+
+        if temperature is not None and not isinstance(temperature, unit.Quantity):
+            raise TypeError(
+                f"temperature must be a unit.Quantity, got {type(temperature)} instead."
             )
         else:
+            if not temperature.unit.is_compatible(unit.kelvin):
+                raise ValueError(
+                    f"temperature must have units of temperature, got {temperature.unit} instead."
+                )
+
+        if volume is not None and not isinstance(volume, unit.Quantity):
+            raise TypeError(
+                f"volume must be a unit.Quantity, got {type(volume)} instead."
+            )
+        else:
+            if not volume.unit.is_compatible(unit.nanometer**3):
+                raise ValueError(
+                    f"volume must have units of distance**3, got {volume.unit} instead."
+                )
+
+        self.temperature = temperature
+        if temperature is not None:
+            self.beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature))
+        else:
             self.beta = None
+
         self.volume = volume
         self.pressure = pressure
 
