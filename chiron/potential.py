@@ -252,22 +252,19 @@ class LJPotential(NeuralNetworkPotential):
             The forces on the particles in the system
 
         """
-        if nbr_list is None:
-            dist, displacement_vector, pairs = self.compute_pairlist(
-                positions, self.cutoff
-            )
+        dist, displacement_vector, pairs = self.compute_pairlist(positions, self.cutoff)
 
-            forces = (
-                24
-                * (self.epsilon / (dist * dist))
-                * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
-            ).reshape(-1, 1) * displacement_vector
+        forces = (
+            24
+            * (self.epsilon / (dist * dist))
+            * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
+        ).reshape(-1, 1) * displacement_vector
 
-            force_array = jnp.zeros((positions.shape[0], 3))
-            for force, p1, p2 in zip(forces, pairs[0], pairs[1]):
-                force_array = force_array.at[p1].add(force)
-                force_array = force_array.at[p2].add(-force)
-            return force_array
+        force_array = jnp.zeros((positions.shape[0], 3))
+        for force, p1, p2 in zip(forces, pairs[0], pairs[1]):
+            force_array = force_array.at[p1].add(force)
+            force_array = force_array.at[p2].add(-force)
+        return force_array
 
 
 class HarmonicOscillatorPotential(NeuralNetworkPotential):
