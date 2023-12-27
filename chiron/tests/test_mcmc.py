@@ -238,20 +238,33 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
 
 
 def test_thermodynamic_state_inputs():
+    from chiron.states import ThermodynamicState
+    from openmm import unit
+    from openmmtools.testsystems import HarmonicOscillatorArray
+
+    ho = HarmonicOscillatorArray()
+
+    # Initalize the potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
+
     with pytest.raises(TypeError):
-        ThermodynamicState(potential=None, temperature=300)
+        ThermodynamicState(potential=harmonic_potential, temperature=300)
 
     with pytest.raises(ValueError):
-        ThermodynamicState(potential=None, temperature=300 * unit.angstrom)
+        ThermodynamicState(
+            potential=harmonic_potential, temperature=300 * unit.angstrom
+        )
 
-    ThermodynamicState(potential=None, temperature=300 * unit.kelvin)
+    ThermodynamicState(potential=harmonic_potential, temperature=300 * unit.kelvin)
 
     with pytest.raises(TypeError):
-        ThermodynamicState(potential=None, volume=1000)
+        ThermodynamicState(potential=harmonic_potential, volume=1000)
     with pytest.raises(ValueError):
-        ThermodynamicState(potential=None, volume=1000 * unit.kelvin)
+        ThermodynamicState(potential=harmonic_potential, volume=1000 * unit.kelvin)
 
-    ThermodynamicState(potential=None, volume=1000 * (unit.angstrom**3))
+    ThermodynamicState(potential=harmonic_potential, volume=1000 * (unit.angstrom**3))
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

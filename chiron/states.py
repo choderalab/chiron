@@ -147,7 +147,7 @@ class ThermodynamicState:
             raise TypeError(
                 f"temperature must be a unit.Quantity, got {type(temperature)} instead."
             )
-        else:
+        elif temperature is not None:
             if not temperature.unit.is_compatible(unit.kelvin):
                 raise ValueError(
                     f"temperature must have units of temperature, got {temperature.unit} instead."
@@ -157,7 +157,7 @@ class ThermodynamicState:
             raise TypeError(
                 f"volume must be a unit.Quantity, got {type(volume)} instead."
             )
-        else:
+        elif volume is not None:
             if not volume.unit.is_compatible(unit.nanometer**3):
                 raise ValueError(
                     f"volume must have units of distance**3, got {volume.unit} instead."
