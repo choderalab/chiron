@@ -162,6 +162,15 @@ class ThermodynamicState:
                 raise ValueError(
                     f"volume must have units of distance**3, got {volume.unit} instead."
                 )
+        if pressure is not None and not isinstance(pressure, unit.Quantity):
+            raise TypeError(
+                f"pressure must be a unit.Quantity, got {type(pressure)} instead."
+            )
+        elif pressure is not None:
+            if not pressure.unit.is_compatible(unit.atmosphere):
+                raise ValueError(
+                    f"pressure must have units of pressure, got {pressure.unit} instead."
+                )
 
         self.temperature = temperature
         if temperature is not None:

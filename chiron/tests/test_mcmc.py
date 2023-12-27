@@ -266,6 +266,14 @@ def test_thermodynamic_state_inputs():
 
     ThermodynamicState(potential=harmonic_potential, volume=1000 * (unit.angstrom**3))
 
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=harmonic_potential, pressure=100)
+
+    with pytest.raises(ValueError):
+        ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.kelvin)
+
+    ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
+
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
     # define two harmonic oscillators with different spring constants and equilibrium positions
