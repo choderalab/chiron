@@ -169,7 +169,7 @@ class LJPotential(NeuralNetworkPotential):
 
         if nbr_list is None:
             log.debug(
-                "nbr_list is None, computing pairlist using N^2 method without PBC."
+                "nbr_list is None, computing  using inefficient N^2 pairlist without PBC."
             )
             # Compute the pairlist for a given set of positions and a cutoff distance
             # Note in this case, we do not need the pairs or displacement vectors
@@ -204,7 +204,7 @@ class LJPotential(NeuralNetworkPotential):
                     f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
                 )
 
-            n_neighbors, mask, dist, displacement_vectors = nbr_list.calculate(
+            n_neighbors, pairs, mask, dist, displacement_vectors = nbr_list.calculate(
                 positions
             )
 
@@ -235,17 +235,16 @@ class LJPotential(NeuralNetworkPotential):
         return super().compute_force(positions, nbr_list=nbr_list)
 
     def compute_force_analytical(
-        self, positions: jnp.array, nbr_list=None
+        self,
+        positions: jnp.array,
     ) -> jnp.array:
         """
-        Compute the LJ force using the analytical expression.
+        Compute the LJ force using the analytical expression for testing purposes.
 
         Parameters
         ----------
         positions : jnp.array
             The positions of the particles in the system
-        nbr_list : NeighborList, optional
-            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
 
         Returns
         -------
@@ -253,22 +252,19 @@ class LJPotential(NeuralNetworkPotential):
             The forces on the particles in the system
 
         """
-        if nbr_list is None:
-            dist, displacement_vector, pairs = self.compute_pairlist(
-                positions, self.cutoff
-            )
+        dist, displacement_vector, pairs = self.compute_pairlist(positions, self.cutoff)
 
-            forces = (
-                24
-                * (self.epsilon / (dist * dist))
-                * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
-            ).reshape(-1, 1) * displacement_vector
+        forces = (
+            24
+            * (self.epsilon / (dist * dist))
+            * (2 * (self.sigma / dist) ** 12 - (self.sigma / dist) ** 6)
+        ).reshape(-1, 1) * displacement_vector
 
-            force_array = jnp.zeros((positions.shape[0], 3))
-            for force, p1, p2 in zip(forces, pairs[0], pairs[1]):
-                force_array = force_array.at[p1].add(force)
-                force_array = force_array.at[p2].add(-force)
-            return force_array
+        force_array = jnp.zeros((positions.shape[0], 3))
+        for force, p1, p2 in zip(forces, pairs[0], pairs[1]):
+            force_array = force_array.at[p1].add(force)
+            force_array = force_array.at[p2].add(-force)
+        return force_array
 
 
 class HarmonicOscillatorPotential(NeuralNetworkPotential):
