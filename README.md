@@ -1,7 +1,7 @@
 chiron
 ==============================
 [//]: # (Badges)
-[![GitHub Actions Build Status](https://github.com/choderalab/chiron/workflows/CI/badge.svg)](https://github.com/choderalab/chiron/actions?query=workflow%3ACI)
+[![CI](https://github.com/choderalab/chiron/actions/workflows/CI.yaml/badge.svg)](https://github.com/choderalab/chiron/actions/workflows/CI.yaml)
 [![codecov](https://codecov.io/gh/choderalab/chiron/branch/main/graph/badge.svg)](https://codecov.io/gh/choderalab/chiron/branch/main)
 
 
@@ -9,7 +9,7 @@ Differentiable Markov Chain Monte Carlo
 
 ### Copyright
 
-Copyright (c) 2023, Chris Iacovella
+Copyright (c) 2023, [Chodera Lab](https://www.choderalab.org)
 
 
 #### Acknowledgements
