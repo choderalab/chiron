@@ -59,9 +59,9 @@ from chiron.mcmc import MetropolisDisplacementMove
 
 mc_move = MetropolisDisplacementMove(
     seed=1234,
-    displacement_sigma=0.1 * unit.nanometer,
-    nr_of_moves=10,
+    displacement_sigma=0.01 * unit.nanometer,
+    nr_of_moves=1000,
     simulation_reporter=reporter,
 )
 
-mc_move.run(sampler_state, thermodynamic_state, True)
+mc_move.run(sampler_state, thermodynamic_state, nbr_list, True)

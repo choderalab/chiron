@@ -236,7 +236,9 @@ class ThermodynamicState:
         """
         pass
 
-    def get_reduced_potential(self, sampler_state: SamplerState) -> float:
+    def get_reduced_potential(
+        self, sampler_state: SamplerState, nbr_list=None
+    ) -> float:
         """
         Compute the reduced potential for the given sampler state.
 
@@ -244,6 +246,8 @@ class ThermodynamicState:
         ----------
         sampler_state : SamplerState
             The sampler state for which to compute the reduced potential.
+        nbr_list : NeighborList or PairList, optional
+            The neighbor list or pair list routine to use for calculating the reduced potential.
 
         Returns
         -------
@@ -266,7 +270,8 @@ class ThermodynamicState:
         log.debug(f"sample state: {sampler_state.x0}")
         reduced_potential = (
             unit.Quantity(
-                self.potential.compute_energy(sampler_state.x0), unit.kilojoule_per_mole
+                self.potential.compute_energy(sampler_state.x0, nbr_list),
+                unit.kilojoule_per_mole,
             )
         ) / unit.AVOGADRO_CONSTANT_NA
         log.debug(f"reduced potential: {reduced_potential}")
