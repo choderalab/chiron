@@ -12,12 +12,32 @@ from openmm import unit
 
 
 def test_orthogonal_periodic_displacement():
+    # test that the incorrect box shapes throw an exception
+    with pytest.raises(ValueError):
+        space = OrthogonalPeriodicSpace(jnp.array([10.0, 10.0, 10.0]))
+    # test that incorrect units throw an exception
+    with pytest.raises(ValueError):
+        space = OrthogonalPeriodicSpace(
+            unit.Quantity(
+                jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]),
+                unit.radians,
+            )
+        )
+
     space = OrthogonalPeriodicSpace(
         jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
     )
 
+    # test that the box vectors are set correctly
+    assert jnp.all(
+        space.box_vectors
+        == jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    )
+
+    # test that the box lengths for an orthogonal box are set correctly
     assert jnp.all(space._box_lengths == jnp.array([10.0, 10.0, 10.0]))
 
+    # test calculation of the displacement_vector and distance between two points
     p1 = jnp.array([[0, 0, 0], [0, 0, 0]])
     p2 = jnp.array([[1, 0, 0], [6, 0, 0]])
 
@@ -27,6 +47,7 @@ def test_orthogonal_periodic_displacement():
 
     assert jnp.all(distance == jnp.array([1, 4]))
 
+    # test that the periodic wrapping works as expected
     wrapped_x = space.wrap(jnp.array([11, 0, 0]))
     assert jnp.all(wrapped_x == jnp.array([1, 0, 0]))
 
@@ -39,6 +60,7 @@ def test_orthogonal_periodic_displacement():
     wrapped_x = space.wrap(jnp.array([5, 12, -1]))
     assert jnp.all(wrapped_x == jnp.array([5, 2, 9]))
 
+    # test the setter for the box vectors
     space.box_vectors = jnp.array(
         [[10.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 30.0]]
     )
@@ -116,8 +138,16 @@ def test_neighborlist_pair():
         nbr_list.neighbor_mask == jnp.array([[1, 0, 0, 0, 0], [0, 0, 0, 0, 0]])
     )
 
-    n_neighbors, padding_mask, dist, r_ij = nbr_list.calculate(coordinates)
+    n_neighbors, neighbor_list, padding_mask, dist, r_ij = nbr_list.calculate(
+        coordinates
+    )
     assert jnp.all(n_neighbors == jnp.array([1, 0]))
+
+    # 2 particles, padded to 5
+    assert jnp.all(neighbor_list.shape == (2, 5))
+
+    assert jnp.all(neighbor_list == jnp.array([[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]]))
+
     assert jnp.all(padding_mask == jnp.array([[1, 0, 0, 0, 0], [0, 0, 0, 0, 0]]))
 
     assert jnp.all(
@@ -260,7 +290,7 @@ def test_neighborlist_pair_multiple_particles():
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
-    n_interacting, mask, dist, rij = nbr_list.calculate(coordinates)
+    n_interacting, neighbor_list, mask, dist, rij = nbr_list.calculate(coordinates)
     assert jnp.all(n_interacting == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
     # every particle should be in the nieghbor list, but only a subset in the interacting range
@@ -276,14 +306,31 @@ def test_neighborlist_pair_multiple_particles():
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
-    n_interacting, mask, dist, rij = nbr_list.calculate(coordinates)
+    n_interacting, neighbor_list, mask, dist, rij = nbr_list.calculate(coordinates)
     assert jnp.all(n_interacting == jnp.array([3, 2, 2, 1, 2, 1, 1, 0]))
+    assert jnp.all(neighbor_list.shape == (8, 17))
 
+    assert jnp.all(
+        neighbor_list
+        == jnp.array(
+            [
+                [1, 2, 3, 4, 5, 6, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [2, 3, 4, 5, 6, 7, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+                [3, 4, 5, 6, 7, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+                [4, 5, 6, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+                [5, 6, 7, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+                [6, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+                [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ]
+        )
+    )
+    # test passing coordinates and box vectors directly
     nbr_list.build(state.x0, state.box_vectors)
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
-    n_interacting, mask, dist, rij = nbr_list.calculate(coordinates)
+    n_interacting, neighbor_list, mask, dist, rij = nbr_list.calculate(coordinates)
     assert jnp.all(n_interacting == jnp.array([3, 2, 2, 1, 2, 1, 1, 0]))
 
 
@@ -314,9 +361,11 @@ def test_pairlist_pair():
     assert jnp.all(pair_list.reduction_mask == jnp.array([[True], [False]]))
     assert pair_list.is_built == True
 
-    n_pairs, mask, dist, displacement = pair_list.calculate(coordinates)
+    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(coordinates)
 
     assert jnp.all(n_pairs == jnp.array([1, 0]))
+    assert jnp.all(all_pairs.shape == (2, 1))
+    assert jnp.all(all_pairs == jnp.array([[1], [0]]))
     assert jnp.all(mask == jnp.array([[1], [0]]))
     assert jnp.all(dist == jnp.array([[1.0], [1.0]]))
     assert displacement.shape == (2, 1, 3)
@@ -356,9 +405,24 @@ def test_pair_list_multiple_particles():
     )
     pair_list.build_from_state(state)
 
-    n_interacting, mask, dist, rij = pair_list.calculate(coordinates)
+    n_interacting, all_pairs, mask, dist, rij = pair_list.calculate(coordinates)
     assert jnp.all(n_interacting == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
-
+    assert jnp.all(all_pairs.shape == (8, 7))
+    assert jnp.all(
+        all_pairs
+        == jnp.array(
+            [
+                [1, 2, 3, 4, 5, 6, 7],
+                [0, 2, 3, 4, 5, 6, 7],
+                [0, 1, 3, 4, 5, 6, 7],
+                [0, 1, 2, 4, 5, 6, 7],
+                [0, 1, 2, 3, 5, 6, 7],
+                [0, 1, 2, 3, 4, 6, 7],
+                [0, 1, 2, 3, 4, 5, 7],
+                [0, 1, 2, 3, 4, 5, 6],
+            ]
+        )
+    )
     assert jnp.all(mask.shape == (coordinates.shape[0], coordinates.shape[0] - 1))
 
     # compare to nbr_list
@@ -369,7 +433,7 @@ def test_pair_list_multiple_particles():
         n_max_neighbors=20,
     )
     nbr_list.build_from_state(state)
-    n_interacting1, mask1, dist1, rij1 = nbr_list.calculate(coordinates)
+    n_interacting1, all_pairs, mask1, dist1, rij1 = nbr_list.calculate(coordinates)
 
     # sum up all the distances within range, see if they match those in the nlist
     assert jnp.where(mask, dist, 0).sum() == jnp.where(mask1, dist1, 0).sum()
