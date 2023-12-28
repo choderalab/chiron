@@ -16,6 +16,7 @@ def ho_multistate_sampler() -> MultiStateSampler:
     from chiron.states import ThermodynamicState, SamplerState
     from openmmtools.testsystems import HarmonicOscillator
     from chiron.potential import HarmonicOscillatorPotential
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
 
     ho = HarmonicOscillator()
     n_replicas = 3
@@ -36,11 +37,22 @@ def ho_multistate_sampler() -> MultiStateSampler:
     sampler_state = [SamplerState(ho.positions) for _ in temperatures]
 
     # Initialize simulation object with options. Run with a langevin integrator.
+    # initialize the LennardJones potential in chiron
+    #
+    sigma = 0.34 * unit.nanometer
+    cutoff = 3.0 * sigma
+    skin = 0.5 * unit.nanometer
+
+    nbr_list = NeighborListNsqrd(
+        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
+    )
 
     move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=50)
     multistate_sampler = MultiStateSampler(mcmc_moves=move, number_of_iterations=2)
     multistate_sampler.create(
-        thermodynamic_states=thermodynamic_states, sampler_states=sampler_state
+        thermodynamic_states=thermodynamic_states,
+        sampler_states=sampler_state,
+        nbr_list=nbr_list,
     )
 
     return multistate_sampler
@@ -57,5 +69,3 @@ def test_multistate_class(ho_multistate_sampler):
 
 def test_multistate_minimize(ho_multistate_sampler):
     ho_multistate_sampler.minimize()
-
-

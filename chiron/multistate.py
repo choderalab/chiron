@@ -8,7 +8,7 @@ import datetime
 from loguru import logger as log
 import numpy as np
 from openmmtools.utils import time_it
-
+from chiron.neighbors import NeighborListNsqrd
 import openmm
 from openmm import unit
 
@@ -119,7 +119,6 @@ class MultiStateSampler(object):
         # usage because any change to these attribute implies a change
         # in the storage file as well. Use properties for checks.
         self.number_of_iterations = number_of_iterations
-
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
 
@@ -186,7 +185,7 @@ class MultiStateSampler(object):
         self,
         thermodynamic_states: List[ThermodynamicState],
         sampler_states: List[SamplerState],
-        metadata=None,
+        nbr_list: NeighborListNsqrd,
     ):
         """Create new multistate sampler simulation.
 
@@ -206,6 +205,7 @@ class MultiStateSampler(object):
         # TODO: initialize reporter here
         # TODO: consider unsampled thermodynamic states for reweighting schemes
         self._allocate_variables(thermodynamic_states, sampler_states)
+        self.nbr_list = nbr_list
 
     @classmethod
     def _default_initial_thermodynamic_states(
@@ -270,13 +270,20 @@ class MultiStateSampler(object):
 
         # Compute the initial energy of the system for logging.
         initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
-        print(initial_energy)
         log.debug(
             f"Replica {replica_id + 1}/{self.n_replicas}: initial energy {initial_energy:8.3f}kT"
         )
 
         results = minimize_energy(
-            sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=0
+            sampler_state.x0,
+            thermodynamic_state.potential.compute_energy,
+            self.nbr_list,
+            maxiter=0,
+        )
+        sampler_state.positions = results.params
+        final_energy = thermodynamic_state.get_reduced_potential(sampler_state)
+        log.debug(
+            f"Replica {replica_id + 1}/{self.n_replicas}: final energy {final_energy:8.3f}kT"
         )
 
     def minimize(
@@ -306,20 +313,10 @@ class MultiStateSampler(object):
 
         log.debug("Minimizing all replicas...")
 
-        # minimization
+        # minimization and update sampler states
         minimized_positions, sampler_state_ids = [], []
         for replica_id in range(self.n_replicas):
-            minimized_position, sampler_state_id = self._minimize_replica(
-                replica_id, tolerance, max_iterations
-            )
-            minimized_positions.append(minimized_position)
-            sampler_state_ids.append(sampler_state_id)
-
-        # Update all sampler states.
-        for sampler_state_id, minimized_pos in zip(
-            sampler_state_ids, minimized_positions
-        ):
-            self._sampler_states[sampler_state_id].positions = minimized_pos
+            self._minimize_replica(replica_id, tolerance, max_iterations)
 
     def equilibrate(self, n_iterations, mcmc_moves=None):
         """Equilibrate all replicas.
