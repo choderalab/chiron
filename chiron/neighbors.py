@@ -39,6 +39,10 @@ class Space(ABC):
                     )
 
                 self.box_vectors = box_vectors
+            else:
+                raise TypeError(
+                    f"box_vectors must be a jnp.array or unit.Quantity, not {type(box_vectors)}"
+                )
 
     @property
     def box_vectors(self) -> jnp.array:
