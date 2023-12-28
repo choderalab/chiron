@@ -375,6 +375,7 @@ class MetropolizedMove(MCMove):
         thermodynamic_state: ThermodynamicState,
         sampler_state: SamplerState,
         reporter: SimulationReporter,
+        nbr_list=None,
     ):
         """Apply a metropolized move to the sampler state.
 
@@ -388,12 +389,15 @@ class MetropolizedMove(MCMove):
            The initial sampler state to apply the move to. This is modified.
         reporter: SimulationReporter
               The reporter to write the data to.
+        nbr_list: Neighbor List or Pair List routine,
+            The routine to use to calculate the interacting atoms.
+            Default is None and will use an unoptimized pairlist without PBC
         """
         import jax.numpy as jnp
 
         # Compute initial energy
         initial_energy = thermodynamic_state.get_reduced_potential(
-            sampler_state
+            sampler_state, nbr_list
         )  # NOTE: in kT
         log.debug(f"Initial energy is {initial_energy} kT.")
         # Store initial positions of the atoms that are moved.
@@ -417,7 +421,7 @@ class MetropolizedMove(MCMove):
                 proposed_positions
             )
         proposed_energy = thermodynamic_state.get_reduced_potential(
-            sampler_state
+            sampler_state, nbr_list
         )  # NOTE: in kT
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
@@ -589,6 +593,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        nbr_list=None,
         progress_bar=True,
     ):
         from tqdm import tqdm
@@ -596,7 +601,9 @@ class MetropolisDisplacementMove(MetropolizedMove):
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
         ):
-            self.apply(thermodynamic_state, sampler_state, self.simulation_reporter)
+            self.apply(
+                thermodynamic_state, sampler_state, self.simulation_reporter, nbr_list
+            )
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
                 if self.simulation_reporter is not None:

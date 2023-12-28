@@ -101,7 +101,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -151,7 +153,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -204,7 +208,9 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -229,6 +235,44 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
     sampler.run(n_iterations=2)  # how many times to repeat
+
+
+def test_thermodynamic_state_inputs():
+    from chiron.states import ThermodynamicState
+    from openmm import unit
+    from openmmtools.testsystems import HarmonicOscillatorArray
+
+    ho = HarmonicOscillatorArray()
+
+    # Initalize the potential
+    from chiron.potential import HarmonicOscillatorPotential
+
+    harmonic_potential = HarmonicOscillatorPotential(ho.topology, ho.K)
+
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=harmonic_potential, temperature=300)
+
+    with pytest.raises(ValueError):
+        ThermodynamicState(
+            potential=harmonic_potential, temperature=300 * unit.angstrom
+        )
+
+    ThermodynamicState(potential=harmonic_potential, temperature=300 * unit.kelvin)
+
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=harmonic_potential, volume=1000)
+    with pytest.raises(ValueError):
+        ThermodynamicState(potential=harmonic_potential, volume=1000 * unit.kelvin)
+
+    ThermodynamicState(potential=harmonic_potential, volume=1000 * (unit.angstrom**3))
+
+    with pytest.raises(TypeError):
+        ThermodynamicState(potential=harmonic_potential, pressure=100)
+
+    with pytest.raises(ValueError):
+        ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.kelvin)
+
+    ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
