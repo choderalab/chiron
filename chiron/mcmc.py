@@ -306,16 +306,15 @@ class MCMCSampler(object):
         n_iterations : int, optional
             Number of iterations of the sampler to run.
         """
-        log.info("Running Gibbs sampler")
+        log.info("Running MCMC sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
-        log.info("Running Gibbs sampler")
         for iteration in range(n_iterations):
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
                 move.run(self.sampler_state, self.thermodynamic_state)
 
-        log.info("Finished running Gibbs sampler")
+        log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
             if move.simulation_reporter is not None:
