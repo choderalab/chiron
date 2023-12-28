@@ -411,6 +411,7 @@ class MetropolizedMove(MCMove):
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         proposed_positions = self._propose_positions(initial_positions)
+
         log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
         if atom_subset is None:
@@ -419,6 +420,10 @@ class MetropolizedMove(MCMove):
             sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
                 proposed_positions
             )
+        if nbr_list is not None:
+            if nbr_list.check(sampler_state.x0):
+                nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
+
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state, nbr_list
         )  # NOTE: in kT

@@ -12,6 +12,17 @@ from typing import Optional
 
 
 class LangevinIntegrator:
+    """
+    Langevin dynamics integrator for molecular dynamics simulation using the BAOAB splitting scheme [1].
+
+    References:
+    [1] Benedict Leimkuhler, Charles Matthews;
+        Robust and efficient configurational molecular sampling via Langevin dynamics.
+        J. Chem. Phys. 7 May 2013; 138 (17): 174102. https://doi.org/10.1063/1.4802990
+
+
+    """
+
     def __init__(
         self,
         stepsize=1.0 * unit.femtoseconds,
@@ -25,14 +36,20 @@ class LangevinIntegrator:
         Parameters
         ----------
         stepsize : unit.Quantity, optional
-            Time step size for the integration.
+            Time step of integration with units of time. Default is 1.0 * unit.femtoseconds.
         collision_rate : unit.Quantity, optional
-            Collision rate for the Langevin dynamics.
+            Collision rate for the Langevin dynamics, with units 1/time. Default is 1.0 / unit.picoseconds.
+        save_frequency : int, optional
+            Frequency of saving the simulation data. Default is 100.
+        reporter : SimulationReporter, optional
+            Reporter object for saving the simulation data. Default is None.
         """
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         log.info(f"stepsize = {stepsize}")
         log.info(f"collision_rate = {collision_rate}")
+        log.info(f"save_frequency = {save_frequency}")
+
         self.stepsize = stepsize
         self.collision_rate = collision_rate
         if reporter is not None:
@@ -40,6 +57,7 @@ class LangevinIntegrator:
             self.reporter = reporter
         self.save_frequency = save_frequency
 
+        self.velocities = None
     def set_velocities(self, vel: unit.Quantity) -> None:
         """
         Set the initial velocities for the Langevin Integrator.
@@ -73,6 +91,8 @@ class LangevinIntegrator:
             Number of simulation steps to perform.
         key : jax.random.PRNGKey, optional
             Random key for generating random numbers.
+        nbr_list : NeighborListNsqrd, optional
+            Neighbor list for the system.
         progress_bar : bool, optional
             Flag indicating whether to display a progress bar during integration.
 
@@ -85,7 +105,6 @@ class LangevinIntegrator:
 
         self.box_vectors = sampler_state.box_vectors
         self.progress_bar = progress_bar
-        self.velocities = None
         temperature = thermodynamic_state.temperature
         x0 = sampler_state.x0
 
