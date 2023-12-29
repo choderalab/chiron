@@ -58,6 +58,7 @@ class LangevinIntegrator:
         self.save_frequency = save_frequency
 
         self.velocities = None
+
     def set_velocities(self, vel: unit.Quantity) -> None:
         """
         Set the initial velocities for the Langevin Integrator.
@@ -167,7 +168,8 @@ class LangevinIntegrator:
 
             if step % self.save_frequency == 0:
                 # log.debug(f"Saving at step {step}")
-                if self.reporter is not None:
+                # check if reporter is attribute of the class
+                if hasattr(self, "reporter") and self.reporter is not None:
                     d = {
                         "traj": x,
                         "energy": potential.compute_energy(x, nbr_list),
@@ -180,4 +182,6 @@ class LangevinIntegrator:
                     self.reporter.report(d)
 
         log.debug("Finished running Langevin dynamics")
+        # save the final state of the simulation in the sampler_state object
+        sampler_state.x0 = x
         # self.reporter.close()
