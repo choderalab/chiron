@@ -23,10 +23,6 @@ class MultiStateSampler(object):
     state are specified and replica mixing does not change any thermodynamic states,
     meaning that each replica remains in its original thermodynamic state.
 
-    Stored configurations, energies, swaps, and restart information are all written
-    to a single output file using the platform portable, robust, and efficient
-    NetCDF4 library.
-
     Parameters
     ----------
     mcmc_moves : MCMCMove or list of MCMCMove, optional
@@ -35,35 +31,7 @@ class MultiStateSampler(object):
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
     number_of_iterations : int or infinity, optional, default: 1
-        The number of iterations to perform. Both ``float('inf')`` and
-        ``numpy.inf`` are accepted for infinity. If you set this to infinity,
-        be sure to set also ``online_analysis_interval``.
-    online_analysis_interval : None or Int >= 1, optional, default: 200
-        Choose the interval at which to perform online analysis of the free energy.
-
-        After every interval, the simulation will be stopped and the free energy estimated.
-
-        If the error in the free energy estimate is at or below ``online_analysis_target_error``, then the simulation
-        will be considered completed.
-
-        If set to ``None``, then no online analysis is performed
-
-    online_analysis_target_error : float >= 0, optional, default 0.0
-        The target error for the online analysis measured in kT per phase.
-
-        Once the free energy is at or below this value, the phase will be considered complete.
-
-        If ``online_analysis_interval`` is None, this option does nothing.
-
-        Default is set to 0.0 since online analysis runs by default, but a finite ``number_of_iterations`` should also
-        be set to ensure there is some stop condition. If target error is 0 and an infinite number of iterations is set,
-        then the sampler will run until the user stop it manually.
-
-    online_analysis_minimum_iterations : int >= 0, optional, default 200
-        Set the minimum number of iterations which must pass before online analysis is carried out.
-
-        Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
-        If ``online_analysis_interval`` is None, this does nothing
+        The number of iterations to perform.
 
     locality : int > 0, optional, default None
         If None, the energies at all states will be computed for every replica each iteration.
@@ -178,6 +146,57 @@ class MultiStateSampler(object):
     def is_completed(self):
         """Check if we have reached any of the stop target criteria (read-only)"""
         return self._is_completed()
+
+    def _compute_replica_energies(self, replica_id):
+        """Compute the energy for the replica in every ThermodynamicState."""
+        # Determine neighborhood
+        import jax.numpy as jnp
+
+        state_index = self._replica_thermodynamic_states[replica_id]
+        neighborhood = self._neighborhood(state_index)
+
+        # Only compute energies of the sampled states over neighborhoods.
+        energy_neighborhood_states = jnp.zeros(len(neighborhood))
+        neighborhood_thermodynamic_states = [
+            self._thermodynamic_states[n] for n in neighborhood
+        ]
+
+        # Retrieve sampler state associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
+
+        # Compute energy for all thermodynamic states.
+        from openmmtools.states import group_by_compatibility
+
+        for energies, the_states in [
+            (energy_neighborhood_states, neighborhood_thermodynamic_states),
+        ]:
+            # Group thermodynamic states by compatibility.
+            compatible_groups, original_indices = group_by_compatibility(the_states)
+
+            # Compute the reduced potentials of all the compatible states.
+            for compatible_group, state_indices in zip(
+                compatible_groups, original_indices
+            ):
+                # Get the context, any Integrator works.
+                context, integrator = self.energy_context_cache.get_context(
+                    compatible_group[0]
+                )
+
+                # Update positions and box vectors. We don't need
+                # to set Context velocities for the potential.
+                sampler_state.apply_to_context(context, ignore_velocities=True)
+
+                # Compute and update the reduced potentials.
+                compatible_energies = (
+                    states.ThermodynamicState.reduced_potential_at_states(
+                        context, compatible_group
+                    )
+                )
+                for energy_idx, state_idx in enumerate(state_indices):
+                    energies[state_idx] = compatible_energies[energy_idx]
+
+        # Return the new energies.
+        return energy_neighborhood_states, energy_unsampled_states
 
     def create(
         self,
