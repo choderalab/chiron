@@ -422,6 +422,8 @@ class MetropolizedMove(MCMove):
                 proposed_positions
             )
         if nbr_list is not None:
+            sampler_state.x0 = nbr_list.space.wrap(sampler_state.x0)
+
             if nbr_list.check(sampler_state.x0):
                 nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
 
