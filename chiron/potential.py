@@ -272,7 +272,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self,
         topology: Topology,
         k: unit.Quantity = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2,
-        x0: unit.Quantity = [[0.0, 0.0, 0.0]] * unit.angstrom,
+        x0: unit.Quantity = jnp.array([[0.0, 0.0, 0.0]]) * unit.angstrom,
         U0: unit.Quantity = 0.0 * unit.kilocalories_per_mole,
     ):
         """
