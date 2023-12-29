@@ -409,9 +409,13 @@ class MetropolizedMove(MCMove):
             initial_positions = jnp.copy(x0)
         else:
             initial_positions = jnp.copy(sampler_state.x0[jnp.array(atom_subset)])
+        initial_box_vectors = jnp.copy(sampler_state.box_vectors)
+
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
-        proposed_positions = self._propose_positions(initial_positions)
+        proposed_positions, proposed_box_vectors = self._propose_positions(
+            initial_positions, initial_box_vectors
+        )
 
         log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
@@ -421,11 +425,18 @@ class MetropolizedMove(MCMove):
             sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
                 proposed_positions
             )
+        sampler_state.box_vectors = proposed_box_vectors
+
         if nbr_list is not None:
+            # nbr_list box_vectors setter also sets space.box_vectors
+            nbr_list.box_vectors = proposed_box_vectors
             sampler_state.x0 = nbr_list.space.wrap(sampler_state.x0)
 
-            if nbr_list.check(sampler_state.x0):
+            if jnp.any(initial_box_vectors != proposed_box_vectors):
                 nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
+            else:
+                if nbr_list.check(sampler_state.x0):
+                    nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
 
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state, nbr_list
@@ -468,8 +479,10 @@ class MetropolizedMove(MCMove):
             )
         self.n_proposed += 1
 
-    def _propose_positions(self, positions: jnp.array):
-        """Return new proposed positions.
+    def _propose_positions(
+        self, positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
+        """Return new proposed positions and changes to box vectors.
 
         These method must be implemented in subclasses.
 
@@ -478,11 +491,14 @@ class MetropolizedMove(MCMove):
         positions : nx3 jnp.ndarray
             The original positions of the subset of atoms that these move
             applied to.
+        box_vectors : 3x3 jnp.ndarray
+            The box vectors of the system.
 
         Returns
         -------
-        proposed_positions : nx3 jnp.ndarray
-            The new proposed positions.
+        Tuple[jnp.array, jnp.array]
+            proposed_positions : nx3 jnp.ndarray, box_vectors : 3x3 jnp.ndarray
+            The new proposed positions and box vectors.
 
         """
         raise NotImplementedError(
@@ -592,9 +608,14 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
         return updated_position
 
-    def _propose_positions(self, initial_positions: jnp.array) -> jnp.array:
+    def _propose_positions(
+        self, initial_positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
         """Implement MetropolizedMove._propose_positions for apply()."""
-        return self.displace_positions(initial_positions, self.displacement_sigma)
+        return (
+            self.displace_positions(initial_positions, self.displacement_sigma),
+            box_vectors,
+        )
 
     def run(
         self,

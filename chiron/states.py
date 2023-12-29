@@ -92,6 +92,13 @@ class SamplerState:
         else:
             self._x0 = unit.Quantity(x0, self._distance_unit)
 
+    @box_vectors.setter
+    def box_vectors(self, box_vectors: Union[jnp.array, unit.Quantity]) -> None:
+        if isinstance(box_vectors, unit.Quantity):
+            self._box_vectors = box_vectors
+        else:
+            self._box_vectors = unit.Quantity(box_vectors, self._distance_unit)
+
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit

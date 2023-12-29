@@ -360,6 +360,15 @@ class PairsBase(ABC):
         """
         pass
 
+    @property
+    def box_vectors(self) -> jnp.array:
+        return self._box_vectors
+
+    @box_vectors.setter
+    def box_vectors(self, box_vectors: jnp.array) -> None:
+        self._box_vectors = box_vectors
+        self.space.box_vectors = box_vectors
+
 
 class NeighborListNsqrd(PairsBase):
     """
@@ -547,12 +556,13 @@ class NeighborListNsqrd(PairsBase):
                 f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
             )
 
-        self.ref_coordinates = coordinates
+        # will also set the box vectors in the space object due to the setter in the ABC
         self.box_vectors = box_vectors
 
+        self.ref_coordinates = coordinates
         # the neighborlist assumes that the box vectors do not change between building and calculating the neighbor list
         # changes to the box vectors require rebuilding the neighbor list
-        self.space.box_vectors = self.box_vectors
+        # self.space.box_vectors = self.box_vectors
 
         # store the ids of all the particles
         self.particle_ids = jnp.array(
@@ -958,8 +968,6 @@ class PairList(PairsBase):
                 f"Number of particles cannot changes without rebuilding. "
                 f"Coordinates must have shape ({self.n_particles}, 3), found {coordinates.shape}"
             )
-
-        # coordinates = self.space.wrap(coordinates)
 
         n_neighbors, padding_mask, dist, r_ij = jax.vmap(
             self._calc_distance_per_particle, in_axes=(0, 0, 0, None)
