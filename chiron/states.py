@@ -283,6 +283,11 @@ class ThermodynamicState:
         ) / unit.AVOGADRO_CONSTANT_NA
         log.debug(f"reduced potential: {reduced_potential}")
         if self.pressure is not None:
+            self.volume = (
+                sampler_state.box_vectors[0][0]
+                * sampler_state.box_vectors[1][1]
+                * sampler_state.box_vectors[2][2]
+            )
             reduced_potential += self.pressure * self.volume
 
         return self.beta * reduced_potential

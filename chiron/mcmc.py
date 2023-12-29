@@ -409,7 +409,13 @@ class MetropolizedMove(MCMove):
             initial_positions = jnp.copy(x0)
         else:
             initial_positions = jnp.copy(sampler_state.x0[jnp.array(atom_subset)])
-        initial_box_vectors = jnp.copy(sampler_state.box_vectors)
+        if sampler_state.box_vectors is not None:
+            initial_box_vectors = jnp.copy(sampler_state.box_vectors)
+        else:
+            initial_box_vectors = None
+
+        if thermodynamic_state.pressure is not None:
+            initial_volume = jnp.copy(thermodynamic_state.volume)
 
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
@@ -441,8 +447,15 @@ class MetropolizedMove(MCMove):
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state, nbr_list
         )  # NOTE: in kT
+
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
+        if thermodynamic_state.pressure is not None:
+            proposed_volume = jnp.copy(thermodynamic_state.volume)
+
+            delta_energy += sampler_state.x0.shape[0] * jnp.log(
+                proposed_volume / initial_volume
+            )
         log.debug(f"Delta energy is {delta_energy} kT.")
         import jax.random as jrandom
 
@@ -615,6 +628,151 @@ class MetropolisDisplacementMove(MetropolizedMove):
         return (
             self.displace_positions(initial_positions, self.displacement_sigma),
             box_vectors,
+        )
+
+    def run(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list=None,
+        progress_bar=True,
+    ):
+        from tqdm import tqdm
+
+        for trials in (
+            tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
+        ):
+            self.apply(
+                thermodynamic_state, sampler_state, self.simulation_reporter, nbr_list
+            )
+            if trials % 100 == 0:
+                log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+                if self.simulation_reporter is not None:
+                    self.simulation_reporter.report(
+                        {
+                            "Acceptance rate": self.n_accepted / self.n_proposed,
+                            "step": self.n_proposed,
+                        }
+                    )
+
+        log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+
+
+class MCBarostatMove(MetropolizedMove):
+    """A metropolized move that randomly displace a subset of atoms.
+
+    Parameters
+    ----------
+    displacement_sigma : openmm.unit.Quantity
+        The standard deviation of the normal distribution used to propose the
+        random displacement (units of length, default is 1.0*nanometer).
+    atom_subset : slice or list of int, optional
+        If specified, the move is applied only to those atoms specified by these
+        indices. If None, the move is applied to all atoms (default is None).
+
+    Attributes
+    ----------
+    n_accepted : int
+        The number of proposals accepted.
+    n_proposed : int
+        The total number of attempted moves.
+    displacement_sigma
+    atom_subset
+
+    See Also
+    --------
+    MetropolizedMove
+
+    """
+
+    def __init__(
+        self,
+        seed: int = 1234,
+        volume_max_scale=0.01,
+        nr_of_moves: int = 100,
+        atom_subset: Optional[List[int]] = None,
+        simulation_reporter: Optional[SimulationReporter] = None,
+    ):
+        """
+        Initialize the MCMC class.
+
+        Parameters
+        ----------
+        seed : int, optional
+            The seed for the random number generator. Default is 1234.
+        volume_max_scale : float
+            The length scale to apply to each box length of the system. Default is 1.1.
+        nr_of_moves : int, optional
+            The number of moves to perform. Default is 100.
+        atom_subset : list of int, optional
+            A subset of atom indices to consider for the moves. Default is None.
+        simulation_reporter : SimulationReporter, optional
+            The reporter to write the data to. Default is None.
+        Returns
+        -------
+        None
+        """
+
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        self.volume_max_scale = volume_max_scale
+
+        self.atom_subset = atom_subset
+        self.simulation_reporter = simulation_reporter
+        if self.simulation_reporter is not None:
+            log.info(
+                f"Using reporter {self.simulation_reporter} saving to {self.simulation_reporter.filename}"
+            )
+
+    def displace_positions(
+        self, positions: jnp.array, volume_max_scale: float, box_vectors: jnp.array
+    ):
+        """Return the positions after applying a random displacement to them.
+
+        Parameters
+        ----------
+        positions : nx3 jnp.array unit.Quantity
+            The positions to displace.
+        volume_max_scale : float
+            The maximum magnitude of the volume scaling.
+        box_vectors : 3x3 jnp.ndarray
+            The box vectors of the system.
+
+
+        Returns
+        -------
+        Tuple[jnp.array, jnp.array]
+            updated_positions : nx3 numpy.ndarray openmm.unit.Quantity of scaled positions
+            scaled_box : 3x3 jnp.ndarray of scaled box vectors
+
+        """
+        import jax.random as jrandom
+
+        self.key, subkey = jrandom.split(self.key)
+        nr_of_atoms = positions.shape[0]
+        # log.debug(f"Number of atoms is {nr_of_atoms}.")
+
+        volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+        volume_scale_factor = volume_max_scale * volume
+
+        delta_volume = jrandom.uniform(subkey, minval=-1) * volume_scale_factor
+        log.debug(f"Delta volume is {delta_volume}.")
+
+        new_volume = volume + delta_volume
+        length_scale = jnp.power(new_volume / delta_volume, 1.0 / 3.0)
+
+        updated_position = positions * length_scale
+        box_scaling = jnp.array(
+            [[length_scale, 0, 0], [0, length_scale, 0], [0, 0, length_scale]]
+        )
+        scaled_box = box_vectors * box_scaling
+        return updated_position, scaled_box
+
+    def _propose_positions(
+        self, initial_positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
+        """Implement MetropolizedMove._propose_positions for apply()."""
+        return self.displace_positions(
+            initial_positions, self.volume_max_scale, box_vectors
         )
 
     def run(
