@@ -487,6 +487,10 @@ class MetropolizedMove(MCMove):
                 sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
                     initial_positions
                 )
+            if thermodynamic_state.pressure is not None:
+                thermodynamic_state.volume = initial_volume
+                thermoydnamic_state.box_vectors = initial_box_vectors
+
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
