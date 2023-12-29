@@ -272,9 +272,24 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self,
         topology: Topology,
         k: unit.Quantity = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2,
-        x0: unit.Quantity = 0.0 * unit.angstrom,
+        x0: unit.Quantity = [[0.0, 0.0, 0.0]] * unit.angstrom,
         U0: unit.Quantity = 0.0 * unit.kilocalories_per_mole,
     ):
+        """
+        Initialize a HarmonicOscillatorPotential object.
+
+        Parameters:
+        ----------
+        topology : Topology
+            The topology object representing the molecular system.
+        k : unit.Quantity, optional
+            The spring constant of the harmonic potential. Default is 1.0 kcal/mol/Å^2.
+        x0 : unit.Quantity, optional
+            The equilibrium position of the harmonic potential. Default is [0.0,0.0,0.0] Å.
+        U0 : unit.Quantity, optional
+            The offset potential energy of the harmonic potential. Default is 0.0 kcal/mol.
+        """
+
         if not isinstance(topology, Topology):
             if not isinstance(
                 topology, property
@@ -298,6 +313,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             raise ValueError(
                 f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}"
             )
+        assert x0.shape[1] == 3, f"x0 must be a NX3 vector, x0.shape = {x0.shape}"
         if not U0.unit.is_compatible(unit.kilocalories_per_mole):
             raise ValueError(
                 f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"

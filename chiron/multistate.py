@@ -259,8 +259,18 @@ class MultiStateSampler(object):
         self._neighborhoods = np.zeros([self.n_replicas, self.n_states], "i1")
 
     def _minimize_replica(
-        self, replica_id: int, tolerance: unit.Quantity, max_iterations: int
+        self, replica_id: int, tolerance: unit.Quantity, max_iterations: int = 1_000
     ):
+        """
+        Minimizes the energy of a replica using the provided parameters.
+
+        Parameters
+        ----------
+        replica_id (int): The ID of the replica.
+        tolerance (unit.Quantity): The tolerance for convergence.
+        max_iterations (int, optional): The maximum number of iterations for the minimization. Defaults to 1_000.
+        """
+
         from chiron.minimze import minimize_energy
 
         # Retrieve thermodynamic and sampler states.
@@ -278,9 +288,9 @@ class MultiStateSampler(object):
             sampler_state.x0,
             thermodynamic_state.potential.compute_energy,
             self.nbr_list,
-            maxiter=0,
+            maxiter=max_iterations,
         )
-        sampler_state.positions = results.params
+        sampler_state.x0 = results.params
         final_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         log.debug(
             f"Replica {replica_id + 1}/{self.n_replicas}: final energy {final_energy:8.3f}kT"
@@ -289,7 +299,7 @@ class MultiStateSampler(object):
     def minimize(
         self,
         tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
-        max_iterations=0,
+        max_iterations: int = 1_000,
     ):
         """Minimize all replicas.
 
@@ -314,15 +324,11 @@ class MultiStateSampler(object):
         log.debug("Minimizing all replicas...")
 
         # minimization and update sampler states
-        minimized_positions, sampler_state_ids = [], []
         for replica_id in range(self.n_replicas):
             self._minimize_replica(replica_id, tolerance, max_iterations)
 
     def equilibrate(self, n_iterations, mcmc_moves=None):
         """Equilibrate all replicas.
-
-        This does not increase the iteration counter. The equilibrated
-        positions are stored at the end.
 
         Parameters
         ----------
