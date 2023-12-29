@@ -1,4 +1,3 @@
-import os
 import copy
 import time
 from typing import List
@@ -7,10 +6,10 @@ from chiron.states import SamplerState, ThermodynamicState
 import datetime
 from loguru import logger as log
 import numpy as np
-from openmmtools.utils import time_it
+from openmmtools.utils import time_it, with_timer
 from chiron.neighbors import NeighborListNsqrd
-import openmm
 from openmm import unit
+from chiron.mcmc import MCMCMove
 
 
 class MultiStateSampler(object):
@@ -81,11 +80,7 @@ class MultiStateSampler(object):
     is_completed
     """
 
-    def __init__(
-        self,
-        mcmc_moves=None,
-        number_of_iterations=1,
-    ):
+    def __init__(self, mcmc_moves=None, number_of_iterations=1, locality=None):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -121,6 +116,9 @@ class MultiStateSampler(object):
         self.number_of_iterations = number_of_iterations
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
+
+        # Store locality
+        self.locality = locality
 
     @property
     def n_states(self):
@@ -350,12 +348,11 @@ class MultiStateSampler(object):
             mcmc_moves = self._mcmc_moves
 
         # Make sure there is one MCMCMove per thermodynamic state.
-        if isinstance(mcmc_moves, mcmc.MCMCMove):
+        if isinstance(mcmc_moves, MCMCMove):
             mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_states)]
         elif len(mcmc_moves) != self.n_states:
             raise RuntimeError(
-                "The number of MCMCMoves ({}) and ThermodynamicStates ({}) for equilibration"
-                " must be the same.".format(len(self._mcmc_moves), self.n_states)
+                f"The number of MCMCMoves ({len(self._mcmc_moves)}) and ThermodynamicStates ({self.n_states}) for equilibration must be the same."
             )
         from openmmtools.utils import Timer
 
@@ -366,7 +363,7 @@ class MultiStateSampler(object):
         production_mcmc_moves = self._mcmc_moves
         self._mcmc_moves = mcmc_moves
         for iteration in range(1, 1 + n_iterations):
-            logger.info("Equilibration iteration {}/{}".format(iteration, n_iterations))
+            log.info("Equilibration iteration {iteration}/{n_iterations}")
             timer.start("Equilibration Iteration")
 
             # NOTE: Unlike run(), do NOT increment iteration counter.
@@ -405,6 +402,84 @@ class MultiStateSampler(object):
         self._mcmc_moves = production_mcmc_moves
 
         # TODO: Update stored positions.
+
+    def _propagate_replica(self, replica_id):
+        """Propagate thermodynamic state associated to the given replica."""
+        # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
+        sampler_state = self._sampler_states[replica_id]
+
+        # Apply MCMC move.
+        try:
+            mcmc_move.run(sampler_state, thermodynamic_state)
+        except Exception as e:
+            log.warning(e)
+            raise e
+
+    @with_timer("Propagating all replicas")
+    def _propagate_replicas(self):
+        """Propagate all replicas."""
+
+        log.debug("Propagating all replicas...")
+
+        for i in range(self.n_replicas):
+            self._propagate_replica(i)
+
+    def _neighborhood(self, state_index):
+        """Compute the states in the local neighborhood determined by self.locality
+
+        Parameters
+        ----------
+        state_index : int
+            The current state
+
+        Returns
+        -------
+        neighborhood : list of int
+            The states in the local neighborhood
+        """
+        if self.locality is None:
+            # Global neighborhood
+            return list(range(0, self.n_states))
+        else:
+            # Local neighborhood specified by 'locality'
+            return list(
+                range(
+                    max(0, state_index - self.locality),
+                    min(self.n_states, state_index + self.locality + 1),
+                )
+            )
+
+    @with_timer("Computing energy matrix")
+    def _compute_energies(self):
+        """Compute energies of all replicas at all states."""
+
+        # Determine neighborhoods (all nodes)
+        self._neighborhoods[:, :] = False
+        for replica_index, state_index in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_index)
+            self._neighborhoods[replica_index, neighborhood] = True
+
+        # Distribute energy computation across nodes. Only node 0 receives
+        # all the energies since it needs to store them and mix states.
+        new_energies, replica_ids = [], []
+        for i in range(self.n_replicas):
+            new_energy, replica_id = self._compute_replica_energies(i)
+            new_energies.append(new_energy)
+            replica_ids.append(replica_id)
+
+        # Update energy matrices. Non-0 nodes update only the energies computed by this replica.
+        for replica_id, energies in zip(replica_ids, new_energies):
+            energy_thermodynamic_states, energy_unsampled_states = energies  # Unpack.
+            neighborhood = self._neighborhood(
+                self._replica_thermodynamic_states[replica_id]
+            )
+            self._energy_thermodynamic_states[
+                replica_id, neighborhood
+            ] = energy_thermodynamic_states
+            self._energy_unsampled_states[replica_id] = energy_unsampled_states
 
     def run(self, n_iterations=None):
         """Run the replica-exchange simulation.
