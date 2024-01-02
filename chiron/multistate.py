@@ -724,27 +724,57 @@ class MultiStateSampler(object):
 
         return False
 
-    def run(self, n_iterations=None):
-        """Run the replica-exchange simulation.
+    def _update_run_progress(self, timer, run_initial_iteration, iteration_limit):
+        # Computing and transmitting timing information
+        iteration_time = timer.stop("Iteration")
+        partial_total_time = timer.partial("Run ReplicaExchange")
+        self._update_timing(
+            iteration_time,
+            partial_total_time,
+            run_initial_iteration,
+            iteration_limit,
+        )
 
-        This runs at most ``number_of_iterations`` iterations.
+        # Log timing data as info level -- useful for users by default
+        log.info(
+            "Iteration took {:.3f}s.".format(self._timing_data["iteration_seconds"])
+        )
+        if self._timing_data["estimated_time_remaining"] != float("inf"):
+            log.info(
+                f"Estimated completion in {self._timing_data['estimated_time_remaining']}, at {self._timing_data['estimated_localtime_finish_date']} (consuming total wall clock time {self._timing_data['estimated_total_time']})."
+            )
+
+        # Perform sanity checks to see if we should terminate here.
+        self._check_nan_energy()
+
+    def run(self, n_iterations: Optional[int] = None) -> None:
+        """
+        Execute the replica-exchange simulation.
+
+        Run the simulation for a specified number of iterations. If no number is
+        specified, it runs for the number of iterations set during the initialization
+        of the sampler.
 
         Parameters
         ----------
-        n_iterations : int, optional
-           If specified, only at most the specified number of iterations
-           will be run (default is None).
+        n_iterations : Optional[int], default=None
+            The number of iterations to run. If None, the sampler runs for the
+            number of iterations specified at initialization.
+
+        Raises
+        ------
+        RuntimeError
+            If an error occurs during the computation of energies.
         """
+
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
 
         log.info("Running simulation...")
+
+        # Initialize energies if this is the first iteration
         if self._iteration == 0:
-            try:
-                self._compute_energies()
-            except Exception as e:
-                log.critical(e)
-                raise e
+            self._compute_energies()
 
             self._reporter.write_energies(
                 energy_thermodynamic_states=self._energy_thermodynamic_states,
@@ -759,13 +789,12 @@ class MultiStateSampler(object):
         timer.start("Run ReplicaExchange")
         run_initial_iteration = self._iteration
 
-        # Handle default argument and determine number of iterations to run.
-        if n_iterations is None:
-            iteration_limit = self.number_of_iterations
-        else:
-            iteration_limit = min(
-                self._iteration + n_iterations, self.number_of_iterations
-            )
+        # Determine the number of iterations to run before stopping.
+        iteration_limit = (
+            min(self._iteration + n_iterations, self.number_of_iterations)
+            if n_iterations is not None
+            else self.number_of_iterations
+        )
 
         # Main loop.
         while not self._is_completed(iteration_limit):
@@ -792,27 +821,12 @@ class MultiStateSampler(object):
             # TODO: Update analysis
             # self._update_analysis()
 
-            # Computing and transmitting timing information
-            iteration_time = timer.stop("Iteration")
-            partial_total_time = timer.partial("Run ReplicaExchange")
-            self._update_timing(
-                iteration_time,
-                partial_total_time,
-                run_initial_iteration,
-                iteration_limit,
+            # Update timing and progress information
+            self._update_run_progress(
+                timer=timer,
+                run_initial_iteration=run_initial_iteration,
+                iteration_limit=iteration_limit,
             )
-
-            # Log timing data as info level -- useful for users by default
-            log.info(
-                "Iteration took {:.3f}s.".format(self._timing_data["iteration_seconds"])
-            )
-            if self._timing_data["estimated_time_remaining"] != float("inf"):
-                log.info(
-                    f"Estimated completion in {self._timing_data['estimated_time_remaining']}, at {self._timing_data['estimated_localtime_finish_date']} (consuming total wall clock time {self._timing_data['estimated_total_time']})."
-                )
-
-            # Perform sanity checks to see if we should terminate here.
-            self._check_nan_energy()
 
     @with_timer("Writing iteration information to storage")
     def _report_iteration(self):
