@@ -3,7 +3,6 @@ from typing import List, Optional, Union
 from jax import numpy as jnp
 from loguru import logger as log
 from .potential import NeuralNetworkPotential
-from openmm.app import Topology
 
 
 class SamplerState:
@@ -287,3 +286,30 @@ class ThermodynamicState:
     def kT_to_kJ_per_mol(self, energy):
         energy = energy * unit.AVOGADRO_CONSTANT_NA
         return energy / self.beta
+
+
+def calculate_reduced_potential_at_states(
+    sampler_state: SamplerState,
+    themrodynamic_states: List[ThermodynamicState],
+    nbr_list=None,
+):
+    """
+    Calculate the reduced potential for a list of thermodynamic states.
+
+    Parameters
+    ----------
+    sampler_state : SamplerState
+        The sampler state for which to compute the reduced potential.
+    thermodynamic_states : list of ThermodynamicState
+        The thermodynamic states for which to compute the reduced potential.
+    nbr_list : NeighborList or PairList, optional
+    Returns
+    -------
+    list of float
+        The reduced potential of the system for each thermodynamic state.
+
+    """
+    reduced_potentials = []
+    for state in themrodynamic_states:
+        reduced_potentials.append(state.get_reduced_potential(sampler_state))
+    return reduced_potentials
