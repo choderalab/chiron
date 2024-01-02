@@ -414,11 +414,27 @@ class MetropolizedMove(MCMove):
         else:
             initial_box_vectors = None
 
+        # if we are running in NPT, we need to store the initial volume as well
         if thermodynamic_state.pressure is not None:
+            if thermodynamic_state.volume is None:
+                if sampler_state.box_vectors is None:
+                    raise ValueError(
+                        "Cannot run NPT without a volume or box vectors specified"
+                    )
+                # units are nm**3
+                initial_volume = (
+                    initial_box_vectors[0][0]
+                    * initial_box_vectors[1][1]
+                    * initial_box_vectors[2][2]
+                )
+                # set the volume in the thermodynamic state
+                thermodynamic_state.volume = initial_volume
+
             initial_volume = jnp.copy(thermodynamic_state.volume)
 
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
+        # This will also return box vectors for methodologies that change both position and box
         proposed_positions, proposed_box_vectors = self._propose_positions(
             initial_positions, initial_box_vectors
         )
@@ -431,16 +447,21 @@ class MetropolizedMove(MCMove):
             sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
                 proposed_positions
             )
+        # set the box vectors in the sampler state  if they changed
         sampler_state.box_vectors = proposed_box_vectors
 
         if nbr_list is not None:
             # nbr_list box_vectors setter also sets space.box_vectors
             nbr_list.box_vectors = proposed_box_vectors
-            sampler_state.x0 = nbr_list.space.wrap(sampler_state.x0)
 
+            # this will call the space.wrap function
+            sampler_state.x0 = nbr_list.wrap(sampler_state.x0)
+
+            # if the box vectors changed, we need to rebuild the neighbor list
             if jnp.any(initial_box_vectors != proposed_box_vectors):
                 nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
             else:
+                # check to see if any particles have moved too far
                 if nbr_list.check(sampler_state.x0):
                     nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
 
@@ -450,9 +471,16 @@ class MetropolizedMove(MCMove):
 
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
-        if thermodynamic_state.pressure is not None:
-            proposed_volume = jnp.copy(thermodynamic_state.volume)
 
+        # if we are running NPT, we need to add in the N*ln(V/V0) term to delta energy
+        if thermodynamic_state.pressure is not None:
+            # units are nm**3
+            proposed_volume = (
+                proposed_box_vectors[0][0]
+                * proposed_box_vectors[1][1]
+                * proposed_box_vectors[2][2]
+            )
+            thermodynamic_state.volume = proposed_volume
             delta_energy += sampler_state.x0.shape[0] * jnp.log(
                 proposed_volume / initial_volume
             )
@@ -489,7 +517,7 @@ class MetropolizedMove(MCMove):
                 )
             if thermodynamic_state.pressure is not None:
                 thermodynamic_state.volume = initial_volume
-                thermoydnamic_state.box_vectors = initial_box_vectors
+                thermodynamic_state.box_vectors = initial_box_vectors
 
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
@@ -756,17 +784,21 @@ class MCBarostatMove(MetropolizedMove):
         # log.debug(f"Number of atoms is {nr_of_atoms}.")
 
         volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+        log.debug(f"Volume is {volume}.")
         volume_scale_factor = volume_max_scale * volume
-
+        log.debug(f"Volume is {volume}.")
         delta_volume = jrandom.uniform(subkey, minval=-1) * volume_scale_factor
         log.debug(f"Delta volume is {delta_volume}.")
 
         new_volume = volume + delta_volume
-        length_scale = jnp.power(new_volume / delta_volume, 1.0 / 3.0)
+        log.debug(f"New volume is {new_volume}.")
+        length_scaled = jnp.power(new_volume / volume, 1.0 / 3.0)
 
-        updated_position = positions * length_scale
+        log.debug(f"Length scaled is {length_scaled}.")
+
+        updated_position = positions * length_scaled
         box_scaling = jnp.array(
-            [[length_scale, 0, 0], [0, length_scale, 0], [0, 0, length_scale]]
+            [[length_scaled, 0, 0], [0, length_scaled, 0], [0, 0, length_scaled]]
         )
         scaled_box = box_vectors * box_scaling
         return updated_position, scaled_box

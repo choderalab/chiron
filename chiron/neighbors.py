@@ -369,6 +369,23 @@ class PairsBase(ABC):
         self._box_vectors = box_vectors
         self.space.box_vectors = box_vectors
 
+    def wrap(self, coordinates: jnp.array) -> jnp.array:
+        """
+        Wrap the coordinates of the system.
+
+        Parameters
+        ----------
+        coordinates: jnp.array
+            Coordinates of the system
+
+        Returns
+        -------
+        jnp.array
+            Wrapped coordinates of the system
+
+        """
+        return self.space.wrap(coordinates)
+
 
 class NeighborListNsqrd(PairsBase):
     """
