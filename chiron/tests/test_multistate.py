@@ -55,11 +55,17 @@ def ho_multistate_sampler() -> MultiStateSampler:
     )
 
     move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=50)
+
+    from openmmtools.multistate import MultiStateReporter
+
+    reporter = MultiStateReporter("test.nc")
+
     multistate_sampler = MultiStateSampler(mcmc_moves=move, number_of_iterations=2)
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
         sampler_states=sampler_state,
         nbr_list=nbr_list,
+        reporter=reporter,
     )
 
     return multistate_sampler
@@ -91,5 +97,40 @@ def test_multistate_minimize(ho_multistate_sampler):
     assert np.allclose(
         ho_multistate_sampler.sampler_states[0].x0, np.array([[0.0, 0.0, 0.0]])
     )
-    assert np.allclose(ho_multistate_sampler.sampler_states[1].x0, np.array([[0.05, 0.0, 0.0]]), atol=1e-2)
-    assert np.allclose(ho_multistate_sampler.sampler_states[2].x0, np.array([[0.1, 0.0, 0.0]]), atol=1e-2)
+    assert np.allclose(
+        ho_multistate_sampler.sampler_states[1].x0,
+        np.array([[0.05, 0.0, 0.0]]),
+        atol=1e-2,
+    )
+    assert np.allclose(
+        ho_multistate_sampler.sampler_states[2].x0,
+        np.array([[0.1, 0.0, 0.0]]),
+        atol=1e-2,
+    )
+
+
+def test_multistate_equilibration(ho_multistate_sampler):
+    import numpy as np
+
+    ho_multistate_sampler.equilibrate(10)
+
+    assert np.allclose(
+        ho_multistate_sampler._replica_thermodynamic_states, np.array([0, 1, 2])
+    )
+    assert np.allclose(
+        ho_multistate_sampler._energy_thermodynamic_states,
+        np.array(
+            [
+                [4.81132936, 3.84872651, 3.10585403],
+                [6.54490519, 5.0176239, 3.85019779],
+                [9.48260307, 7.07196712, 5.21255827],
+            ]
+        ),
+    )
+
+
+def test_multistate_run(ho_multistate_sampler):
+    import numpy as np
+
+    ho_multistate_sampler.equilibrate(10)
+    ho_multistate_sampler.run(10)
