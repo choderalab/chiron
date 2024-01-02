@@ -275,6 +275,83 @@ def test_thermodynamic_state_inputs():
     ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
 
 
+def test_mc_barostat_setting():
+    import jax.numpy as jnp
+    from chiron.mcmc import MCBarostatMove
+
+    barostat_move = MCBarostatMove(
+        seed=1234,
+        volume_max_scale=0.01,
+        nr_of_moves=10,
+    )
+
+    assert barostat_move.volume_max_scale == 0.01
+
+    from chiron.potential import LJPotential
+    from openmm import unit
+
+    sigma = 0.34 * unit.nanometer
+    epsilon = 0.238 * unit.kilocalories_per_mole
+    cutoff = 3.0 * sigma
+
+    positions = (
+        jnp.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 0],
+                [1, 0, 1],
+                [0, 1, 1],
+                [1, 1, 1],
+            ]
+        )
+        * unit.nanometer
+    )
+    box_vectors = (
+        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+        * unit.nanometer
+    )
+
+    from openmm.app import Topology, Element
+
+    topology = Topology()
+    element = Element.getBySymbol("Ar")
+    chain = topology.addChain()
+    residue = topology.addResidue("system", chain)
+    for i in range(positions.shape[0]):
+        topology.addAtom("Ar", element, residue)
+
+    lj_potential = LJPotential(topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
+
+    from chiron.states import SamplerState, ThermodynamicState
+
+    # define the sampler state
+    sampler_state = SamplerState(
+        x0=positions,
+        box_vectors=box_vectors,
+    )
+
+    # define the thermodynamic state
+    thermodynamic_state = ThermodynamicState(
+        potential=lj_potential,
+        temperature=300 * unit.kelvin,
+        pressure=1.0 * unit.atmosphere,
+    )
+
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+
+    # define the neighbor list for an orthogonal periodic space
+    skin = 0.5 * unit.nanometer
+
+    nbr_list = NeighborListNsqrd(
+        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
+    )
+
+    barostat_move.run(sampler_state, thermodynamic_state, nbr_list, True)
+
+
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
     # define two harmonic oscillators with different spring constants and equilibrium positions
     # sample from the joint distribution of the two HO using local langevin moves

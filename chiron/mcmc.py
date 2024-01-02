@@ -498,15 +498,16 @@ class MetropolizedMove(MCMove):
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
-            reporter.report(
-                {
-                    "energy": thermodynamic_state.kT_to_kJ_per_mol(
-                        proposed_energy
-                    ).value_in_unit_system(unit.md_unit_system),
-                    "step": self.n_proposed,
-                    "traj": sampler_state.x0,
-                }
-            )
+            if reporter is not None:
+                reporter.report(
+                    {
+                        "energy": thermodynamic_state.kT_to_kJ_per_mol(
+                            proposed_energy
+                        ).value_in_unit_system(unit.md_unit_system),
+                        "step": self.n_proposed,
+                        "traj": sampler_state.x0,
+                    }
+                )
         else:
             # Restore original positions.
             if atom_subset is None:
@@ -671,6 +672,10 @@ class MetropolisDisplacementMove(MetropolizedMove):
     ):
         from tqdm import tqdm
 
+        if nbr_list is not None:
+            if not nbr_list.is_built:
+                nbr_list.build_from_state(sampler_state)
+
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
         ):
@@ -819,6 +824,15 @@ class MCBarostatMove(MetropolizedMove):
         progress_bar=True,
     ):
         from tqdm import tqdm
+
+        if thermodynamic_state.pressure is None:
+            raise ValueError(
+                "Cannot run MCBarostatMove without a pressure specified in the thermodynamic state"
+            )
+
+        if nbr_list is not None:
+            if not nbr_list.is_built:
+                nbr_list.build_from_state(sampler_state)
 
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
