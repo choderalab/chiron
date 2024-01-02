@@ -631,28 +631,35 @@ class MultiStateSampler(object):
         for replica_id in range(self.n_replicas):
             self._propagate_replica(replica_id)
 
-    def _neighborhood(self, state_index):
-        """Compute the states in the local neighborhood determined by self.locality
+    def _neighborhood(self, state_index: int) -> List[int]:
+        """
+        Compute the indices of neighboring states for a given state.
+
+        This method determines the neighborhood of states around a given state index,
+        considering the 'locality' parameter. If 'locality' is None, the neighborhood
+        includes all states; otherwise, it includes states within the 'locality' range.
 
         Parameters
         ----------
         state_index : int
-            The current state
+            The index of the state for which the neighborhood is to be calculated.
 
         Returns
         -------
-        neighborhood : list of int
-            The states in the local neighborhood
+        List[int]
+            A list of state indices that are considered neighbors of the given state.
         """
         if self.locality is None:
             # Global neighborhood
-            return list(range(0, self.n_states))
+            return list(range(self.n_states))
         else:
             # Local neighborhood specified by 'locality'
+            lower_bound = max(0, state_index - self.locality)
+            upper_bound = min(self.n_states, state_index + self.locality + 1)
             return list(
                 range(
-                    max(0, state_index - self.locality),
-                    min(self.n_states, state_index + self.locality + 1),
+                    lower_bound,
+                    upper_bound,
                 )
             )
 
