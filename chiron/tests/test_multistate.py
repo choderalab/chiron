@@ -128,9 +128,22 @@ def test_multistate_equilibration(ho_multistate_sampler):
         ),
     )
 
+    a = 7
+
 
 def test_multistate_run(ho_multistate_sampler):
     import numpy as np
 
     ho_multistate_sampler.equilibrate(10)
+    assert np.allclose(
+        ho_multistate_sampler._energy_thermodynamic_states,
+        np.array(
+            [
+                [4.81132936, 3.84872651, 3.10585403],
+                [6.54490519, 5.0176239, 3.85019779],
+                [9.48260307, 7.07196712, 5.21255827],
+            ]
+        ),
+    )
     ho_multistate_sampler.run(10)
+
