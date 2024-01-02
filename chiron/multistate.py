@@ -693,24 +693,35 @@ class MultiStateSampler(object):
         log.debug(self._energy_thermodynamic_states)
         log.debug(self._neighborhoods)
 
-    def _is_completed(self, iteration_limit=None):
-        """Check if we have reached any of the stop target criteria.
+    def _is_completed(self, iteration_limit: Optional[int] = None) -> bool:
+        """
+        Determine if the sampling process has met its completion criteria.
+
+        This method checks if the simulation has reached a specified iteration limit
+        or any other predefined stopping condition.
 
         Parameters
         ----------
-        iteration_limit : int, optional
-            If specified, the simulation will stop if the iteration counter reaches this value.
+        iteration_limit : Optional[int], default=None
+            An optional iteration limit. If specified, the method checks if the
+            current iteration number has reached this limit.
 
         Returns
         -------
-        is_completed : bool
-            If True, the simulation is completed and should be terminated.
+        bool
+            True if the simulation has completed based on the stopping criteria,
+            False otherwise.
         """
+
+        # Check if iteration limit has been reached
         if iteration_limit is not None and self._iteration >= iteration_limit:
             log.info(
                 f"Reached iteration limit {iteration_limit} (current iteration {self._iteration})"
             )
             return True
+
+        # Additional stopping criteria can be implemented here
+
         return False
 
     def run(self, n_iterations=None):
