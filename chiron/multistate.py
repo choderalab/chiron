@@ -618,13 +618,18 @@ class MultiStateSampler(object):
         return new_replica_states
 
     @with_timer("Propagating all replicas")
-    def _propagate_replicas(self):
-        """Propagate all replicas."""
+    def _propagate_replicas(self) -> None:
+        """
+        Propagate all replicas through their respective MCMC moves.
+
+        This method iterates over all replicas and applies the corresponding MCMC move
+        to each one, based on its current thermodynamic state.
+        """
 
         log.debug("Propagating all replicas...")
 
-        for i in range(self.n_replicas):
-            self._propagate_replica(i)
+        for replica_id in range(self.n_replicas):
+            self._propagate_replica(replica_id)
 
     def _neighborhood(self, state_index):
         """Compute the states in the local neighborhood determined by self.locality
