@@ -69,6 +69,10 @@ class SamplerState:
         self._distance_unit = unit.nanometer
 
     @property
+    def n_particles(self) -> int:
+        return self._x0.shape[0]
+
+    @property
     def x0(self) -> jnp.array:
         return self._convert_to_jnp(self._x0)
 
