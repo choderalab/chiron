@@ -664,31 +664,34 @@ class MultiStateSampler(object):
             )
 
     @with_timer("Computing energy matrix")
-    def _compute_energies(self):
-        """Compute energies of all replicas at all states."""
+    def _compute_energies(self) -> None:
+        """
+        Compute the energies of all replicas at all thermodynamic states.
 
-        # Determine neighborhoods (all nodes)
-        self._neighborhoods[:, :] = False
-        for replica_index, state_index in enumerate(self._replica_thermodynamic_states):
-            neighborhood = self._neighborhood(state_index)
-            self._neighborhoods[replica_index, neighborhood] = True
+        This method calculates the energy for each replica in every thermodynamic state,
+        considering the defined neighborhoods to optimize the computation. The energies
+        are stored in the internal energy matrix of the sampler.
+        """
 
-        # Calculate energies for all replicas.
-        new_energies, replica_ids = [], []
+        log.debug("Computing energy matrix for all replicas...")
+        # Initialize the energy matrix and neighborhoods
+        self._energy_thermodynamic_states = np.zeros((self.n_replicas, self.n_states))
+        self._neighborhoods = np.zeros((self.n_replicas, self.n_states), dtype=bool)
+
+        # Calculate energies for each replica
         for replica_id in range(self.n_replicas):
-            new_energy = self._compute_replica_energies(replica_id)
-            new_energies.append(new_energy)
-            replica_ids.append(replica_id)
-
-        # Update energy matrices.
-        for replica_id, energies in zip(replica_ids, new_energies):
-            energy_thermodynamic_states = energies  # Unpack.
             neighborhood = self._neighborhood(
                 self._replica_thermodynamic_states[replica_id]
             )
+            self._neighborhoods[replica_id, neighborhood] = True
+
+            # Compute and store energies for the neighborhood states
             self._energy_thermodynamic_states[
                 replica_id, neighborhood
-            ] = energy_thermodynamic_states
+            ] = self._compute_replica_energies(replica_id)
+
+        log.debug(self._energy_thermodynamic_states)
+        log.debug(self._neighborhoods)
 
     def _is_completed(self, iteration_limit=None):
         """Check if we have reached any of the stop target criteria.
