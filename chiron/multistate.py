@@ -48,7 +48,13 @@ class MultiStateSampler(object):
     is_completed
     """
 
-    def __init__(self, mcmc_moves=None, number_of_iterations=1, locality=None):
+    def __init__(
+        self,
+        mcmc_moves=None,
+        number_of_iterations=1,
+        locality=None,
+        online_analysis_interval=5,
+    ):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -63,6 +69,7 @@ class MultiStateSampler(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
+        self._online_analysis_interval = online_analysis_interval
         self._timing_data = dict()
 
         # Handling default propagator.
@@ -818,8 +825,8 @@ class MultiStateSampler(object):
             # Write iteration to storage file
             self._report_iteration()
 
-            # TODO: Update analysis
-            # self._update_analysis()
+            # Update analysis
+            self._update_analysis()
 
             # Update timing and progress information
             self._update_run_progress(
@@ -966,3 +973,60 @@ class MultiStateSampler(object):
                 )
             log.critical(err_msg)
             raise RuntimeError(err_msg)
+
+    def _update_analysis(self):
+        """Update analysis of free energies"""
+
+        if self._online_analysis_interval is None:
+            log.debug("No online analysis requested")
+            # Perform no analysis and exit function
+            return
+
+        # Always perform fast online analysis
+        if self.free_energy_estimator == "mbar":
+            self._last_err_free_energy = self._mbar_analysis()
+
+        return
+
+    def _mbar_analysis(self):
+        """
+        Perform online analysis of the simulation.
+
+        This method performs online analysis of the simulation, including
+        the calculation of free energies and other thermodynamic properties.
+        """
+        import jax.numpy as jnp
+        from jax.scipy.special import logsumexp
+
+        gamma = 1.0 / self._iteration + 1
+
+        self._last_mbar_f_k = np.zeros([self.n_states], np.float64)
+
+        logZ = -self._last_mbar_f_k
+
+        for replica_index, state_index in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_index)
+            u_k = self._energy_thermodynamic_states[replica_index, :]
+            log_P_k = np.zeros([self.n_states], np.float64)
+            log_pi_k = np.zeros([self.n_states], np.float64)
+            log_weights = np.zeros([self.n_states], np.float64)
+            log_P_k[neighborhood] = log_weights[neighborhood] - u_k[neighborhood]
+            log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
+            logZ[neighborhood] += gamma * np.exp(
+                log_P_k[neighborhood] - log_pi_k[neighborhood]
+            )
+
+        # Subtract off logZ[0] to prevent logZ from growing without bound
+        logZ[:] -= logZ[0]
+        self._last_mbar_f_k = -logZ
+        free_energy = self._last_mbar_f_k[-1] - self._last_mbar_f_k[0]
+        self._last_err_free_energy = np.Inf
+
+        # Report online analysis to debug log
+        log.debug("*** MBAR analysis free energies:")
+        msg = "    "
+        for x in self._last_mbar_f_k:
+            msg += "%8.1f" % x
+        log.debug(msg)
+        log.debug(free_energy)
+        return self._last_err_free_energy
