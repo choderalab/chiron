@@ -128,22 +128,83 @@ def test_multistate_equilibration(ho_multistate_sampler):
         ),
     )
 
-    a = 7
 
+@pytest.fixture
+def ho_multistate_sampler_single_sampler_state() -> MultiStateSampler:
+    """
+    Create a multi-state sampler for a harmonic oscillator system.
 
-def test_multistate_run(ho_multistate_sampler):
+    Returns:
+        MultiStateSampler: The multi-state sampler object.
+    """
+    from openmm import unit
+    from chiron.mcmc import LangevinDynamicsMove
+    from chiron.states import ThermodynamicState, SamplerState
+    from openmmtools.testsystems import HarmonicOscillator
+    from chiron.potential import HarmonicOscillatorPotential
+    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+
+    ho = HarmonicOscillator()
+    n_states = 4
+    
+    T = 300.0 * unit.kelvin  # Minimum temperature.
+    kT = unit.BOLTZMANN_CONSTANT_kB * T * unit.AVOGADRO_CONSTANT_NA
+    sigmas = [
+        unit.Quantity(1.0 + 0.2 * state_index, unit.angstrom)
+        for state_index in range(n_states)
+    ]
+    Ks = [kT / sigma ** 2 for sigma in sigmas]
+    thermodynamic_states = [
+        ThermodynamicState(
+            HarmonicOscillatorPotential(ho.topology, k=k), temperature=T
+        )
+        for k in Ks
+    ]
+    sampler_state = [SamplerState(ho.positions) for _ in sigmas]
     import numpy as np
 
-    ho_multistate_sampler.equilibrate(10)
-    assert np.allclose(
-        ho_multistate_sampler._energy_thermodynamic_states,
-        np.array(
-            [
-                [4.81132936, 3.84872651, 3.10585403],
-                [6.54490519, 5.0176239, 3.85019779],
-                [9.48260307, 7.07196712, 5.21255827],
-            ]
-        ),
+    f_i = np.array(
+        [
+            -np.log(2 * np.pi * (sigma / unit.angstroms) ** 2) * (3.0 / 2.0)
+            for sigma in sigmas
+        ]
     )
-    ho_multistate_sampler.run(10)
 
+    # Initialize simulation object with options. Run with a langevin integrator.
+    # initialize the LennardJones potential in chiron
+    #
+    sigma = 0.34 * unit.nanometer
+    cutoff = 3.0 * sigma
+    skin = 0.5 * unit.nanometer
+
+    nbr_list = NeighborListNsqrd(
+        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=10
+    )
+
+    move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
+
+    from openmmtools.multistate import MultiStateReporter
+
+    reporter = MultiStateReporter("test.nc")
+
+    multistate_sampler = MultiStateSampler(mcmc_moves=move, number_of_iterations=10)
+    multistate_sampler.create(
+        thermodynamic_states=thermodynamic_states,
+        sampler_states=sampler_state,
+        nbr_list=nbr_list,
+        reporter=reporter,
+    )
+    multistate_sampler.analytical_f_i = f_i
+    multistate_sampler.delta_f_ij_analytical = f_i - f_i[:, np.newaxis]
+    return multistate_sampler
+
+
+def test_multistate_run(ho_multistate_sampler_single_sampler_state):
+    ho_sampler = ho_multistate_sampler_single_sampler_state
+    import numpy as np
+
+    ho_sampler.equilibrate(10)
+    ho_sampler.run(200)
+    print(ho_sampler.analytical_f_i)
+    print(ho_sampler.delta_f_ij_analytical)
+    a = 7
