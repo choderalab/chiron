@@ -71,6 +71,7 @@ class MultiStateSampler(object):
         self._metadata = None
         self._online_analysis_interval = online_analysis_interval
         self._timing_data = dict()
+        self.free_energy_estimator = None
 
         # Handling default propagator.
         if mcmc_moves is None:
@@ -240,6 +241,7 @@ class MultiStateSampler(object):
         """
         # TODO: initialize reporter here
         # TODO: consider unsampled thermodynamic states for reweighting schemes
+        self.free_energy_estimator = "mbar"
 
         # Ensure the number of thermodynamic states matches the number of sampler states
         if len(thermodynamic_states) != len(sampler_states):
@@ -999,6 +1001,7 @@ class MultiStateSampler(object):
         from jax.scipy.special import logsumexp
 
         gamma = 1.0 / self._iteration + 1
+        gamma = 1.0
 
         self._last_mbar_f_k = np.zeros([self.n_states], np.float64)
 
