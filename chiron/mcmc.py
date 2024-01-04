@@ -102,6 +102,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        nbr_list=None,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -115,7 +116,9 @@ class LangevinDynamicsMove(StateUpdateMove):
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
             key=self.key,
+            nbr_list=nbr_list,
         )
+        self.key = self.integrator.key
 
 
 class MCMove(StateUpdateMove):
@@ -297,7 +300,7 @@ class MCMCSampler(object):
         self.sampler_state = deepcopy(sampler_state)
         self.thermodynamic_state = deepcopy(thermodynamic_state)
 
-    def run(self, n_iterations: int = 1):
+    def run(self, n_iterations: int = 1, nbr_list=None):
         """
         Run the sampler for a specified number of iterations.
 
@@ -305,6 +308,9 @@ class MCMCSampler(object):
         ----------
         n_iterations : int, optional
             Number of iterations of the sampler to run.
+        nbr_list: Neighbor List or Pair List routine,
+            The routine to use to calculate the interacting atoms.
+            Default is None and will use an unoptimized pairlist without PBC
         """
         log.info("Running Gibbs sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
@@ -313,7 +319,7 @@ class MCMCSampler(object):
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                move.run(self.sampler_state, self.thermodynamic_state)
+                move.run(self.sampler_state, self.thermodynamic_state, nbr_list)
 
         log.info("Finished running Gibbs sampler")
         log.debug("Closing reporter")
@@ -416,21 +422,22 @@ class MetropolizedMove(MCMove):
 
         # if we are running in NPT, we need to store the initial volume as well
         if thermodynamic_state.pressure is not None:
-            if thermodynamic_state.volume is None:
-                if sampler_state.box_vectors is None:
-                    raise ValueError(
-                        "Cannot run NPT without a volume or box vectors specified"
-                    )
-                # units are nm**3
-                initial_volume = (
-                    initial_box_vectors[0][0]
-                    * initial_box_vectors[1][1]
-                    * initial_box_vectors[2][2]
+            if sampler_state.box_vectors is None:
+                raise ValueError(
+                    "Cannot run NPT without a volume or box vectors specified"
                 )
-                # set the volume in the thermodynamic state
-                thermodynamic_state.volume = initial_volume
+            # units are nm**3
+            initial_volume = (
+                initial_box_vectors[0][0]
+                * initial_box_vectors[1][1]
+                * initial_box_vectors[2][2]
+            )
+            # set the volume in the thermodynamic state
+            thermodynamic_state.volume = initial_volume * unit.nanometer**3
 
-            initial_volume = jnp.copy(thermodynamic_state.volume)
+            initial_volume = jnp.copy(
+                thermodynamic_state.volume.value_in_unit_system(unit.md_unit_system)
+            )
 
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
@@ -468,10 +475,10 @@ class MetropolizedMove(MCMove):
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state, nbr_list
         )  # NOTE: in kT
-
+        log.debug(f"Proposed energy is {proposed_energy} kT.")
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
-
+        log.debug(f"Delta energy is {delta_energy} kT.")
         # if we are running NPT, we need to add in the N*ln(V/V0) term to delta energy
         if thermodynamic_state.pressure is not None:
             # units are nm**3
@@ -480,11 +487,20 @@ class MetropolizedMove(MCMove):
                 * proposed_box_vectors[1][1]
                 * proposed_box_vectors[2][2]
             )
-            thermodynamic_state.volume = proposed_volume
-            delta_energy += sampler_state.x0.shape[0] * jnp.log(
+            thermodynamic_state.volume = proposed_volume * unit.nanometer**3
+            import math
+
+            log.debug(
+                f"Proposed volume is {proposed_volume} initial volume {initial_volume}"
+            )
+            volume_term = sampler_state.x0.shape[0] * math.log(
                 proposed_volume / initial_volume
             )
-        log.debug(f"Delta energy is {delta_energy} kT.")
+            aa = math.log(proposed_volume / initial_volume)
+            log.debug(f"log vol: {aa}")
+            log.debug(f"Volume term is {volume_term} kT.")
+            delta_energy -= volume_term
+            log.debug(f"Delta energy for NPT is {delta_energy} kT.")
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
@@ -517,7 +533,7 @@ class MetropolizedMove(MCMove):
                     initial_positions
                 )
             if thermodynamic_state.pressure is not None:
-                thermodynamic_state.volume = initial_volume
+                thermodynamic_state.volume = initial_volume * unit.nanometer**3
                 thermodynamic_state.box_vectors = initial_box_vectors
 
             log.debug(
@@ -785,13 +801,13 @@ class MCBarostatMove(MetropolizedMove):
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
+        log.debug(f"staring barostat with key {self.key}")
         nr_of_atoms = positions.shape[0]
         # log.debug(f"Number of atoms is {nr_of_atoms}.")
 
         volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
         log.debug(f"Volume is {volume}.")
         volume_scale_factor = volume_max_scale * volume
-        log.debug(f"Volume is {volume}.")
         delta_volume = jrandom.uniform(subkey, minval=-1) * volume_scale_factor
         log.debug(f"Delta volume is {delta_volume}.")
 
@@ -802,10 +818,8 @@ class MCBarostatMove(MetropolizedMove):
         log.debug(f"Length scaled is {length_scaled}.")
 
         updated_position = positions * length_scaled
-        box_scaling = jnp.array(
-            [[length_scaled, 0, 0], [0, length_scaled, 0], [0, 0, length_scaled]]
-        )
-        scaled_box = box_vectors * box_scaling
+
+        scaled_box = box_vectors * length_scaled
         return updated_position, scaled_box
 
     def _propose_positions(
