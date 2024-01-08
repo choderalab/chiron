@@ -5,7 +5,7 @@ from chiron.states import SamplerState, ThermodynamicState
 import datetime
 from loguru import logger as log
 import numpy as np
-from openmmtools.utils import time_it, with_timer
+from openmmtools.utils import with_timer
 from chiron.neighbors import NeighborListNsqrd
 from openmm import unit
 from chiron.mcmc import MCMCMove
@@ -30,8 +30,6 @@ class MultiStateSampler(object):
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
-    number_of_iterations : int or infinity, optional, default: 1
-        The number of iterations to perform.
 
     locality : int > 0, optional, default None
         If None, the energies at all states will be computed for every replica each iteration.
@@ -41,7 +39,6 @@ class MultiStateSampler(object):
     ----------
     n_replicas
     n_states
-    iteration
     mcmc_moves
     sampler_states
     metadata
@@ -51,7 +48,6 @@ class MultiStateSampler(object):
     def __init__(
         self,
         mcmc_moves=None,
-        number_of_iterations=1,
         locality=None,
         online_analysis_interval=5,
     ):
@@ -63,6 +59,7 @@ class MultiStateSampler(object):
         self._replica_thermodynamic_states = None
         self._iteration = None
         self._energy_thermodynamic_states = None
+        self._energy_thermodynamic_states_for_each_iteration = None
         self._neighborhoods = None
         self._energy_unsampled_states = None
         self._n_accepted_matrix = None
@@ -86,10 +83,6 @@ class MultiStateSampler(object):
         else:
             self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
-        # Store constructor parameters. Everything is marked for internal
-        # usage because any change to these attribute implies a change
-        # in the storage file as well. Use properties for checks.
-        self.number_of_iterations = number_of_iterations
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
 
@@ -699,9 +692,6 @@ class MultiStateSampler(object):
                 replica_id, neighborhood
             ] = self._compute_replica_energies(replica_id)
 
-        log.debug(self._energy_thermodynamic_states)
-        log.debug(self._neighborhoods)
-
     def _is_completed(self, iteration_limit: Optional[int] = None) -> bool:
         """
         Determine if the sampling process has met its completion criteria.
@@ -756,7 +746,7 @@ class MultiStateSampler(object):
         # Perform sanity checks to see if we should terminate here.
         self._check_nan_energy()
 
-    def run(self, n_iterations: Optional[int] = None) -> None:
+    def run(self, n_iterations: int = 10) -> None:
         """
         Execute the replica-exchange simulation.
 
@@ -766,9 +756,8 @@ class MultiStateSampler(object):
 
         Parameters
         ----------
-        n_iterations : Optional[int], default=None
-            The number of iterations to run. If None, the sampler runs for the
-            number of iterations specified at initialization.
+        n_iterations : int, default=10
+            The number of iterations to run.
 
         Raises
         ------
@@ -778,34 +767,31 @@ class MultiStateSampler(object):
 
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
+        self.number_of_iterations = n_iterations
 
         log.info("Running simulation...")
+        self._energy_thermodynamic_states_for_each_iteration_in_run = np.zeros(
+            [self.n_replicas, self.n_states, n_iterations + 1], np.float64
+        )
 
         # Initialize energies if this is the first iteration
         if self._iteration == 0:
             self._compute_energies()
-
-            self._reporter.write_energies(
-                energy_thermodynamic_states=self._energy_thermodynamic_states,
-                energy_neighborhoods=self._neighborhoods,
-                energy_unsampled_states=self._energy_unsampled_states,
-                iteration=self._iteration,
-            )
+            # store energies for mbar analysis
+            self._energy_thermodynamic_states_for_each_iteration_in_run[
+                :, :, self._iteration
+            ] = self._energy_thermodynamic_states
+            # TODO report energies
 
         from openmmtools.utils import Timer
 
         timer = Timer()
         timer.start("Run ReplicaExchange")
-        run_initial_iteration = self._iteration
 
-        # Determine the number of iterations to run before stopping.
-        iteration_limit = (
-            min(self._iteration + n_iterations, self.number_of_iterations)
-            if n_iterations is not None
-            else self.number_of_iterations
-        )
+        iteration_limit = n_iterations
 
-        # Main loop.
+        # start the sampling loop
+        log.debug(f"{iteration_limit=}")
         while not self._is_completed(iteration_limit):
             # Increment iteration counter.
             self._iteration += 1
@@ -824,26 +810,35 @@ class MultiStateSampler(object):
             # Compute energies of all replicas at all states
             self._compute_energies()
 
+            # Add energies to the energy matrix
+            self._energy_thermodynamic_states_for_each_iteration_in_run[
+                :, :, self._iteration
+            ] = self._energy_thermodynamic_states
+            log.info(
+                self._energy_thermodynamic_states_for_each_iteration_in_run[:, :, 1]
+            )
+            log.info(self._energy_thermodynamic_states)
             # Write iteration to storage file
-            self._report_iteration()
+            # TODO
+            # self._report_iteration()
 
             # Update analysis
             self._update_analysis()
 
-            # Update timing and progress information
-            self._update_run_progress(
-                timer=timer,
-                run_initial_iteration=run_initial_iteration,
-                iteration_limit=iteration_limit,
-            )
-
-    @with_timer("Writing iteration information to storage")
     def _report_iteration(self):
-        """Store positions, states, and energies of current iteration.n"""
-        # Call report_iteration_items for a subclass-friendly function
-        self._report_iteration_items()
-        self._reporter.write_timestamp(self._iteration)
-        self._reporter.write_last_iteration(self._iteration)
+        """Store positions, states, and energies of current iteration."""
+
+        # TODO: write energies
+
+        # TODO: write trajectory
+
+        # TODO: write mixing statistics
+        self._reporter.write_energies(
+            self._energy_thermodynamic_states,
+            self._neighborhoods,
+            self._energy_unsampled_states,
+            self._iteration,
+        )
 
     def _report_iteration_items(self):
         """
@@ -984,7 +979,7 @@ class MultiStateSampler(object):
             # Perform no analysis and exit function
             return
 
-        # Always perform fast online analysis
+        # Perform offline free energy estimate if requested
         if self.free_energy_estimator == "mbar":
             self._last_err_free_energy = self._mbar_analysis()
 
@@ -992,44 +987,20 @@ class MultiStateSampler(object):
 
     def _mbar_analysis(self):
         """
-        Perform online analysis of the simulation.
-
-        This method performs online analysis of the simulation, including
-        the calculation of free energies and other thermodynamic properties.
+        Perform mbar analysis
         """
-        import jax.numpy as jnp
-        from jax.scipy.special import logsumexp
+        from pymbar import MBAR
 
-        gamma = 1.0 / self._iteration + 1
-        gamma = 1.0
+        self._last_mbar_f_k_offline = np.zeros(len(self._thermodynamic_states))
 
-        self._last_mbar_f_k = np.zeros([self.n_states], np.float64)
-
-        logZ = -self._last_mbar_f_k
-
-        for replica_index, state_index in enumerate(self._replica_thermodynamic_states):
-            neighborhood = self._neighborhood(state_index)
-            u_k = self._energy_thermodynamic_states[replica_index, :]
-            log_P_k = np.zeros([self.n_states], np.float64)
-            log_pi_k = np.zeros([self.n_states], np.float64)
-            log_weights = np.zeros([self.n_states], np.float64)
-            log_P_k[neighborhood] = log_weights[neighborhood] - u_k[neighborhood]
-            log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
-            logZ[neighborhood] += gamma * np.exp(
-                log_P_k[neighborhood] - log_pi_k[neighborhood]
-            )
-
-        # Subtract off logZ[0] to prevent logZ from growing without bound
-        logZ[:] -= logZ[0]
-        self._last_mbar_f_k = -logZ
-        free_energy = self._last_mbar_f_k[-1] - self._last_mbar_f_k[0]
-        self._last_err_free_energy = np.Inf
-
-        # Report online analysis to debug log
-        log.debug("*** MBAR analysis free energies:")
-        msg = "    "
-        for x in self._last_mbar_f_k:
-            msg += "%8.1f" % x
-        log.debug(msg)
-        log.debug(free_energy)
-        return self._last_err_free_energy
+        log.debug(
+            f"{self._energy_thermodynamic_states_for_each_iteration_in_run.shape=}"
+        )
+        log.debug(f"{self.n_states=}")
+        u_kn = self._energy_thermodynamic_states_for_each_iteration_in_run
+        log.debug(f"{self._iteration=}")
+        N_k = [self._iteration] * self.n_states
+        log.debug(f"{N_k=}")
+        mbar = MBAR(u_kn=u_kn, N_k=N_k)
+        log.debug(mbar.f_k)
+        self._last_mbar_f_k_offline = mbar.f_k

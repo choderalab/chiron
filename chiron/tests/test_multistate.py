@@ -146,18 +146,16 @@ def ho_multistate_sampler_single_sampler_state() -> MultiStateSampler:
 
     ho = HarmonicOscillator()
     n_states = 4
-    
+
     T = 300.0 * unit.kelvin  # Minimum temperature.
     kT = unit.BOLTZMANN_CONSTANT_kB * T * unit.AVOGADRO_CONSTANT_NA
     sigmas = [
         unit.Quantity(1.0 + 0.2 * state_index, unit.angstrom)
         for state_index in range(n_states)
     ]
-    Ks = [kT / sigma ** 2 for sigma in sigmas]
+    Ks = [kT / sigma**2 for sigma in sigmas]
     thermodynamic_states = [
-        ThermodynamicState(
-            HarmonicOscillatorPotential(ho.topology, k=k), temperature=T
-        )
+        ThermodynamicState(HarmonicOscillatorPotential(ho.topology, k=k), temperature=T)
         for k in Ks
     ]
     sampler_state = [SamplerState(ho.positions) for _ in sigmas]
@@ -187,7 +185,9 @@ def ho_multistate_sampler_single_sampler_state() -> MultiStateSampler:
 
     reporter = MultiStateReporter("test.nc")
 
-    multistate_sampler = MultiStateSampler(mcmc_moves=move, number_of_iterations=10)
+    multistate_sampler = MultiStateSampler(
+        mcmc_moves=move,
+    )
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
         sampler_states=sampler_state,
@@ -203,8 +203,17 @@ def test_multistate_run(ho_multistate_sampler_single_sampler_state):
     ho_sampler = ho_multistate_sampler_single_sampler_state
     import numpy as np
 
-    ho_sampler.equilibrate(10)
-    ho_sampler.run(200)
+    n_iteratinos = 100
+    ho_sampler.run(n_iteratinos)
+
+    # check that we have the correct number of iterations, replicas and states
+    assert ho_sampler.iteration == n_iteratinos
+    assert ho_sampler._iteration == n_iteratinos
+    assert ho_sampler.n_replicas == 4
+    assert ho_sampler.n_states == 4
+
+    # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     print(ho_sampler.delta_f_ij_analytical)
+    print(ho_sampler._last_mbar_f_k_offline)
     a = 7
