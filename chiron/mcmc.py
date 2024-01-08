@@ -496,9 +496,6 @@ class MetropolizedMove(MCMove):
             volume_term = sampler_state.x0.shape[0] * math.log(
                 proposed_volume / initial_volume
             )
-            aa = math.log(proposed_volume / initial_volume)
-            log.debug(f"log vol: {aa}")
-            log.debug(f"Volume term is {volume_term} kT.")
             delta_energy -= volume_term
             log.debug(f"Delta energy for NPT is {delta_energy} kT.")
         import jax.random as jrandom
@@ -510,7 +507,7 @@ class MetropolizedMove(MCMove):
             delta_energy <= 0.0 or compare_to < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
-            log.debug(f"Check suceeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
+            log.debug(f"Check succeeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
@@ -520,6 +517,9 @@ class MetropolizedMove(MCMove):
                         "energy": thermodynamic_state.kT_to_kJ_per_mol(
                             proposed_energy
                         ).value_in_unit_system(unit.md_unit_system),
+                        "volume": thermodynamic_state.volume.value_in_unit_system(
+                            unit.md_unit_system
+                        ),
                         "step": self.n_proposed,
                         "traj": sampler_state.x0,
                     }
@@ -700,13 +700,13 @@ class MetropolisDisplacementMove(MetropolizedMove):
             )
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-                if self.simulation_reporter is not None:
-                    self.simulation_reporter.report(
-                        {
-                            "Acceptance rate": self.n_accepted / self.n_proposed,
-                            "step": self.n_proposed,
-                        }
-                    )
+            #     if self.simulation_reporter is not None:
+            #         self.simulation_reporter.report(
+            #             {
+            #                 "Acceptance rate": self.n_accepted / self.n_proposed,
+            #                 "step": self.n_proposed,
+            #             }
+            #         )
 
         log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
 
@@ -801,7 +801,6 @@ class MCBarostatMove(MetropolizedMove):
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
-        log.debug(f"staring barostat with key {self.key}")
         nr_of_atoms = positions.shape[0]
         # log.debug(f"Number of atoms is {nr_of_atoms}.")
 
@@ -856,12 +855,24 @@ class MCBarostatMove(MetropolizedMove):
             )
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-                if self.simulation_reporter is not None:
-                    self.simulation_reporter.report(
-                        {
-                            "Acceptance rate": self.n_accepted / self.n_proposed,
-                            "step": self.n_proposed,
-                        }
+                # if self.simulation_reporter is not None:
+                #     self.simulation_reporter.report(
+                #         {
+                #             "Acceptance rate": self.n_accepted / self.n_proposed,
+                #             "step": self.n_proposed,
+                #         }
+                #     )
+            # adjust the volume scaling if the acceptance rate is too high or too low
+            if self.n_proposed > 10 and self.n_proposed % 10 == 0:
+                if self.n_accepted < 0.25 * self.n_proposed:
+                    self.volume_max_scale /= 1.1
+                    log.debug(
+                        f"Acceptance rate is too low, reducing volume_max_scale to {self.volume_max_scale}"
                     )
-
+                elif self.n_accepted > 0.75 * self.n_proposed and trials % 10 == 0:
+                    self.volume_max_scale = 1.1 * self.volume_max_scale
+                    log.debug(
+                        f"Acceptance rate is too high, increasing volumeScale to {self.volume_max_scale}"
+                    )
+        log.debug(f"volume max scaling: {self.volume_max_scale}")
         log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
