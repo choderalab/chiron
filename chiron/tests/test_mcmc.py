@@ -281,11 +281,11 @@ def test_mc_barostat_setting():
 
     barostat_move = MCBarostatMove(
         seed=1234,
-        volume_max_scale=0.01,
-        nr_of_moves=2,
+        volume_max_scale=0.1,
+        nr_of_moves=10,
     )
 
-    assert barostat_move.volume_max_scale == 0.01
+    assert barostat_move.volume_max_scale == 0.1
 
     from chiron.potential import LJPotential
     from openmm import unit
@@ -351,27 +351,27 @@ def test_mc_barostat_setting():
 
     barostat_move.run(sampler_state, thermodynamic_state, nbr_list, True)
 
-    assert barostat_move.statistics["n_accepted"] == 1
-    assert barostat_move.statistics["n_proposed"] == 2
+    assert barostat_move.statistics["n_accepted"] == 7
+    assert barostat_move.statistics["n_proposed"] == 10
 
     assert jnp.all(
         sampler_state.x0
         == jnp.array(
             [
                 [0.0, 0.0, 0.0],
-                [0.99709356, 0.0, 0.0],
-                [0.0, 0.99709356, 0.0],
-                [0.0, 0.0, 0.99709356],
-                [0.99709356, 0.99709356, 0.0],
-                [0.99709356, 0.0, 0.99709356],
-                [0.0, 0.99709356, 0.99709356],
-                [0.99709356, 0.99709356, 0.99709356],
+                [0.9871503, 0.0, 0.0],
+                [0.0, 0.9871503, 0.0],
+                [0.0, 0.0, 0.9871503],
+                [0.9871503, 0.9871503, 0.0],
+                [0.9871503, 0.0, 0.9871503],
+                [0.0, 0.9871503, 0.9871503],
+                [0.9871503, 0.9871503, 0.9871503],
             ]
         )
     )
     assert jnp.all(
         sampler_state.box_vectors
-        == jnp.array([[9.987228, 0.0, 0.0], [0.0, 9.987228, 0.0], [0.0, 0.0, 9.987228]])
+        == jnp.array([[9.16151, 0.0, 0.0], [0.0, 9.16151, 0.0], [0.0, 0.0, 9.16151]])
     )
 
 
