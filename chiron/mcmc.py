@@ -102,6 +102,7 @@ class LangevinDynamicsMove(StateUpdateMove):
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        nbr_list=None,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -115,7 +116,9 @@ class LangevinDynamicsMove(StateUpdateMove):
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
             key=self.key,
+            nbr_list=nbr_list,
         )
+        self.key = self.integrator.key
 
 
 class MCMove(StateUpdateMove):
@@ -297,7 +300,7 @@ class MCMCSampler(object):
         self.sampler_state = deepcopy(sampler_state)
         self.thermodynamic_state = deepcopy(thermodynamic_state)
 
-    def run(self, n_iterations: int = 1):
+    def run(self, n_iterations: int = 1, nbr_list=None):
         """
         Run the sampler for a specified number of iterations.
 
@@ -305,6 +308,9 @@ class MCMCSampler(object):
         ----------
         n_iterations : int, optional
             Number of iterations of the sampler to run.
+        nbr_list: Neighbor List or Pair List routine,
+            The routine to use to calculate the interacting atoms.
+            Default is None and will use an unoptimized pairlist without PBC
         """
         log.info("Running Gibbs sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
@@ -313,7 +319,7 @@ class MCMCSampler(object):
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                move.run(self.sampler_state, self.thermodynamic_state)
+                move.run(self.sampler_state, self.thermodynamic_state, nbr_list)
 
         log.info("Finished running Gibbs sampler")
         log.debug("Closing reporter")
@@ -409,9 +415,36 @@ class MetropolizedMove(MCMove):
             initial_positions = jnp.copy(x0)
         else:
             initial_positions = jnp.copy(sampler_state.x0[jnp.array(atom_subset)])
+        if sampler_state.box_vectors is not None:
+            initial_box_vectors = jnp.copy(sampler_state.box_vectors)
+        else:
+            initial_box_vectors = None
+
+        # if we are running in NPT, we need to store the initial volume as well
+        if thermodynamic_state.pressure is not None:
+            if sampler_state.box_vectors is None:
+                raise ValueError(
+                    "Cannot run NPT without a volume or box vectors specified"
+                )
+            # units are nm**3
+            initial_volume = (
+                initial_box_vectors[0][0]
+                * initial_box_vectors[1][1]
+                * initial_box_vectors[2][2]
+            )
+            # set the volume in the thermodynamic state
+            thermodynamic_state.volume = initial_volume * unit.nanometer**3
+
+            initial_volume = jnp.copy(
+                thermodynamic_state.volume.value_in_unit_system(unit.md_unit_system)
+            )
+
         log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
-        proposed_positions = self._propose_positions(initial_positions)
+        # This will also return box vectors for methodologies that change both position and box
+        proposed_positions, proposed_box_vectors = self._propose_positions(
+            initial_positions, initial_box_vectors
+        )
 
         log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
@@ -421,16 +454,50 @@ class MetropolizedMove(MCMove):
             sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
                 proposed_positions
             )
+        # set the box vectors in the sampler state  if they changed
+        sampler_state.box_vectors = proposed_box_vectors
+
         if nbr_list is not None:
-            if nbr_list.check(sampler_state.x0):
+            # nbr_list box_vectors setter also sets space.box_vectors
+            nbr_list.box_vectors = proposed_box_vectors
+
+            # this will call the space.wrap function
+            sampler_state.x0 = nbr_list.wrap(sampler_state.x0)
+
+            # if the box vectors changed, we need to rebuild the neighbor list
+            if jnp.any(initial_box_vectors != proposed_box_vectors):
                 nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
+            else:
+                # check to see if any particles have moved too far
+                if nbr_list.check(sampler_state.x0):
+                    nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
 
         proposed_energy = thermodynamic_state.get_reduced_potential(
             sampler_state, nbr_list
         )  # NOTE: in kT
+        log.debug(f"Proposed energy is {proposed_energy} kT.")
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
         log.debug(f"Delta energy is {delta_energy} kT.")
+        # if we are running NPT, we need to add in the N*ln(V/V0) term to delta energy
+        if thermodynamic_state.pressure is not None:
+            # units are nm**3
+            proposed_volume = (
+                proposed_box_vectors[0][0]
+                * proposed_box_vectors[1][1]
+                * proposed_box_vectors[2][2]
+            )
+            thermodynamic_state.volume = proposed_volume * unit.nanometer**3
+            import math
+
+            log.debug(
+                f"Proposed volume is {proposed_volume} initial volume {initial_volume}"
+            )
+            volume_term = sampler_state.x0.shape[0] * math.log(
+                proposed_volume / initial_volume
+            )
+            delta_energy -= volume_term
+            log.debug(f"Delta energy for NPT is {delta_energy} kT.")
         import jax.random as jrandom
 
         self.key, subkey = jrandom.split(self.key)
@@ -440,19 +507,23 @@ class MetropolizedMove(MCMove):
             delta_energy <= 0.0 or compare_to < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
-            log.debug(f"Check suceeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
+            log.debug(f"Check succeeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
-            reporter.report(
-                {
-                    "energy": thermodynamic_state.kT_to_kJ_per_mol(
-                        proposed_energy
-                    ).value_in_unit_system(unit.md_unit_system),
-                    "step": self.n_proposed,
-                    "traj": sampler_state.x0,
-                }
-            )
+            if reporter is not None:
+                reporter.report(
+                    {
+                        "energy": thermodynamic_state.kT_to_kJ_per_mol(
+                            proposed_energy
+                        ).value_in_unit_system(unit.md_unit_system),
+                        "volume": thermodynamic_state.volume.value_in_unit_system(
+                            unit.md_unit_system
+                        ),
+                        "step": self.n_proposed,
+                        "traj": sampler_state.x0,
+                    }
+                )
         else:
             # Restore original positions.
             if atom_subset is None:
@@ -461,13 +532,19 @@ class MetropolizedMove(MCMove):
                 sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
                     initial_positions
                 )
+            if thermodynamic_state.pressure is not None:
+                thermodynamic_state.volume = initial_volume * unit.nanometer**3
+                thermodynamic_state.box_vectors = initial_box_vectors
+
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
             )
         self.n_proposed += 1
 
-    def _propose_positions(self, positions: jnp.array):
-        """Return new proposed positions.
+    def _propose_positions(
+        self, positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
+        """Return new proposed positions and changes to box vectors.
 
         These method must be implemented in subclasses.
 
@@ -476,11 +553,14 @@ class MetropolizedMove(MCMove):
         positions : nx3 jnp.ndarray
             The original positions of the subset of atoms that these move
             applied to.
+        box_vectors : 3x3 jnp.ndarray
+            The box vectors of the system.
 
         Returns
         -------
-        proposed_positions : nx3 jnp.ndarray
-            The new proposed positions.
+        Tuple[jnp.array, jnp.array]
+            proposed_positions : nx3 jnp.ndarray, box_vectors : 3x3 jnp.ndarray
+            The new proposed positions and box vectors.
 
         """
         raise NotImplementedError(
@@ -590,9 +670,14 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
         return updated_position
 
-    def _propose_positions(self, initial_positions: jnp.array) -> jnp.array:
+    def _propose_positions(
+        self, initial_positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
         """Implement MetropolizedMove._propose_positions for apply()."""
-        return self.displace_positions(initial_positions, self.displacement_sigma)
+        return (
+            self.displace_positions(initial_positions, self.displacement_sigma),
+            box_vectors,
+        )
 
     def run(
         self,
@@ -603,6 +688,10 @@ class MetropolisDisplacementMove(MetropolizedMove):
     ):
         from tqdm import tqdm
 
+        if nbr_list is not None:
+            if not nbr_list.is_built:
+                nbr_list.build_from_state(sampler_state)
+
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
         ):
@@ -611,12 +700,179 @@ class MetropolisDisplacementMove(MetropolizedMove):
             )
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-                if self.simulation_reporter is not None:
-                    self.simulation_reporter.report(
-                        {
-                            "Acceptance rate": self.n_accepted / self.n_proposed,
-                            "step": self.n_proposed,
-                        }
-                    )
+            #     if self.simulation_reporter is not None:
+            #         self.simulation_reporter.report(
+            #             {
+            #                 "Acceptance rate": self.n_accepted / self.n_proposed,
+            #                 "step": self.n_proposed,
+            #             }
+            #         )
 
+        log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+
+
+class MCBarostatMove(MetropolizedMove):
+    """A metropolized move that randomly displace a subset of atoms.
+
+    Parameters
+    ----------
+    displacement_sigma : openmm.unit.Quantity
+        The standard deviation of the normal distribution used to propose the
+        random displacement (units of length, default is 1.0*nanometer).
+    atom_subset : slice or list of int, optional
+        If specified, the move is applied only to those atoms specified by these
+        indices. If None, the move is applied to all atoms (default is None).
+
+    Attributes
+    ----------
+    n_accepted : int
+        The number of proposals accepted.
+    n_proposed : int
+        The total number of attempted moves.
+    displacement_sigma
+    atom_subset
+
+    See Also
+    --------
+    MetropolizedMove
+
+    """
+
+    def __init__(
+        self,
+        seed: int = 1234,
+        volume_max_scale=0.01,
+        nr_of_moves: int = 100,
+        atom_subset: Optional[List[int]] = None,
+        simulation_reporter: Optional[SimulationReporter] = None,
+    ):
+        """
+        Initialize the MCMC class.
+
+        Parameters
+        ----------
+        seed : int, optional
+            The seed for the random number generator. Default is 1234.
+        volume_max_scale : float
+            The length scale to apply to each box length of the system. Default is 1.1.
+        nr_of_moves : int, optional
+            The number of moves to perform. Default is 100.
+        atom_subset : list of int, optional
+            A subset of atom indices to consider for the moves. Default is None.
+        simulation_reporter : SimulationReporter, optional
+            The reporter to write the data to. Default is None.
+        Returns
+        -------
+        None
+        """
+
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        self.volume_max_scale = volume_max_scale
+
+        self.atom_subset = atom_subset
+        self.simulation_reporter = simulation_reporter
+        if self.simulation_reporter is not None:
+            log.info(
+                f"Using reporter {self.simulation_reporter} saving to {self.simulation_reporter.filename}"
+            )
+
+    def displace_positions(
+        self, positions: jnp.array, volume_max_scale: float, box_vectors: jnp.array
+    ):
+        """Return the positions after applying a random displacement to them.
+
+        Parameters
+        ----------
+        positions : nx3 jnp.array unit.Quantity
+            The positions to displace.
+        volume_max_scale : float
+            The maximum magnitude of the volume scaling.
+        box_vectors : 3x3 jnp.ndarray
+            The box vectors of the system.
+
+
+        Returns
+        -------
+        Tuple[jnp.array, jnp.array]
+            updated_positions : nx3 numpy.ndarray openmm.unit.Quantity of scaled positions
+            scaled_box : 3x3 jnp.ndarray of scaled box vectors
+
+        """
+        import jax.random as jrandom
+
+        self.key, subkey = jrandom.split(self.key)
+        nr_of_atoms = positions.shape[0]
+        # log.debug(f"Number of atoms is {nr_of_atoms}.")
+
+        volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+        log.debug(f"Volume is {volume}.")
+        volume_scale_factor = volume_max_scale * volume
+        delta_volume = jrandom.uniform(subkey, minval=-1) * volume_scale_factor
+        log.debug(f"Delta volume is {delta_volume}.")
+
+        new_volume = volume + delta_volume
+        log.debug(f"New volume is {new_volume}.")
+        length_scaled = jnp.power(new_volume / volume, 1.0 / 3.0)
+
+        log.debug(f"Length scaled is {length_scaled}.")
+
+        updated_position = positions * length_scaled
+
+        scaled_box = box_vectors * length_scaled
+        return updated_position, scaled_box
+
+    def _propose_positions(
+        self, initial_positions: jnp.array, box_vectors: jnp.array
+    ) -> Tuple[jnp.array, jnp.array]:
+        """Implement MetropolizedMove._propose_positions for apply()."""
+        return self.displace_positions(
+            initial_positions, self.volume_max_scale, box_vectors
+        )
+
+    def run(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list=None,
+        progress_bar=True,
+    ):
+        from tqdm import tqdm
+
+        if thermodynamic_state.pressure is None:
+            raise ValueError(
+                "Cannot run MCBarostatMove without a pressure specified in the thermodynamic state"
+            )
+
+        if nbr_list is not None:
+            if not nbr_list.is_built:
+                nbr_list.build_from_state(sampler_state)
+
+        for trials in (
+            tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
+        ):
+            self.apply(
+                thermodynamic_state, sampler_state, self.simulation_reporter, nbr_list
+            )
+            if trials % 100 == 0:
+                log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
+                # if self.simulation_reporter is not None:
+                #     self.simulation_reporter.report(
+                #         {
+                #             "Acceptance rate": self.n_accepted / self.n_proposed,
+                #             "step": self.n_proposed,
+                #         }
+                #     )
+            # adjust the volume scaling if the acceptance rate is too high or too low
+            if self.n_proposed > 10 and self.n_proposed % 10 == 0:
+                if self.n_accepted < 0.25 * self.n_proposed:
+                    self.volume_max_scale /= 1.1
+                    log.debug(
+                        f"Acceptance rate is too low, reducing volume_max_scale to {self.volume_max_scale}"
+                    )
+                elif self.n_accepted > 0.75 * self.n_proposed and trials % 10 == 0:
+                    self.volume_max_scale = 1.1 * self.volume_max_scale
+                    log.debug(
+                        f"Acceptance rate is too high, increasing volumeScale to {self.volume_max_scale}"
+                    )
+        log.debug(f"volume max scaling: {self.volume_max_scale}")
         log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")

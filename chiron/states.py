@@ -92,6 +92,13 @@ class SamplerState:
         else:
             self._x0 = unit.Quantity(x0, self._distance_unit)
 
+    @box_vectors.setter
+    def box_vectors(self, box_vectors: Union[jnp.array, unit.Quantity]) -> None:
+        if isinstance(box_vectors, unit.Quantity):
+            self._box_vectors = box_vectors
+        else:
+            self._box_vectors = unit.Quantity(box_vectors, self._distance_unit)
+
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
@@ -179,6 +186,7 @@ class ThermodynamicState:
             self.beta = None
 
         self.volume = volume
+
         self.pressure = pressure
 
         from .utils import get_nr_of_particles
@@ -264,9 +272,7 @@ class ThermodynamicState:
         and N(x) is the number of particles.
         """
         if self.beta is None:
-            self.beta = 1.0 / (
-                unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
-            )
+            self.beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature))
         log.debug(f"sample state: {sampler_state.x0}")
         reduced_potential = (
             unit.Quantity(
@@ -274,9 +280,18 @@ class ThermodynamicState:
                 unit.kilojoule_per_mole,
             )
         ) / unit.AVOGADRO_CONSTANT_NA
-        log.debug(f"reduced potential: {reduced_potential}")
+        log.debug(f"reduced potential energy: {reduced_potential}")
         if self.pressure is not None:
+            # in case volume is not set, calculate from the box vectors
+            if self.volume is None:
+                self.volume = (
+                    sampler_state.box_vectors[0][0]
+                    * sampler_state.box_vectors[1][1]
+                    * sampler_state.box_vectors[2][2]
+                ) * unit.nanometer**3
+
             reduced_potential += self.pressure * self.volume
+            log.debug(f"reduced potential energy + pV: {reduced_potential}")
 
         return self.beta * reduced_potential
 

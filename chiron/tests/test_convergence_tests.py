@@ -44,7 +44,9 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
     sampler_state = SamplerState(ho.positions)
 
@@ -52,7 +54,9 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
 
     id = uuid.uuid4()
 
-    simulation_reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    simulation_reporter = SimulationReporter(
+        f"{prep_temp_dir}/test_{id}.h5", ho.topology
+    )
 
     # Initalize the move set (here only LangevinDynamicsMove)
     from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
@@ -113,7 +117,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     )
 
 
-@pytest.mark.skip(reason="Tests takes too long")
+# @pytest.mark.skip(reason="Tests takes too long")
 @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     from chiron.integrators import LangevinIntegrator
@@ -156,7 +160,7 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     from chiron.reporters import SimulationReporter
 
     id = uuid.uuid4()
-    reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5", lj_fluid.topology)
 
     integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
     integrator.run(

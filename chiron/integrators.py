@@ -58,6 +58,7 @@ class LangevinIntegrator:
         self.save_frequency = save_frequency
 
         self.velocities = None
+
     def set_velocities(self, vel: unit.Quantity) -> None:
         """
         Set the initial velocities for the Langevin Integrator.
@@ -112,7 +113,7 @@ class LangevinIntegrator:
         log.info(f"n_steps = {n_steps}")
         log.info(f"temperature = {temperature}")
         log.info(f"Using seed: {key}")
-
+        self.key = key
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
         mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[
             :, None
@@ -125,7 +126,7 @@ class LangevinIntegrator:
 
         # Initialize velocities
         if self.velocities is None:
-            v0 = sigma_v * random.normal(key, x0.shape)
+            v0 = sigma_v * random.normal(self.key, x0.shape)
         else:
             v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
         # Convert to dimensionless quantities
@@ -139,7 +140,7 @@ class LangevinIntegrator:
 
         F = potential.compute_force(x, nbr_list)
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
-            key, subkey = random.split(key)
+            self.key, subkey = random.split(self.key)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
             # r
@@ -178,6 +179,6 @@ class LangevinIntegrator:
 
                     # log.debug(d)
                     self.reporter.report(d)
-
+        sampler_state.x0 = x
         log.debug("Finished running Langevin dynamics")
         # self.reporter.close()
