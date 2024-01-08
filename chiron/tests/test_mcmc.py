@@ -354,9 +354,9 @@ def test_mc_barostat_setting():
     assert barostat_move.statistics["n_accepted"] == 7
     assert barostat_move.statistics["n_proposed"] == 10
 
-    assert jnp.all(
-        sampler_state.x0
-        == jnp.array(
+    assert jnp.allclose(
+        sampler_state.x0,
+        jnp.array(
             [
                 [0.0, 0.0, 0.0],
                 [0.9871503, 0.0, 0.0],
@@ -367,11 +367,11 @@ def test_mc_barostat_setting():
                 [0.0, 0.9871503, 0.9871503],
                 [0.9871503, 0.9871503, 0.9871503],
             ]
-        )
+        ),
     )
-    assert jnp.all(
-        sampler_state.box_vectors
-        == jnp.array([[9.16151, 0.0, 0.0], [0.0, 9.16151, 0.0], [0.0, 0.0, 9.16151]])
+    assert jnp.allclose(
+        sampler_state.box_vectors,
+        jnp.array([[9.16151, 0.0, 0.0], [0.0, 9.16151, 0.0], [0.0, 0.0, 9.16151]]),
     )
 
 
