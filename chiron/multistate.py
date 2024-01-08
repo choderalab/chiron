@@ -165,45 +165,16 @@ class MultiStateSampler(object):
         import jax.numpy as jnp
         from chiron.states import calculate_reduced_potential_at_states
 
-        log.debug(f"{self._replica_thermodynamic_states=}")
-
-        # Determine neighborhood
-        state_index = self._replica_thermodynamic_states[replica_id]
-        neighborhood = self._neighborhood(state_index)
-        log.debug(f"{neighborhood=}")
         # Only compute energies of the sampled states over neighborhoods.
-        energy_neighborhood_states = np.zeros(len(neighborhood))
-        neighborhood_thermodynamic_states = [
-            self._thermodynamic_states[n] for n in neighborhood
+        thermodynamic_states = [
+            self._thermodynamic_states[n] for n in range(self.n_states)
         ]
-
         # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
-        log.debug(f"{sampler_state=}")
         # Compute energy for all thermodynamic states.
-        from openmmtools.states import group_by_compatibility
-
-        for energies, the_states in [
-            (energy_neighborhood_states, neighborhood_thermodynamic_states),
-        ]:
-            # Group thermodynamic states by compatibility.
-            compatible_groups, original_indices = group_by_compatibility(the_states)
-
-            # Compute the reduced potentials of all the compatible states.
-            for compatible_group, state_indices in zip(
-                compatible_groups, original_indices
-            ):
-                # Compute and update the reduced potentials.
-                compatible_energies = calculate_reduced_potential_at_states(
-                    sampler_state, compatible_group, self.nbr_list
-                )
-                for energy_idx, state_idx in enumerate(state_indices):
-                    energies[state_idx] = compatible_energies[energy_idx]
-
-        # Return the new energies.
-        log.info(f"Computed energies for replica {replica_id}")
-        log.info(f"{energy_neighborhood_states=}")
-        return energy_neighborhood_states
+        return calculate_reduced_potential_at_states(
+            sampler_state, thermodynamic_states, self.nbr_list
+        )
 
     def create(
         self,
@@ -247,28 +218,10 @@ class MultiStateSampler(object):
         self._reporter = reporter
         self._reporter.open(mode="a")
 
-    @classmethod
-    def _default_initial_thermodynamic_states(
-        cls,
-        thermodynamic_states: List[ThermodynamicState],
-        sampler_states: List[SamplerState],
-    ):
-        """
-        Create the initial_thermodynamic_states obeying the following rules:
-
-        * ``len(thermodynamic_states) == len(sampler_states)``: 1-to-1 distribution
-        """
-        n_thermo = len(thermodynamic_states)
-        n_sampler = len(sampler_states)
-        assert n_thermo == n_sampler, "Must have 1-to-1 distribution of states"
-        initial_thermo_states = np.arange(n_thermo, dtype=int)
-        return initial_thermo_states
-
     def _allocate_variables(
         self,
         thermodynamic_states: List[ThermodynamicState],
         sampler_states: List[SamplerState],
-        unsampled_thermodynamic_states: Optional[List[ThermodynamicState]] = None,
     ) -> None:
         """
         Allocate and initialize internal variables for the sampler.
@@ -301,16 +254,10 @@ class MultiStateSampler(object):
             copy.deepcopy(sampler_state) for sampler_state in sampler_states
         ]
 
-        # Handle default unsampled thermodynamic states.
-        self._unsampled_states = (
-            copy.deepcopy(unsampled_thermodynamic_states)
-            if unsampled_thermodynamic_states is not None
-            else []
-        )
-
+        assert len(self._thermodynamic_states) == len(self._sampler_states)
         # Set initial thermodynamic state indices
-        initial_thermodynamic_states = self._default_initial_thermodynamic_states(
-            thermodynamic_states, sampler_states
+        initial_thermodynamic_states = np.arange(
+            len(self._thermodynamic_states), dtype=int
         )
         self._replica_thermodynamic_states = np.array(
             initial_thermodynamic_states, np.int64
@@ -328,10 +275,6 @@ class MultiStateSampler(object):
         self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
         self._energy_thermodynamic_states = np.zeros(
             [self.n_replicas, self.n_states], np.float64
-        )
-        self._neighborhoods = np.zeros([self.n_replicas, self.n_states], "i1")
-        self._energy_unsampled_states = np.zeros(
-            [self.n_replicas, len(self._unsampled_states)], np.float64
         )
 
         # Ensure there is an MCMCMove for each thermodynamic state.
@@ -440,101 +383,6 @@ class MultiStateSampler(object):
         for replica_id in range(self.n_replicas):
             self._minimize_replica(replica_id, tolerance, max_iterations)
 
-    def _equilibration_timings(self, timer, iteration: int, n_iterations: int):
-        iteration_time = timer.stop("Equilibration Iteration")
-        partial_total_time = timer.partial("Run Equilibration")
-        time_per_iteration = partial_total_time / iteration
-        estimated_time_remaining = time_per_iteration * (n_iterations - iteration)
-        estimated_total_time = time_per_iteration * n_iterations
-        estimated_finish_time = time.time() + estimated_time_remaining
-        # TODO: Transmit timing information
-
-        log.info(f"Iteration took {iteration_time:.3f}s.")
-        if estimated_time_remaining != float("inf"):
-            log.info(
-                "Estimated completion (of equilibration only) in {}, at {} (consuming total wall clock time {}).".format(
-                    str(datetime.timedelta(seconds=estimated_time_remaining)),
-                    time.ctime(estimated_finish_time),
-                    str(datetime.timedelta(seconds=estimated_total_time)),
-                )
-            )
-
-    def equilibrate(
-        self, n_iterations: int, mcmc_moves: Optional[List[MCMCMove]] = None
-    ):
-        """
-        Equilibrate all replicas in the sampler.
-
-        This method equilibrates the system by running a specified number of
-        MCMC iterations. The equilibration uses either the provided MCMC moves
-        or the default ones set during initialization.
-
-        Parameters
-        ----------
-        n_iterations : int
-            The number of equilibration iterations to perform.
-        mcmc_moves : Optional[List[mcmc.MCMCMove]], optional
-            A list of MCMCMove objects to use for equilibration. If None, the
-            MCMC moves used in production will be used. Defaults to None.
-
-        Raises
-        ------
-        RuntimeError
-            If the simulation has not been created before calling this method.
-        """
-        # Check that simulation has been created.
-        if self.n_replicas == 0:
-            raise RuntimeError(
-                "Cannot equilibrate replicas. The simulation must be created first."
-            )
-
-        # Use production MCMC moves if none are provided
-        mcmc_moves = mcmc_moves or self._mcmc_moves
-
-        # Make sure there is one MCMCMove per thermodynamic state.
-        if isinstance(mcmc_moves, MCMCMove):
-            mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_states)]
-
-        if len(mcmc_moves) != self.n_states:
-            raise RuntimeError(
-                f"The number of MCMCMoves ({len(self._mcmc_moves)}) and ThermodynamicStates ({self.n_states}) for equilibration must be the same."
-            )
-        from openmmtools.utils import Timer
-
-        timer = Timer()
-        timer.start("Run Equilibration")
-
-        # Temporarily set the equilibration MCMCMoves.
-        production_mcmc_moves = self._mcmc_moves
-        self._mcmc_moves = mcmc_moves
-
-        for iteration in range(1, n_iterations + 1):
-            log.info(f"Equilibration iteration {iteration}/{n_iterations}")
-            timer.start("Equilibration Iteration")
-
-            # NOTE: Unlike run(), do NOT increment iteration counter.
-            # self._iteration += 1
-
-            # Propagate replicas.
-            self._propagate_replicas()
-
-            # Compute energies of all replicas at all states
-            self._compute_energies()
-
-            # Update thermodynamic states
-            self._replica_thermodynamic_states = self._mix_replicas()
-
-            # Computing timing information
-            self._equilibration_timings(
-                timer, iteration=iteration, n_iterations=n_iterations
-            )
-        timer.report_timing()
-
-        # Restore production MCMCMoves.
-        self._mcmc_moves = production_mcmc_moves
-
-        # TODO: Update stored positions.
-
     def _propagate_replica(self, replica_id: int):
         """
         Propagate the state of a single replica.
@@ -552,19 +400,18 @@ class MultiStateSampler(object):
             If an error occurs during the propagation of the replica.
         """
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
-        # Retrieve thermodynamic and sampler states for the replica
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
 
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        log.info(thermodynamic_state.potential.K)
         mcmc_move = self._mcmc_moves[thermodynamic_state_id]
-
+        log.info(f"Position before move: {sampler_state.x0}")
         # Apply MCMC move.
-        try:
-            mcmc_move.run(sampler_state, thermodynamic_state)
-        except Exception as e:
-            log.warning(e)
-            raise e
+        mcmc_move.run(sampler_state, thermodynamic_state)
+        self._sampler_states[replica_id] = sampler_state
+        log.info(f"Position after move: {self._sampler_states[replica_id].x0}")
+        a = 6
 
     def _perform_swap_proposals(self):
         """
@@ -633,38 +480,6 @@ class MultiStateSampler(object):
         for replica_id in range(self.n_replicas):
             self._propagate_replica(replica_id)
 
-    def _neighborhood(self, state_index: int) -> List[int]:
-        """
-        Compute the indices of neighboring states for a given state.
-
-        This method determines the neighborhood of states around a given state index,
-        considering the 'locality' parameter. If 'locality' is None, the neighborhood
-        includes all states; otherwise, it includes states within the 'locality' range.
-
-        Parameters
-        ----------
-        state_index : int
-            The index of the state for which the neighborhood is to be calculated.
-
-        Returns
-        -------
-        List[int]
-            A list of state indices that are considered neighbors of the given state.
-        """
-        if self.locality is None:
-            # Global neighborhood
-            return list(range(self.n_states))
-        else:
-            # Local neighborhood specified by 'locality'
-            lower_bound = max(0, state_index - self.locality)
-            upper_bound = min(self.n_states, state_index + self.locality + 1)
-            return list(
-                range(
-                    lower_bound,
-                    upper_bound,
-                )
-            )
-
     @with_timer("Computing energy matrix")
     def _compute_energies(self) -> None:
         """
@@ -678,18 +493,12 @@ class MultiStateSampler(object):
         log.debug("Computing energy matrix for all replicas...")
         # Initialize the energy matrix and neighborhoods
         self._energy_thermodynamic_states = np.zeros((self.n_replicas, self.n_states))
-        self._neighborhoods = np.zeros((self.n_replicas, self.n_states), dtype=bool)
 
         # Calculate energies for each replica
         for replica_id in range(self.n_replicas):
-            neighborhood = self._neighborhood(
-                self._replica_thermodynamic_states[replica_id]
-            )
-            self._neighborhoods[replica_id, neighborhood] = True
-
             # Compute and store energies for the neighborhood states
             self._energy_thermodynamic_states[
-                replica_id, neighborhood
+                replica_id, :
             ] = self._compute_replica_energies(replica_id)
 
     def _is_completed(self, iteration_limit: Optional[int] = None) -> bool:
@@ -742,9 +551,6 @@ class MultiStateSampler(object):
             log.info(
                 f"Estimated completion in {self._timing_data['estimated_time_remaining']}, at {self._timing_data['estimated_localtime_finish_date']} (consuming total wall clock time {self._timing_data['estimated_total_time']})."
             )
-
-        # Perform sanity checks to see if we should terminate here.
-        self._check_nan_energy()
 
     def run(self, n_iterations: int = 10) -> None:
         """
@@ -927,49 +733,6 @@ class MultiStateSampler(object):
                 yield iterator
 
         return flatten(self.mcmc_moves)
-
-    def _check_nan_energy(self):
-        """Checks that energies are finite and abort otherwise.
-
-        Checks both sampled and unsampled thermodynamic states.
-
-        """
-        # Find faulty replicas to create error message.
-        nan_replicas = []
-
-        # Check sampled thermodynamic states first.
-        state_type = "thermodynamic state"
-        for replica_id, state_id in enumerate(self._replica_thermodynamic_states):
-            neighborhood = self._neighborhood(state_id)
-            energies_neighborhood = self._energy_thermodynamic_states[
-                replica_id, neighborhood
-            ]
-            if np.any(np.isnan(energies_neighborhood)):
-                nan_replicas.append((replica_id, energies_neighborhood))
-
-        # If there are no NaNs in energies, look for NaNs in the unsampled states energies.
-        if (len(nan_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
-            state_type = "unsampled thermodynamic state"
-            for replica_id in range(self.n_replicas):
-                if np.any(np.isnan(self._energy_unsampled_states[replica_id])):
-                    nan_replicas.append(
-                        (replica_id, self._energy_unsampled_states[replica_id])
-                    )
-
-        # Raise exception if we have found some NaN energies.
-        if len(nan_replicas) > 0:
-            # Log failed replica, its thermo state, and the energy matrix row.
-            err_msg = "NaN encountered in {} energies for the following replicas and states".format(
-                state_type
-            )
-            for replica_id, energy_row in nan_replicas:
-                err_msg += "\n\tEnergies for positions at replica {} (current state {}): {} kT".format(
-                    replica_id,
-                    self._replica_thermodynamic_states[replica_id],
-                    energy_row,
-                )
-            log.critical(err_msg)
-            raise RuntimeError(err_msg)
 
     def _update_analysis(self):
         """Update analysis of free energies"""

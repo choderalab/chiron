@@ -217,32 +217,6 @@ class ThermodynamicState:
         if self.temperature and self.pressure and self.nr_of_particles:
             log.info("NpT ensemble is simulated.")
 
-    def is_state_compatible(self, thermodynamic_state):
-        """Check compatibility between ThermodynamicStates.
-
-        Parameters
-        ----------
-        thermodynamic_state : ThermodynamicState
-            The thermodynamic state to test.
-
-        Returns
-        -------
-        is_compatible : bool
-            True if the states are compatible, False otherwise.
-
-        Examples
-        --------
-        States in the same ensemble (NVT or NPT) are compatible.
-        States in different ensembles are not compatible.
-        States that store different systems (that differ by more than
-        barostat and thermostat pressure and temperature) are also not
-        compatible.
-        """
-
-        # Check that the states are in the same ensemble.
-        # TODO: implement this
-        pass
-
     def get_reduced_potential(
         self, sampler_state: SamplerState, nbr_list=None
     ) -> float:
@@ -294,7 +268,7 @@ class ThermodynamicState:
 
 def calculate_reduced_potential_at_states(
     sampler_state: SamplerState,
-    themrodynamic_states: List[ThermodynamicState],
+    thermodynamic_states: List[ThermodynamicState],
     nbr_list=None,
 ):
     """
@@ -313,7 +287,10 @@ def calculate_reduced_potential_at_states(
         The reduced potential of the system for each thermodynamic state.
 
     """
-    reduced_potentials = []
-    for state in themrodynamic_states:
-        reduced_potentials.append(state.get_reduced_potential(sampler_state))
+    import numpy as np
+
+    reduced_potentials = np.zeros(len(thermodynamic_states))
+    for state_idx, state in enumerate(thermodynamic_states):
+        reduced_potentials[state_idx] = state.get_reduced_potential(sampler_state)
+    log.debug(f"reduced potentials per sampler sate: {reduced_potentials}")
     return reduced_potentials
