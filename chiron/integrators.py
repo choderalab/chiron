@@ -2,11 +2,8 @@
 
 import jax.numpy as jnp
 from jax import random
-from tqdm import tqdm
 from openmm import unit
 from .states import SamplerState, ThermodynamicState
-from typing import Dict
-from loguru import logger as log
 from .reporters import SimulationReporter
 from typing import Optional
 
@@ -45,6 +42,7 @@ class LangevinIntegrator:
         reporter : SimulationReporter, optional
             Reporter object for saving the simulation data. Default is None.
         """
+        from loguru import logger as log
 
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         log.info(f"stepsize = {stepsize}")
@@ -101,6 +99,8 @@ class LangevinIntegrator:
 
         """
         from .utils import get_list_of_mass
+        from tqdm import tqdm
+        from loguru import logger as log
 
         potential = thermodynamic_state.potential
 
