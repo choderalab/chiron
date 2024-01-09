@@ -1,7 +1,6 @@
 from openmm import unit
 from typing import List, Optional, Union
 from jax import numpy as jnp
-from loguru import logger as log
 from .potential import NeuralNetworkPotential
 
 
@@ -204,6 +203,7 @@ class ThermodynamicState:
     def _check_completness(self):
         # check which variables are set
         set_variables = self.check_variables()
+        from loguru import logger as log
 
         if len(set_variables) == 0:
             log.info("No variables are set.")
@@ -288,6 +288,7 @@ def calculate_reduced_potential_at_states(
 
     """
     import numpy as np
+    from loguru import logger as log
 
     reduced_potentials = np.zeros(len(thermodynamic_states))
     for state_idx, state in enumerate(thermodynamic_states):

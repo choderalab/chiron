@@ -1,13 +1,13 @@
 import jax
 import jax.numpy as jnp
-from loguru import logger as log
 from openmm import unit
 from openmm.app import Topology
-from typing import Optional
 
 
 class NeuralNetworkPotential:
     def __init__(self, model, **kwargs):
+        from loguru import logger as log
+
         if model is None:
             log.warning("No model provided, using default model")
         else:
@@ -166,6 +166,7 @@ class LJPotential(NeuralNetworkPotential):
 
         """
         # Compute the pair distances and displacement vectors
+        from loguru import logger as log
 
         if nbr_list is None:
             log.debug(
@@ -319,11 +320,13 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
                 f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"
             )
 
-        log.info("Initializing HarmonicOscillatorPotential")
-        log.info(f"k = {k}")
-        log.info(f"x0 = {x0}")
-        log.info(f"U0 = {U0}")
-        log.info("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
+        from loguru import logger as log
+
+        log.debug("Initializing HarmonicOscillatorPotential")
+        log.debug(f"k = {k}")
+        log.debug(f"x0 = {x0}")
+        log.debug(f"U0 = {U0}")
+        log.debug("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
         self.k = jnp.array(
             k.value_in_unit_system(unit.md_unit_system)
         )  # spring constant

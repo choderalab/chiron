@@ -3,9 +3,8 @@
 import jax
 import jax.numpy as jnp
 from functools import partial
-from typing import Tuple, Optional, Union
+from typing import Tuple, Union
 from .states import SamplerState
-from loguru import logger as log
 from openmm import unit
 
 
@@ -580,6 +579,7 @@ class NeighborListNsqrd(PairsBase):
         )
 
         self.neighbor_list = self.neighbor_list.reshape(-1, self.n_max_neighbors)
+        from loguru import logger as log
 
         while jnp.any(self.n_neighbors == self.n_max_neighbors).block_until_ready():
             log.debug(
