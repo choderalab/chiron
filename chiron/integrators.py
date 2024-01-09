@@ -41,6 +41,8 @@ class LangevinIntegrator:
             Frequency of saving the simulation data. Default is 100.
         reporter : SimulationReporter, optional
             Reporter object for saving the simulation data. Default is None.
+        save_traj_in_memory : bool
+            Whether to save the trajectory in memory. For debugging purposes only.
         """
         from loguru import logger as log
 

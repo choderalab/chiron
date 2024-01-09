@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from chiron.states import SamplerState, ThermodynamicState
 from chiron.neighbors import NeighborListNsqrd
 from openmm import unit
 import numpy as np
+from chiron.mcmc import MCMCMove
 
 
 class MultiStateSampler:
@@ -15,29 +16,29 @@ class MultiStateSampler:
     If instantiated on its own, the thermodynamic state indices associated with each
     state are specified and replica mixing does not change any thermodynamic states,
     meaning that each replica remains in its original thermodynamic state.
-
-    Parameters
-    ----------
-    mcmc_moves : MCMCMove or list of MCMCMove, optional
-        The MCMCMove used to propagate the thermodynamic states. If a list of MCMCMoves,
-        they will be assigned to the correspondent thermodynamic state on
-        creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
-        and 500 steps per iteration will be used.
-
-    Attributes
-    ----------
-    n_replicas
-    n_states
-    mcmc_moves
-    sampler_states
-    is_completed
     """
 
     def __init__(
         self,
-        mcmc_moves=None,
+        mcmc_moves=Union[MCMCMove, List[MCMCMove]],
         online_analysis_interval=5,
     ):
+        """
+        Parameters
+        ----------
+        mcmc_moves : MCMCMove or list of MCMCMove
+            The MCMCMove used to propagate the thermodynamic states. If a list of MCMCMoves,
+            they will be assigned to the correspondent thermodynamic state on
+            creation.
+
+        Attributes
+        ----------
+        n_replicas
+        n_states
+        mcmc_moves
+        sampler_states
+        is_completed
+        """
         import copy
         from openmm import unit
 
@@ -61,18 +62,7 @@ class MultiStateSampler:
         self.free_energy_estimator = None
         self._traj = None
 
-        # Handling default propagator.
-        if mcmc_moves is None:
-            from .mcmc import LangevinDynamicsMove
-
-            # This will be converted to a list in create().
-            self._mcmc_moves = LangevinDynamicsMove(
-                timestep=2.0 * unit.femtosecond,
-                collision_rate=5.0 / unit.picosecond,
-                n_steps=500,
-            )
-        else:
-            self._mcmc_moves = copy.deepcopy(mcmc_moves)
+        self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
