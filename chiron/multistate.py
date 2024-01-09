@@ -57,7 +57,6 @@ class MultiStateSampler:
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
-        self._online_analysis_interval = online_analysis_interval
         self._timing_data = dict()
         self.free_energy_estimator = None
         self._traj = None
@@ -66,6 +65,11 @@ class MultiStateSampler:
 
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
+
+        self._online_estimator = None
+
+        from chiron.analysis import MBAREstimator
+        self._offline_estimator = MBAREstimator()
 
     @property
     def n_states(self):
@@ -553,16 +557,14 @@ class MultiStateSampler:
             ] = self._energy_thermodynamic_states
             # TODO report energies
 
-        iteration_limit = n_iterations
-
         # start the sampling loop
-        log.debug(f"{iteration_limit=}")
-        while not self._is_completed(iteration_limit):
+        log.debug(f"{n_iterations=}")
+        while not self._is_completed(n_iterations):
             # Increment iteration counter.
             self._iteration += 1
 
             log.info("-" * 80)
-            log.info(f"Iteration {self._iteration}/{iteration_limit}")
+            log.info(f"Iteration {self._iteration}/{n_iterations}")
             log.info("-" * 80)
 
             # Update thermodynamic states
@@ -598,34 +600,8 @@ class MultiStateSampler:
         """Update analysis of free energies"""
         from loguru import logger as log
 
-        if self._online_analysis_interval is None:
-            log.debug("No online analysis requested")
-            # Perform no analysis and exit function
-            return
-
         # Perform offline free energy estimate if requested
-        if self.free_energy_estimator == "mbar":
-            self._last_err_free_energy = self._mbar_analysis()
+        if self._offline_estimator:
+            log.debug("Performing offline free energy estimate...")
+            self._offline_estimator.initialize(self._energy_thermodynamic_states_for_each_iteration_in_run)
 
-        return
-
-    def _mbar_analysis(self):
-        """
-        Perform mbar analysis
-        """
-        from pymbar import MBAR
-        from loguru import logger as log
-
-        self._last_mbar_f_k_offline = np.zeros(len(self._thermodynamic_states))
-
-        log.debug(
-            f"{self._energy_thermodynamic_states_for_each_iteration_in_run.shape=}"
-        )
-        log.debug(f"{self.n_states=}")
-        u_kn = self._energy_thermodynamic_states_for_each_iteration_in_run
-        log.debug(f"{self._iteration=}")
-        N_k = [self._iteration] * self.n_states
-        log.debug(f"{N_k=}")
-        mbar = MBAR(u_kn=u_kn, N_k=N_k)
-        log.debug(mbar.f_k)
-        self._last_mbar_f_k_offline = mbar.f_k
