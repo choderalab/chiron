@@ -3,7 +3,7 @@ import numpy as np
 
 class MBAREstimator:
     def __init__(self, N_u: int) -> None:
-        self.mbar_f_k = np.zeros(len(N_u))
+        self.mbar_f_k = np.zeros(N_u)
 
     def initialize(self, u_kn: np.ndarray, N_k: np.ndarray):
         """

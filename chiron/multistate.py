@@ -66,11 +66,6 @@ class MultiStateSampler:
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
 
-        self._online_estimator = None
-
-        from chiron.analysis import MBAREstimator
-        self._offline_estimator = MBAREstimator()
-
     @property
     def n_states(self):
         """The integer number of thermodynamic states (read-only)."""
@@ -190,10 +185,17 @@ class MultiStateSampler:
         """
         # TODO: initialize reporter here
         # TODO: consider unsampled thermodynamic states for reweighting schemes
-        self.free_energy_estimator = "mbar"
+        self._online_estimator = None
+
+        from chiron.analysis import MBAREstimator
+
+        n_thermodynamic_states = len(thermodynamic_states)
+        n_sampler_states = len(sampler_states)
+
+        self._offline_estimator = MBAREstimator(N_u=n_thermodynamic_states)
 
         # Ensure the number of thermodynamic states matches the number of sampler states
-        if len(thermodynamic_states) != len(sampler_states):
+        if n_thermodynamic_states != n_sampler_states:
             raise RuntimeError(
                 "Number of thermodynamic states and sampler states must be equal."
             )
@@ -603,5 +605,9 @@ class MultiStateSampler:
         # Perform offline free energy estimate if requested
         if self._offline_estimator:
             log.debug("Performing offline free energy estimate...")
-            self._offline_estimator.initialize(self._energy_thermodynamic_states_for_each_iteration_in_run)
-
+            N_k = [self._iteration] * self.n_states
+            log.debug(f"{N_k=}")
+            self._offline_estimator.initialize(
+                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run,
+                N_k=N_k,
+            )
