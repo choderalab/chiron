@@ -125,8 +125,8 @@ def test_sampler_state_inputs():
         box_vectors=openmm_box,
     )
     assert jnp.allclose(
-        state.box_vectors
-        == jnp.array(
+        state.box_vectors,
+        jnp.array(
             [[4.0311456, 0.0, 0.0], [0.0, 4.0311456, 0.0], [0.0, 0.0, 4.0311456]]
         ),
         atol=1e-4,
