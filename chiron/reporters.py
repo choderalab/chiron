@@ -21,8 +21,6 @@ class SimulationReporter:
             Number of data points to buffer before writing to disk (default is 1).
 
         """
-        import mdtraj as md
-
         self.filename = filename
         self.buffer_size = buffer_size
         self.topology = topology
@@ -52,7 +50,7 @@ class SimulationReporter:
             if len(self.buffer[key]) >= self.buffer_size:
                 self._write_to_disk(key)
 
-    def _write_to_disk(self, key):
+    def _write_to_disk(self, key:str):
         """
         Write buffered data of a given key to the HDF5 file.
 
