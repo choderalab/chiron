@@ -242,9 +242,9 @@ class TautomericStateMove(MCMove):
         pass
 
 
-class MoveSet:
+class MoveSchedule:
     """
-    Represents a set of moves for a Markov Chain Monte Carlo (MCMC) algorithm.
+    Represents an (optimizable) series of moves for a Markov Chain Monte Carlo (MCMC) algorithm.
 
     Parameters
     ----------
@@ -298,7 +298,7 @@ class MCMCSampler(object):
 
     def __init__(
         self,
-        move_set: MoveSet,
+        move_set: MoveSchedule,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
     ):

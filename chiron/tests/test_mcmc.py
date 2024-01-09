@@ -85,7 +85,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import LangevinDynamicsMove, MoveSet, MCMCSampler
+    from chiron.mcmc import LangevinDynamicsMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
@@ -117,7 +117,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
         nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
     )
 
-    move_set = MoveSet([("LangevinMove", langevin_move)])
+    move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
@@ -137,7 +137,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillator
@@ -173,7 +173,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         simulation_reporter=simulation_reporter,
     )
 
-    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
@@ -192,7 +192,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
     """
     from openmm import unit
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
@@ -228,7 +228,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
         simulation_reporter=simulation_reporter,
     )
 
-    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)

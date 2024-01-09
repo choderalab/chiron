@@ -55,7 +55,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     simulation_reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=100_000,
@@ -64,7 +64,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
         simulation_reporter=simulation_reporter,
     )
 
-    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)

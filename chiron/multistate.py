@@ -1,17 +1,11 @@
-import copy
 from typing import List, Optional
 from chiron.states import SamplerState, ThermodynamicState
-import datetime
-from loguru import logger as log
-import numpy as np
-from openmmtools.utils import with_timer
 from chiron.neighbors import NeighborListNsqrd
 from openmm import unit
-from chiron.mcmc import MCMCMove
-from openmmtools.multistate import MultiStateReporter
+import numpy as np
 
 
-class MultiStateSampler(object):
+class MultiStateSampler:
     """
     Base class for samplers that sample multiple thermodynamic states using
     one or more replicas.
@@ -30,26 +24,23 @@ class MultiStateSampler(object):
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
 
-    locality : int > 0, optional, default None
-        If None, the energies at all states will be computed for every replica each iteration.
-        If int > 0, energies will only be computed for states ``range(max(0, state-locality), min(n_states, state+locality))``.
-
     Attributes
     ----------
     n_replicas
     n_states
     mcmc_moves
     sampler_states
-    metadata
     is_completed
     """
 
     def __init__(
         self,
         mcmc_moves=None,
-        locality=None,
         online_analysis_interval=5,
     ):
+        import copy
+        from openmm import unit
+
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -86,9 +77,6 @@ class MultiStateSampler(object):
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
 
-        # Store locality
-        self.locality = locality
-
     @property
     def n_states(self):
         """The integer number of thermodynamic states (read-only)."""
@@ -121,6 +109,8 @@ class MultiStateSampler(object):
         This can be set only before creation.
 
         """
+        import copy
+
         return copy.deepcopy(self._mcmc_moves)
 
     @property
@@ -129,6 +119,8 @@ class MultiStateSampler(object):
 
         This can be set only before running.
         """
+        import copy
+
         return copy.deepcopy(self._sampler_states)
 
     @property
@@ -141,6 +133,8 @@ class MultiStateSampler(object):
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
+        import copy
+
         return copy.deepcopy(self._metadata)
 
     @property
@@ -238,6 +232,8 @@ class MultiStateSampler(object):
         RuntimeError
             If the number of MCMC moves and ThermodynamicStates do not match.
         """
+        import copy
+        import numpy as np
 
         # Save thermodynamic states. This sets n_replicas.
         self._thermodynamic_states = [
@@ -274,6 +270,8 @@ class MultiStateSampler(object):
         )
         self._traj = [[] for _ in range(self.n_replicas)]
         # Ensure there is an MCMCMove for each thermodynamic state.
+        from chiron.mcmc import MCMCMove
+
         if isinstance(self._mcmc_moves, MCMCMove):
             self._mcmc_moves = [
                 copy.deepcopy(self._mcmc_moves) for _ in range(self.n_states)
@@ -311,6 +309,7 @@ class MultiStateSampler(object):
         """
 
         from chiron.minimze import minimize_energy
+        from loguru import logger as log
 
         # Retrieve thermodynamic and sampler states.
         thermodynamic_state = self._thermodynamic_states[
@@ -366,6 +365,7 @@ class MultiStateSampler(object):
         RuntimeError
             If the simulation has not been created before calling this method.
         """
+        from loguru import logger as log
 
         # Check that simulation has been created.
         if self.n_replicas == 0:
@@ -435,6 +435,7 @@ class MultiStateSampler(object):
         np.ndarray
             An array of updated thermodynamic state indices for each replica.
         """
+        from loguru import logger as log
 
         log.debug("Mixing replicas (does nothing for MultiStateSampler)...")
 
@@ -457,7 +458,6 @@ class MultiStateSampler(object):
             f"Accepted {n_swaps_accepted}/{n_swaps_proposed} attempted swaps ({swap_fraction_accepted * 100.0:.1f}%)"
         )
 
-    @with_timer("Propagating all replicas")
     def _propagate_replicas(self) -> None:
         """
         Propagate all replicas through their respective MCMC moves.
@@ -465,13 +465,13 @@ class MultiStateSampler(object):
         This method iterates over all replicas and applies the corresponding MCMC move
         to each one, based on its current thermodynamic state.
         """
+        from loguru import logger as log
 
         log.debug("Propagating all replicas...")
 
         for replica_id in range(self.n_replicas):
             self._propagate_replica(replica_id)
 
-    @with_timer("Computing energy matrix")
     def _compute_energies(self) -> None:
         """
         Compute the energies of all replicas at all thermodynamic states.
@@ -480,6 +480,7 @@ class MultiStateSampler(object):
         considering the defined neighborhoods to optimize the computation. The energies
         are stored in the internal energy matrix of the sampler.
         """
+        from loguru import logger as log
 
         log.debug("Computing energy matrix for all replicas...")
         # Initialize the energy matrix and neighborhoods
@@ -511,6 +512,7 @@ class MultiStateSampler(object):
             True if the simulation has completed based on the stopping criteria,
             False otherwise.
         """
+        from loguru import logger as log
 
         # Check if iteration limit has been reached
         if iteration_limit is not None and self._iteration >= iteration_limit:
@@ -522,26 +524,6 @@ class MultiStateSampler(object):
         # Additional stopping criteria can be implemented here
 
         return False
-
-    def _update_run_progress(self, timer, run_initial_iteration, iteration_limit):
-        # Computing and transmitting timing information
-        iteration_time = timer.stop("Iteration")
-        partial_total_time = timer.partial("Run ReplicaExchange")
-        self._update_timing(
-            iteration_time,
-            partial_total_time,
-            run_initial_iteration,
-            iteration_limit,
-        )
-
-        # Log timing data as info level -- useful for users by default
-        log.info(
-            "Iteration took {:.3f}s.".format(self._timing_data["iteration_seconds"])
-        )
-        if self._timing_data["estimated_time_remaining"] != float("inf"):
-            log.info(
-                f"Estimated completion in {self._timing_data['estimated_time_remaining']}, at {self._timing_data['estimated_localtime_finish_date']} (consuming total wall clock time {self._timing_data['estimated_total_time']})."
-            )
 
     def run(self, n_iterations: int = 10) -> None:
         """
@@ -561,6 +543,7 @@ class MultiStateSampler(object):
         RuntimeError
             If an error occurs during the computation of energies.
         """
+        from loguru import logger as log
 
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
@@ -580,11 +563,6 @@ class MultiStateSampler(object):
             ] = self._energy_thermodynamic_states
             # TODO report energies
 
-        from openmmtools.utils import Timer
-
-        timer = Timer()
-        timer.start("Run ReplicaExchange")
-
         iteration_limit = n_iterations
 
         # start the sampling loop
@@ -596,7 +574,6 @@ class MultiStateSampler(object):
             log.info("-" * 80)
             log.info(f"Iteration {self._iteration}/{iteration_limit}")
             log.info("-" * 80)
-            timer.start("Iteration")
 
             # Update thermodynamic states
             self._mix_replicas()
@@ -626,103 +603,10 @@ class MultiStateSampler(object):
         # TODO: write trajectory
 
         # TODO: write mixing statistics
-        self._reporter.write_energies(
-            self._energy_thermodynamic_states,
-            self._neighborhoods,
-            self._energy_unsampled_states,
-            self._iteration,
-        )
-
-    def _report_iteration_items(self):
-        """
-        Sub-function of :func:`_report_iteration` which handles all the actual individual item reporting in a
-        sub-class friendly way. The final actions of writing timestamp, last-good-iteration, and syncing
-        should be left to the :func:`_report_iteration` and subclasses should extend this function instead
-        """
-        self._reporter.write_sampler_states(self._sampler_states, self._iteration)
-        self._reporter.write_replica_thermodynamic_states(
-            self._replica_thermodynamic_states, self._iteration
-        )
-        self._reporter.write_mcmc_moves(
-            self._mcmc_moves
-        )  # MCMCMoves can store internal statistics.
-        self._reporter.write_energies(
-            self._energy_thermodynamic_states,
-            self._neighborhoods,
-            self._energy_unsampled_states,
-            self._iteration,
-        )
-        self._reporter.write_mixing_statistics(
-            self._n_accepted_matrix, self._n_proposed_matrix, self._iteration
-        )
-
-    def _update_timing(
-        self, iteration_time, partial_total_time, run_initial_iteration, iteration_limit
-    ):
-        """
-        Function that computes and transmits timing information to reporter.
-
-        Parameters
-        ----------
-        iteration_time : float
-            Time took in the iteration.
-        partial_total_time : float
-            Partial total time elapsed.
-        run_initial_iteration : int
-            Iteration where to start/resume the simulation.
-        iteration_limit : int
-            Hard limit on number of iterations to be run by the sampler.
-        """
-        self._timing_data["iteration_seconds"] = iteration_time
-        self._timing_data["average_seconds_per_iteration"] = partial_total_time / (
-            self._iteration - run_initial_iteration
-        )
-        estimated_timedelta_remaining = datetime.timedelta(
-            seconds=self._timing_data["average_seconds_per_iteration"]
-            * (iteration_limit - self._iteration)
-        )
-        estimated_finish_date = datetime.datetime.now() + estimated_timedelta_remaining
-        self._timing_data["estimated_time_remaining"] = str(
-            estimated_timedelta_remaining
-        )  # Putting it in dict as str
-        self._timing_data[
-            "estimated_localtime_finish_date"
-        ] = estimated_finish_date.strftime("%Y-%b-%d-%H:%M:%S")
-        total_time_in_seconds = datetime.timedelta(
-            seconds=self._timing_data["average_seconds_per_iteration"] * iteration_limit
-        )
-        self._timing_data["estimated_total_time"] = str(total_time_in_seconds)
-
-        # Estimate performance
-        moves_iterator = self._flatten_moves_iterator()
-        # Only consider "dynamic" moves (timestep and n_steps attributes)
-        moves_times = [
-            move.timestep.value_in_unit(unit.nanosecond) * move.n_steps
-            for move in moves_iterator
-            if hasattr(move, "timestep") and hasattr(move, "n_steps")
-        ]
-        iteration_simulated_nanoseconds = sum(moves_times)
-        seconds_in_a_day = (1 * unit.day).value_in_unit(unit.seconds)
-        self._timing_data["ns_per_day"] = iteration_simulated_nanoseconds / (
-            self._timing_data["average_seconds_per_iteration"] / seconds_in_a_day
-        )
-
-    def _flatten_moves_iterator(self):
-        """Recursively flatten MCMC moves. Handles the cases where each move can be a set of moves, for example with
-        SequenceMove or WeightedMove objects."""
-
-        def flatten(iterator):
-            try:
-                yield from [
-                    inner_move for move in iterator for inner_move in flatten(move)
-                ]
-            except TypeError:  # Inner object is not iterable, finish flattening.
-                yield iterator
-
-        return flatten(self.mcmc_moves)
 
     def _update_analysis(self):
         """Update analysis of free energies"""
+        from loguru import logger as log
 
         if self._online_analysis_interval is None:
             log.debug("No online analysis requested")
@@ -740,6 +624,7 @@ class MultiStateSampler(object):
         Perform mbar analysis
         """
         from pymbar import MBAR
+        from loguru import logger as log
 
         self._last_mbar_f_k_offline = np.zeros(len(self._thermodynamic_states))
 
