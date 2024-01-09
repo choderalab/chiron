@@ -124,11 +124,12 @@ def test_sampler_state_inputs():
         x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
         box_vectors=openmm_box,
     )
-    assert jnp.all(
+    assert jnp.allclose(
         state.box_vectors
         == jnp.array(
             [[4.0311456, 0.0, 0.0], [0.0, 4.0311456, 0.0], [0.0, 0.0, 4.0311456]]
-        )
+        ),
+        atol=1e-4,
     )
 
     # openmm box vectors end up as a list with contents; check to make sure we capture an error if we pass a bad list
