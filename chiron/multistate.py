@@ -1,5 +1,4 @@
 import copy
-import time
 from typing import List, Optional
 from chiron.states import SamplerState, ThermodynamicState
 import datetime
@@ -69,6 +68,7 @@ class MultiStateSampler(object):
         self._online_analysis_interval = online_analysis_interval
         self._timing_data = dict()
         self.free_energy_estimator = None
+        self._traj = None
 
         # Handling default propagator.
         if mcmc_moves is None:
@@ -181,7 +181,6 @@ class MultiStateSampler(object):
         thermodynamic_states: List[ThermodynamicState],
         sampler_states: List[SamplerState],
         nbr_list: NeighborListNsqrd,
-        reporter: MultiStateReporter,
         metadata: Optional[dict] = None,
     ):
         """Create new multistate sampler simulation.
@@ -193,8 +192,6 @@ class MultiStateSampler(object):
             of sampler states provided.
         nbr_list : NeighborListNsqrd
             Neighbor list object to be used in the simulation.
-        reporter : MultiStateReporter
-            Reporter object to record simulation data.
         metadata : dict, optional
             Optional simulation metadata to be stored in the file.
 
@@ -215,8 +212,7 @@ class MultiStateSampler(object):
 
         self._allocate_variables(thermodynamic_states, sampler_states)
         self.nbr_list = nbr_list
-        self._reporter = reporter
-        self._reporter.open(mode="a")
+        self._reporter = None
 
     def _allocate_variables(
         self,
@@ -276,7 +272,7 @@ class MultiStateSampler(object):
         self._energy_thermodynamic_states = np.zeros(
             [self.n_replicas, self.n_states], np.float64
         )
-
+        self._traj = [[] for _ in range(self.n_replicas)]
         # Ensure there is an MCMCMove for each thermodynamic state.
         if isinstance(self._mcmc_moves, MCMCMove):
             self._mcmc_moves = [
@@ -404,14 +400,10 @@ class MultiStateSampler(object):
         sampler_state = self._sampler_states[replica_id]
 
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
-        log.info(thermodynamic_state.potential.K)
         mcmc_move = self._mcmc_moves[thermodynamic_state_id]
-        log.info(f"Position before move: {sampler_state.x0}")
         # Apply MCMC move.
         mcmc_move.run(sampler_state, thermodynamic_state)
-        self._sampler_states[replica_id] = sampler_state
-        log.info(f"Position after move: {self._sampler_states[replica_id].x0}")
-        a = 6
+        self._traj[replica_id].append(sampler_state.x0)
 
     def _perform_swap_proposals(self):
         """
@@ -464,7 +456,6 @@ class MultiStateSampler(object):
         log.debug(
             f"Accepted {n_swaps_accepted}/{n_swaps_proposed} attempted swaps ({swap_fraction_accepted * 100.0:.1f}%)"
         )
-        return new_replica_states
 
     @with_timer("Propagating all replicas")
     def _propagate_replicas(self) -> None:
@@ -608,7 +599,7 @@ class MultiStateSampler(object):
             timer.start("Iteration")
 
             # Update thermodynamic states
-            self._replica_thermodynamic_states = self._mix_replicas()
+            self._mix_replicas()
 
             # Propagate replicas.
             self._propagate_replicas()

@@ -71,6 +71,7 @@ class LangevinDynamicsMove(MCMCMove):
         simulation_reporter: Optional[SimulationReporter] = None,
         nr_of_steps=1_000,
         seed: int = 1234,
+        save_traj_in_memory: bool = False,
     ):
         """
         Initialize the LangevinDynamicsMove with a molecular system.
@@ -88,13 +89,15 @@ class LangevinDynamicsMove(MCMCMove):
         self.stepsize = stepsize
         self.collision_rate = collision_rate
         self.simulation_reporter = simulation_reporter
-
+        self.save_traj_in_memory = save_traj_in_memory
+        self.traj = []
         from chiron.integrators import LangevinIntegrator
 
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
             reporter=self.simulation_reporter,
+            save_traj_in_memory=save_traj_in_memory,
         )
 
     def run(
@@ -122,6 +125,9 @@ class LangevinDynamicsMove(MCMCMove):
             n_steps=self.nr_of_moves,
             key=self.key,
         )
+        if self.save_traj_in_memory:
+            self.traj.append(self.integrator.traj)
+            self.integrator.traj = []
 
 
 class MCMove(MCMCMove):
