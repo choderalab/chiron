@@ -611,10 +611,6 @@ class MultiStateSampler(object):
             self._energy_thermodynamic_states_for_each_iteration_in_run[
                 :, :, self._iteration
             ] = self._energy_thermodynamic_states
-            log.info(
-                self._energy_thermodynamic_states_for_each_iteration_in_run[:, :, 1]
-            )
-            log.info(self._energy_thermodynamic_states)
             # Write iteration to storage file
             # TODO
             # self._report_iteration()
