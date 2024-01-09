@@ -1,49 +1,8 @@
-"""Markov chain Monte Carlo simulation framework.
-
-This module provides a framework for equilibrium sampling from a given
-thermodynamic state of a biomolecule using a Markov chain Monte Carlo scheme.
-
-It currently offer supports for
-* Langevin dynamics,
-* Monte Carlo,
-
-which can be combined through the SequenceMove classes.
-
->>> from chiron import unit
->>> from openmmtools.testsystems import AlanineDipeptideVacuum
->>> from chiron.states import ThermodynamicState, SamplerState
->>> from chiron.potential import NeuralNetworkPotential
->>> from modelforge.potential.pretrained_models import SchNetModel
->>> from chiron.mcmc import MCMCSampler, SequenceMove, MCMove, LangevinDynamicsMove
- 
-Create the initial state for an alanine
-dipeptide system in vacuum.
-
->>> alanine_dipeptide = AlanineDipeptideVacuum()
->>> potential = NeuralNetworkPotential(SchNetModel, alanine_dipeptide.topology)
->>> thermodynamic_state = ThermodynamicState(temperature=298*unit.kelvin)
->>> simulation_state = SamplerState(positions=test.positions)
-
-Create an MCMC move to sample the equilibrium distribution.
-
->>> langevin_move = LangevinDynamicsMove(n_steps=10)
-
->>> mc_move = MCMove(timestep=1.0*unit.femtosecond, n_steps=50)
->>> sampler = MCMCSampler(state, move=ghmc_move)
-
-You can combine them to form a sequence of moves
-
->>> sequence_move = SequenceMove([ghmc_move, langevin_move])
->>> sampler = MCMCSampler(thermodynamic_state, sampler_state, move=sequence_move)
-
-"""
 from chiron.states import SamplerState, ThermodynamicState
 from openmm import unit
-from loguru import logger as log
 from typing import Tuple, List, Optional
 import jax.numpy as jnp
 from chiron.reporters import SimulationReporter
-
 
 class MCMCMove:
     def __init__(self, nr_of_moves: int, seed: int):
@@ -303,6 +262,7 @@ class MCMCSampler(object):
         thermodynamic_state: ThermodynamicState,
     ):
         from copy import deepcopy
+        from loguru import logger as log
 
         log.info("Initializing Gibbs sampler")
         self.move = move_set
@@ -318,6 +278,8 @@ class MCMCSampler(object):
         n_iterations : int, optional
             Number of iterations of the sampler to run.
         """
+        from loguru import logger as log
+
         log.info("Running MCMC sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
         for iteration in range(n_iterations):
@@ -369,6 +331,8 @@ class MetropolizedMove(MCMove):
         self.n_proposed = 0
         self.atom_subset = atom_subset
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        from loguru import logger as log
+
         log.debug(f"Atom subset is {atom_subset}.")
 
     @property
@@ -405,6 +369,7 @@ class MetropolizedMove(MCMove):
             Default is None and will use an unoptimized pairlist without PBC
         """
         import jax.numpy as jnp
+        from loguru import logger as log
 
         # Compute initial energy
         initial_energy = thermodynamic_state.get_reduced_potential(
@@ -553,6 +518,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         -------
         None
         """
+        from loguru import logger as log
 
         super().__init__(nr_of_moves=nr_of_moves, seed=seed)
         self.displacement_sigma = displacement_sigma
@@ -586,17 +552,13 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
         self.key, subkey = jrandom.split(self.key)
         nr_of_atoms = positions.shape[0]
-        # log.debug(f"Number of atoms is {nr_of_atoms}.")
         unitless_displacement_sigma = displacement_sigma.value_in_unit_system(
             unit.md_unit_system
         )
-        # log.debug(f"Displacement sigma is {unitless_displacement_sigma}.")
         displacement_vector = (
             jrandom.normal(subkey, shape=(nr_of_atoms, 3)) * 0.1
         )  # NOTE: convert from Angstrom to nm
         scaled_displacement_vector = displacement_vector * unitless_displacement_sigma
-        # log.debug(f"Unscaled Displacement vector is {displacement_vector}.")
-        # log.debug(f"Scaled Displacement vector is {scaled_displacement_vector}.")
         updated_position = positions + scaled_displacement_vector
 
         return updated_position
@@ -613,6 +575,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         progress_bar=True,
     ):
         from tqdm import tqdm
+        from loguru import logger as log
 
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
