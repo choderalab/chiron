@@ -7,8 +7,30 @@ import numpy as np
 from openmm.app import Topology
 
 
-class SimulationReporter:
-    def __init__(self, filename: str, topology: Topology, buffer_size: int = 1):
+class BaseReporter:
+    _directory = None
+
+    @classmethod
+    def set_directory(cls, directory: str):
+        cls._directory = directory
+
+    @classmethod
+    def get_directory(cls):
+        from pathlib import Path
+
+        if cls._directory is None:
+            log.debug(
+                f"No directory set, using current working directory: {Path.cwd()}"
+            )
+            return Path.cwd()
+        return Path(cls._directory)
+
+
+import pathlib
+
+
+class _SimulationReporter:
+    def __init__(self, file_path: pathlib.Path, buffer_size: int = 10):
         """
         Initialize the SimulationReporter.
 
@@ -16,17 +38,15 @@ class SimulationReporter:
         ----------
         filename : str
             Name of the HDF5 file to write the simulation data.
-        topology: openmm.Topology
-        buffer_size : int, optional
-            Number of data points to buffer before writing to disk (default is 1).
-
         """
-        self.filename = filename
+        if file_path.suffix != ".h5":
+            file_path = file_path.with_suffix(".h5")
+        self.file_path = file_path
+        log.info(f"Writing simulation data to {self.file_path}")
+
         self.buffer_size = buffer_size
-        self.topology = topology
         self.buffer = {}
-        self.h5file = h5py.File(filename, "a")
-        log.info(f"Writing simulation data to {filename}")
+        self.h5file = h5py.File(self.file_path, "a")
 
     def get_available_keys(self):
         return self.h5file.keys()
@@ -40,7 +60,6 @@ class SimulationReporter:
         data_dict : dict
             Dictionary containing data to report. Keys are data labels (e.g., 'energy'),
             and values are the data points (usually numpy arrays).
-
         """
         for key, value in data_dict.items():
             if key not in self.buffer:
@@ -50,7 +69,7 @@ class SimulationReporter:
             if len(self.buffer[key]) >= self.buffer_size:
                 self._write_to_disk(key)
 
-    def _write_to_disk(self, key:str):
+    def _write_to_disk(self, key: str):
         """
         Write buffered data of a given key to the HDF5 file.
 
@@ -66,7 +85,7 @@ class SimulationReporter:
             dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
             dset[-data.shape[0] :] = data
         else:
-            log.debug(f"Creating {key} in {self.filename}")
+            log.debug(f"Creating {key} in {self.file_path}")
             self.h5file.create_dataset(
                 key, data=data, maxshape=(None,) + data.shape[1:], chunks=True
             )
@@ -99,10 +118,39 @@ class SimulationReporter:
 
         """
         if name not in self.h5file:
-            log.debug(f"{name} not in HDF5 file")
+            log.warning(f"{name} not in HDF5 file")
             return None
         else:
             return np.array(self.h5file[name])
+
+
+class LangevinDynamicsReporter(_SimulationReporter):
+    _name = "langevin_reporter"
+
+    def __init__(self, topology: Topology, name: str = "", buffer_size: int = 1):
+        """
+        Initialize the SimulationReporter.
+
+        Parameters
+        ----------
+        topology: openmm.Topology
+        buffer_size : int, optional
+            Number of data points to buffer before writing to disk (default is 1).
+
+        """
+        filename = LangevinDynamicsReporter.get_name()
+        directory = BaseReporter.get_directory()
+        import os
+
+        os.makedirs(directory, exist_ok=True)
+        self.file_path = directory / f"{filename}_{name}"
+
+        self.topology = topology
+        super().__init__(self.file_path)
+
+    @classmethod
+    def get_name(cls):
+        return cls._name
 
     def get_mdtraj_trajectory(self):
         import mdtraj as md
@@ -115,21 +163,15 @@ class SimulationReporter:
         )
 
 
-
 class MultistateReporter:
-    
-    def __init__(self, path_to_dir:str) -> None:
+    def __init__(self, path_to_dir: str) -> None:
         self.path_to_dir = path_to_dir
-        
+
     def _write_trajectories():
         pass
-    
+
     def _write_energies():
         pass
-    
+
     def _write_states():
         pass
-    
-        
-    
-    

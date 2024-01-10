@@ -2,7 +2,8 @@ from chiron.states import SamplerState, ThermodynamicState
 from openmm import unit
 from typing import Tuple, List, Optional
 import jax.numpy as jnp
-from chiron.reporters import SimulationReporter
+from chiron.reporters import _SimulationReporter
+
 
 class MCMCMove:
     def __init__(self, nr_of_moves: int, seed: int):
@@ -27,7 +28,7 @@ class LangevinDynamicsMove(MCMCMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
-        simulation_reporter: Optional[SimulationReporter] = None,
+        simulation_reporter: Optional[LangevinIntegrator] = None,
         nr_of_steps=1_000,
         seed: int = 1234,
         save_traj_in_memory: bool = False,
@@ -349,7 +350,7 @@ class MetropolizedMove(MCMove):
         self,
         thermodynamic_state: ThermodynamicState,
         sampler_state: SamplerState,
-        reporter: SimulationReporter,
+        reporter: _SimulationReporter,
         nbr_list=None,
     ):
         """Apply a metropolized move to the sampler state.
@@ -497,7 +498,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
-        simulation_reporter: Optional[SimulationReporter] = None,
+        simulation_reporter: Optional[_SimulationReporter] = None,
     ):
         """
         Initialize the MCMC class.

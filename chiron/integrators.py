@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import random
 from openmm import unit
 from .states import SamplerState, ThermodynamicState
-from .reporters import SimulationReporter
+from .reporters import LangevinIntegrator
 from typing import Optional
 
 
@@ -25,7 +25,7 @@ class LangevinIntegrator:
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
         save_frequency: int = 100,
-        reporter: Optional[SimulationReporter] = None,
+        reporter: Optional[LangevinIntegrator] = None,
         save_traj_in_memory: bool = False,
     ) -> None:
         """
@@ -53,8 +53,8 @@ class LangevinIntegrator:
 
         self.stepsize = stepsize
         self.collision_rate = collision_rate
-        if reporter is not None:
-            log.info(f"Using reporter {reporter} saving to {reporter.filename}")
+        if reporter:
+            log.info(f"Using reporter {reporter} saving to {reporter.file_path}")
             self.reporter = reporter
         self.save_frequency = save_frequency
         self.save_traj_in_memory = save_traj_in_memory
