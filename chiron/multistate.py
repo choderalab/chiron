@@ -606,8 +606,25 @@ class MultiStateSampler:
         if self._offline_estimator:
             log.debug("Performing offline free energy estimate...")
             N_k = [self._iteration] * self.n_states
-            log.debug(f"{N_k=}")
             self._offline_estimator.initialize(
                 u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run,
                 N_k=N_k,
             )
+        elif self._online_estimator:
+            log.debug("Performing online free energy estimate...")
+            self._online_estimator.update(
+                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run[
+                    :, :, self._iteration
+                ]
+            )
+        else:
+            raise RuntimeError("No free energy estimator provided.")
+
+    @property
+    def f_k(self):
+        if self._offline_estimator:
+            return self._offline_estimator.f_k
+        elif self._online_estimator:
+            return self._online_estimator.f_k
+        else:
+            raise RuntimeError("No free energy estimator found.")

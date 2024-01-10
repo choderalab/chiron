@@ -210,8 +210,6 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     print(ho_sampler.delta_f_ij_analytical)
-    print(ho_sampler._last_mbar_f_k_offline)
+    print(ho_sampler.f_k)
 
-    assert np.allclose(
-        ho_sampler.delta_f_ij_analytical[0], ho_sampler._last_mbar_f_k_offline, atol=0.1
-    )
+    assert np.allclose(ho_sampler.delta_f_ij_analytical[0], ho_sampler.f_k, atol=0.1)
