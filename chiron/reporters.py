@@ -116,7 +116,7 @@ class _SimulationReporter:
         np.ndarray
             The property.
 
-        """
+        """            
         if name not in self.h5file:
             log.warning(f"{name} not in HDF5 file")
             return None
@@ -136,7 +136,7 @@ class MCReporter(_SimulationReporter):
         import os
 
         os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{filename}_{name}"
+        self.file_path = directory / f"{name}"
 
         super().__init__(file_path=self.file_path, buffer_size=buffer_size)
 
@@ -168,7 +168,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
         import os
 
         os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{filename}_{name}"
+        self.file_path = directory / f"{name}"
 
         self.topology = topology
         super().__init__(file_path=self.file_path, buffer_size=buffer_size)
