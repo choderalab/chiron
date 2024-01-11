@@ -4,6 +4,7 @@ from chiron.neighbors import NeighborListNsqrd
 from openmm import unit
 import numpy as np
 from chiron.mcmc import MCMCMove
+from chiron.reporters import MultistateReporter
 
 
 class MultiStateSampler:
@@ -20,8 +21,7 @@ class MultiStateSampler:
 
     def __init__(
         self,
-        mcmc_moves=Union[MCMCMove, List[MCMCMove]],
-        online_analysis_interval=5,
+        mcmc_moves: Union[MCMCMove, List[MCMCMove]],
     ):
         """
         Parameters
@@ -30,7 +30,7 @@ class MultiStateSampler:
             The MCMCMove used to propagate the thermodynamic states. If a list of MCMCMoves,
             they will be assigned to the correspondent thermodynamic state on
             creation.
-
+        reporter : MultistateReporter
         Attributes
         ----------
         n_replicas
@@ -40,7 +40,6 @@ class MultiStateSampler:
         is_completed
         """
         import copy
-        from openmm import unit
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -65,7 +64,7 @@ class MultiStateSampler:
 
         self._last_mbar_f_k = None
         self._last_err_free_energy = None
-
+        
     @property
     def n_states(self):
         """The integer number of thermodynamic states (read-only)."""
@@ -120,13 +119,6 @@ class MultiStateSampler:
         return self._thermodynamic_states[0].is_periodic
 
     @property
-    def metadata(self):
-        """A copy of the metadata dictionary passed on creation (read-only)."""
-        import copy
-
-        return copy.deepcopy(self._metadata)
-
-    @property
     def is_completed(self):
         """Check if we have reached any of the stop target criteria (read-only)"""
         return self._is_completed()
@@ -164,7 +156,6 @@ class MultiStateSampler:
         thermodynamic_states: List[ThermodynamicState],
         sampler_states: List[SamplerState],
         nbr_list: NeighborListNsqrd,
-        metadata: Optional[dict] = None,
     ):
         """Create new multistate sampler simulation.
 
@@ -175,8 +166,6 @@ class MultiStateSampler:
             of sampler states provided.
         nbr_list : NeighborListNsqrd
             Neighbor list object to be used in the simulation.
-        metadata : dict, optional
-            Optional simulation metadata to be stored in the file.
 
         Raises
         ------
@@ -188,6 +177,7 @@ class MultiStateSampler:
         self._online_estimator = None
 
         from chiron.analysis import MBAREstimator
+        from chiron.reporters import MultistateReporter
 
         n_thermodynamic_states = len(thermodynamic_states)
         n_sampler_states = len(sampler_states)
@@ -202,7 +192,7 @@ class MultiStateSampler:
 
         self._allocate_variables(thermodynamic_states, sampler_states)
         self.nbr_list = nbr_list
-        self._reporter = None
+        self._reporter = MultistateReporter()
 
     def _allocate_variables(
         self,
