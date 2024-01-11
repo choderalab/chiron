@@ -124,19 +124,26 @@ class _SimulationReporter:
             return np.array(self.h5file[name])
 
 
+from typing import Optional
+
+
 class LangevinDynamicsReporter(_SimulationReporter):
     _name = "langevin_reporter"
 
-    def __init__(self, topology: Topology, name: str = "", buffer_size: int = 1):
+    def __init__(
+        self, name: str, buffer_size: int = 1, topology: Optional[Topology] = None
+    ):
         """
         Initialize the SimulationReporter.
 
         Parameters
         ----------
-        topology: openmm.Topology
+        name : str
+            Name of the HDF5 file to write the simulation data.
         buffer_size : int, optional
             Number of data points to buffer before writing to disk (default is 1).
-
+        topology: openmm.Topology, optional
+            Topology of the system to generate the mdtraj trajectory.
         """
         filename = LangevinDynamicsReporter.get_name()
         directory = BaseReporter.get_directory()
@@ -146,7 +153,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
         self.file_path = directory / f"{filename}_{name}"
 
         self.topology = topology
-        super().__init__(self.file_path)
+        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
 
     @classmethod
     def get_name(cls):
