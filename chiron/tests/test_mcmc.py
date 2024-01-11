@@ -275,24 +275,39 @@ def test_thermodynamic_state_inputs():
     ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
 
 
-def test_mc_barostat_setting():
+def test_mc_barostat_parameter_setting():
     import jax.numpy as jnp
     from chiron.mcmc import MCBarostatMove
 
     barostat_move = MCBarostatMove(
         seed=1234,
         volume_max_scale=0.1,
-        nr_of_moves=10,
+        nr_of_moves=1,
     )
 
     assert barostat_move.volume_max_scale == 0.1
+    assert barostat_move.nr_of_moves == 1
+
+    # when a key is generated from a seed for the first time, we get a jnp.array([0, seed])
+    assert jnp.all(barostat_move.key == jnp.array([0, 1234]))
+
+
+def test_mc_barostat():
+    import jax.numpy as jnp
+    from chiron.mcmc import MCBarostatMove
+
+    barostat_move = MCBarostatMove(
+        seed=1234,
+        volume_max_scale=0.1,
+        nr_of_moves=1,
+    )
 
     from chiron.potential import LJPotential
     from openmm import unit
 
     sigma = 0.34 * unit.nanometer
-    epsilon = 0.238 * unit.kilocalories_per_mole
-    cutoff = 3.0 * sigma
+    epsilon = 0.0 * unit.kilocalories_per_mole
+    cutoff = sigma
 
     positions = (
         jnp.array(
@@ -313,6 +328,7 @@ def test_mc_barostat_setting():
         jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
         * unit.nanometer
     )
+    volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
 
     from openmm.app import Topology, Element
 
@@ -340,38 +356,29 @@ def test_mc_barostat_setting():
         pressure=1.0 * unit.atmosphere,
     )
 
-    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
 
-    # define the neighbor list for an orthogonal periodic space
-    skin = 0.5 * unit.nanometer
-
-    nbr_list = NeighborListNsqrd(
-        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
-    )
+    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
 
     barostat_move.run(sampler_state, thermodynamic_state, nbr_list, True)
 
-    assert barostat_move.statistics["n_accepted"] == 7
-    assert barostat_move.statistics["n_proposed"] == 10
-
-    assert jnp.allclose(
-        sampler_state.x0,
-        jnp.array(
-            [
-                [0.0, 0.0, 0.0],
-                [0.9871503, 0.0, 0.0],
-                [0.0, 0.9871503, 0.0],
-                [0.0, 0.0, 0.9871503],
-                [0.9871503, 0.9871503, 0.0],
-                [0.9871503, 0.0, 0.9871503],
-                [0.0, 0.9871503, 0.9871503],
-                [0.9871503, 0.9871503, 0.9871503],
-            ]
-        ),
+    # ideal gas treatment, so stored energy will only be a consequence of pressure, volume, and temperature
+    assert (
+        barostat_move.stored_energy
+        == thermodynamic_state.pressure
+        * thermodynamic_state.volume
+        * thermodynamic_state.beta
     )
-    assert jnp.allclose(
-        sampler_state.box_vectors,
-        jnp.array([[9.16151, 0.0, 0.0], [0.0, 9.16151, 0.0], [0.0, 0.0, 9.16151]]),
+    assert barostat_move.statistics["n_proposed"] == 1
+    assert barostat_move.statistics["n_accepted"] == 0
+    assert thermodynamic_state.volume == volume
+
+    barostat_move.run(sampler_state, thermodynamic_state, nbr_list, True)
+    assert barostat_move.statistics["n_proposed"] == 2
+    assert barostat_move.statistics["n_accepted"] == 1
+
+    assert jnp.isclose(
+        thermodynamic_state.volume.value_in_unit(unit.nanometer**3), 917.576978
     )
 
 

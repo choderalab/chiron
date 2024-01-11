@@ -89,21 +89,22 @@ langevin_move = LangevinDynamicsMove(
 
 mc_disp_move = MetropolisDisplacementMove(
     seed=1234,
-    displacement_sigma=0.005 * unit.nanometer,
+    displacement_sigma=0.1 * unit.nanometer,
     nr_of_moves=90,
     simulation_reporter=reporter1,
 )
 
 mc_barostat_move = MCBarostatMove(
     seed=1234,
-    volume_max_scale=0.01,
+    volume_max_scale=0.1,
     nr_of_moves=10,
+    adjust_box_scaling=True,
+    adjust_frequency=100,
     simulation_reporter=reporter2,
 )
 move_set = MoveSet(
     [
         ("MetropolisDisplacementMove", mc_disp_move),
-        # ("LangevinMove", langevin_move),
         ("MCBarostatMove", mc_barostat_move),
     ]
 )

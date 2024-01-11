@@ -32,6 +32,14 @@ def test_initialize_state():
         jnp.array([[0.0, 0.0, 0.0]]),
     )
 
+    state = ThermodynamicState(
+        potential,
+        temperature=300 * unit.kelvin,
+        pressure=1 * unit.atmosphere,
+        volume=30 * (unit.angstrom**3),
+    )
+    assert state.pressure == 1 * unit.atmosphere
+
 
 def test_sampler_state_conversion():
     """Test converting a sampler state to jnp arrays.
@@ -148,6 +156,7 @@ def test_reduced_potential():
 
     ho = HarmonicOscillator()
     potential = HarmonicOscillatorPotential(topology=ho.topology, k=ho.K, U0=ho.U0)
+    potential = HarmonicOscillatorPotential(topology=ho.topology, k=ho.K, U0=ho.U0)
 
     state = ThermodynamicState(
         potential, temperature=300 * unit.kelvin, volume=30 * (unit.angstrom**3)
@@ -156,3 +165,20 @@ def test_reduced_potential():
 
     reduced_e = state.get_reduced_potential(sampler_state)
     assert reduced_e == 0.0
+
+    # test the reduced potential for a system with pressure defined
+    box_vectors = (
+        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+        * unit.nanometers
+    )
+    volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+    sampler_state.box_vectors = box_vectors
+
+    pressure = 1.0 * unit.atmosphere
+
+    state = ThermodynamicState(
+        potential, temperature=300 * unit.kelvin, volume=volume, pressure=pressure
+    )
+    reduced_e = state.get_reduced_potential(sampler_state)
+    # since the energy will be zero for the ho at 0, the reduced potential will just be pressure * volume * beta
+    assert reduced_e == pressure * volume * state.beta
