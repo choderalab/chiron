@@ -127,6 +127,24 @@ class _SimulationReporter:
 from typing import Optional
 
 
+class MCReporter(_SimulationReporter):
+    _name = "mc_reporter"
+
+    def __init__(self, name: str, buffer_size: int = 1):
+        filename = LangevinDynamicsReporter.get_name()
+        directory = BaseReporter.get_directory()
+        import os
+
+        os.makedirs(directory, exist_ok=True)
+        self.file_path = directory / f"{filename}_{name}"
+
+        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+
+    @classmethod
+    def get_name(cls):
+        return cls._name
+
+
 class LangevinDynamicsReporter(_SimulationReporter):
     _name = "langevin_reporter"
 
