@@ -39,14 +39,15 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     sampler_state = SamplerState(x0=ho.positions)
     from chiron.integrators import LangevinIntegrator
 
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
     id = uuid.uuid4()
-    h5_file = f"test_{id}.h5"
-    reporter = SimulationReporter(f"{prep_temp_dir}/{h5_file}", 1)
+    h5_file_name = f"test_{id}.h5"
+    BaseReporter.set_directory(prep_temp_dir)
+    reporter = LangevinDynamicsReporter(h5_file_name, 1)
 
     integrator = LangevinIntegrator(
-        stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
+        stepsize=2 * unit.femtosecond, reporter=reporter, save_frequency=1
     )
 
     r = integrator.run(
@@ -54,11 +55,13 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
         thermodynamic_state,
         n_steps=5,
     )
-
+    reporter.close()
     import jax.numpy as jnp
     import h5py
 
-    h5 = h5py.File(f"{prep_temp_dir}/{h5_file}", "r")
+    h5 = h5py.File(
+        f"{prep_temp_dir}/{LangevinDynamicsReporter.get_name()}_{h5_file_name}", "r"
+    )
     keys = h5.keys()
 
     assert "energy" in keys, "Energy not in keys"
@@ -69,7 +72,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     print(energy)
 
     reference_energy = jnp.array(
-        [0.00019308, 0.00077772, 0.00174247, 0.00307798, 0.00479007]
+        [0.01984119, 0.08067884, 0.17772843, 0.30644223, 0.4665345]
     )
     assert jnp.allclose(energy, reference_energy)
 
@@ -108,13 +111,13 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     sampler_state = SamplerState(ho.positions)
 
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", None, 1
-    )
+    BaseReporter.set_directory(prep_temp_dir)
+
+    simulation_reporter = LangevinDynamicsReporter(f"test_{uuid.uuid4()}.h5", 1)
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
+        nr_of_steps=10, seed=1234, reporter=simulation_reporter
     )
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
@@ -160,17 +163,16 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     sampler_state = SamplerState(ho.positions)
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    BaseReporter.set_directory(prep_temp_dir)
+    simulation_reporter = MCReporter(f"test_{uuid.uuid4()}.h5", 1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
@@ -215,17 +217,17 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     sampler_state = SamplerState(ho.positions)
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    BaseReporter.set_directory(prep_temp_dir)
+
+    simulation_reporter = MCReporter(f"test_{uuid.uuid4()}.h5", 1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=None,
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])

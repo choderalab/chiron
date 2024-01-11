@@ -43,7 +43,7 @@ nbr_list = NeighborListNsqrd(
 # build the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import SimulationReporter
+from chiron.reporters import _SimulationReporter
 
 # initialize a reporter to save the simulation data
 filename = "test_lj.h5"
@@ -51,7 +51,7 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = SimulationReporter("test_lj.h5", lj_fluid.topology, 1)
+reporter = _SimulationReporter("test_lj.h5", lj_fluid.topology, 1)
 
 from chiron.integrators import LangevinIntegrator
 
