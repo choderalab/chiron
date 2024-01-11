@@ -192,7 +192,7 @@ class MultiStateSampler:
         n_thermodynamic_states = len(thermodynamic_states)
         n_sampler_states = len(sampler_states)
 
-        self._offline_estimator = MBAREstimator(N_u=n_thermodynamic_states)
+        self._offline_estimator = MBAREstimator()
 
         # Ensure the number of thermodynamic states matches the number of sampler states
         if n_thermodynamic_states != n_sampler_states:
