@@ -2,11 +2,16 @@ from chiron.states import SamplerState, ThermodynamicState
 from openmm import unit
 from typing import Tuple, List, Optional
 import jax.numpy as jnp
-from chiron.reporters import _SimulationReporter
+from chiron.reporters import LangevinDynamicsReporter, _SimulationReporter
 
 
 class MCMCMove:
-    def __init__(self, nr_of_moves: int, seed: int):
+    def __init__(
+        self,
+        nr_of_moves: int,
+        seed: int,
+        reporter: Optional[_SimulationReporter] = None,
+    ):
         """
         Initialize a move within the molecular system.
 
@@ -21,6 +26,13 @@ class MCMCMove:
 
         self.nr_of_moves = nr_of_moves
         self.key = jrandom.PRNGKey(seed)  # 'seed' is an integer seed value
+        self.reporter = reporter
+        from loguru import logger as log
+
+        if self.reporter is not None:
+            log.info(
+                f"Using reporter {self.reporter} saving to {self.reporter.file_path}"
+            )
 
 
 class LangevinDynamicsMove(MCMCMove):
@@ -28,10 +40,9 @@ class LangevinDynamicsMove(MCMCMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
-        simulation_reporter: Optional[LangevinIntegrator] = None,
+        reporter: Optional[LangevinDynamicsReporter] = None,
         nr_of_steps=1_000,
         seed: int = 1234,
-        save_traj_in_memory: bool = False,
     ):
         """
         Initialize the LangevinDynamicsMove with a molecular system.
@@ -45,19 +56,15 @@ class LangevinDynamicsMove(MCMCMove):
         nr_of_steps : int
             Number of steps to run the integrator for.
         """
-        super().__init__(nr_of_steps, seed)
+        super().__init__(nr_of_steps, seed, reporter)
         self.stepsize = stepsize
         self.collision_rate = collision_rate
-        self.simulation_reporter = simulation_reporter
-        self.save_traj_in_memory = save_traj_in_memory
-        self.traj = []
         from chiron.integrators import LangevinIntegrator
 
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
-            reporter=self.simulation_reporter,
-            save_traj_in_memory=save_traj_in_memory,
+            reporter=reporter,
         )
 
     def run(
@@ -68,8 +75,12 @@ class LangevinDynamicsMove(MCMCMove):
         """
         Run the integrator to perform molecular dynamics simulation.
 
-        Args:
-            state_variables (StateVariablesCollection): State variables of the system.
+        Parameters
+        ----------
+        sampler_state : SamplerState
+            The sampler state to run the integrator on.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state to run the integrator on.
         """
 
         assert isinstance(
@@ -85,36 +96,13 @@ class LangevinDynamicsMove(MCMCMove):
             n_steps=self.nr_of_moves,
             key=self.key,
         )
-        if self.save_traj_in_memory:
-            self.traj.append(self.integrator.traj)
-            self.integrator.traj = []
 
 
 class MCMove(MCMCMove):
-    def __init__(self, nr_of_moves: int, seed: int) -> None:
-        super().__init__(nr_of_moves, seed)
-
-    def _check_state_compatiblity(
-        self,
-        old_state: SamplerState,
-        new_state: SamplerState,
-    ):
-        """
-        Check if the states are compatible.
-
-        Parameters
-        ----------
-        old_state : StateVariablesCollection
-            The state of the system before the move.
-        new_state : StateVariablesCollection
-            The state of the system after the move.
-
-        Raises
-        ------
-        ValueError
-            If the states are not compatible.
-        """
-        pass
+    def __init__(
+        self, nr_of_moves: int, seed: int, reporter: Optional[_SimulationReporter]
+    ) -> None:
+        super().__init__(nr_of_moves, seed, reporter=reporter)
 
     def apply_move(self):
         """
@@ -240,9 +228,9 @@ class MoveSchedule:
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
 
 
-class MCMCSampler(object):
+class MCMCSampler:
     """
-    Basic Markov chain Monte Carlo Gibbs sampler.
+    Basic Markov chain Monte Carlo sampler.
 
     Parameters
     ----------
@@ -292,9 +280,9 @@ class MCMCSampler(object):
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
-            if move.simulation_reporter is not None:
-                move.simulation_reporter.close()
-                log.debug(f"Closed reporter {move.simulation_reporter.filename}")
+            if move.reporter is not None:
+                move.reporter.close()
+                log.debug(f"Closed reporter {move.reporter.file_path}")
 
 
 class MetropolizedMove(MCMove):
@@ -327,11 +315,12 @@ class MetropolizedMove(MCMove):
         seed: int = 1234,
         atom_subset: Optional[List[int]] = None,
         nr_of_moves: int = 100,
+        reporter: Optional[_SimulationReporter] = None,
     ):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
-        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed, reporter=reporter)
         from loguru import logger as log
 
         log.debug(f"Atom subset is {atom_subset}.")
@@ -350,7 +339,6 @@ class MetropolizedMove(MCMove):
         self,
         thermodynamic_state: ThermodynamicState,
         sampler_state: SamplerState,
-        reporter: _SimulationReporter,
         nbr_list=None,
     ):
         """Apply a metropolized move to the sampler state.
@@ -363,8 +351,6 @@ class MetropolizedMove(MCMove):
            The thermodynamic state to use to apply the move.
         sampler_state : SamplerState
            The initial sampler state to apply the move to. This is modified.
-        reporter: SimulationReporter
-              The reporter to write the data to.
         nbr_list: Neighbor List or Pair List routine,
             The routine to use to calculate the interacting atoms.
             Default is None and will use an unoptimized pairlist without PBC
@@ -377,9 +363,8 @@ class MetropolizedMove(MCMove):
             sampler_state, nbr_list
         )  # NOTE: in kT
         log.debug(f"Initial energy is {initial_energy} kT.")
-        # Store initial positions of the atoms that are moved.
-        # We'll use this also to recover in case the move is rejected.
 
+        # Store initial positions of the atoms that are moved.
         x0 = sampler_state.x0
         atom_subset = self.atom_subset
         if atom_subset is None:
@@ -421,7 +406,7 @@ class MetropolizedMove(MCMove):
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
-            reporter.report(
+            self.reporter.report(
                 {
                     "energy": thermodynamic_state.kT_to_kJ_per_mol(
                         proposed_energy
@@ -498,7 +483,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
-        simulation_reporter: Optional[_SimulationReporter] = None,
+        reporter: Optional[LangevinDynamicsReporter] = None,
     ):
         """
         Initialize the MCMC class.
@@ -513,22 +498,15 @@ class MetropolisDisplacementMove(MetropolizedMove):
             The number of moves to perform. Default is 100.
         atom_subset : list of int, optional
             A subset of atom indices to consider for the moves. Default is None.
-        simulation_reporter : SimulationReporter, optional
+        reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
         Returns
         -------
         None
         """
-        from loguru import logger as log
-
-        super().__init__(nr_of_moves=nr_of_moves, seed=seed)
+        super().__init__(nr_of_moves=nr_of_moves, seed=seed, reporter=reporter)
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
-        self.simulation_reporter = simulation_reporter
-        if self.simulation_reporter is not None:
-            log.info(
-                f"Using reporter {self.simulation_reporter} saving to {self.simulation_reporter.filename}"
-            )
 
     def displace_positions(
         self, positions: jnp.array, displacement_sigma=1.0 * unit.nanometer
@@ -581,13 +559,11 @@ class MetropolisDisplacementMove(MetropolizedMove):
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
         ):
-            self.apply(
-                thermodynamic_state, sampler_state, self.simulation_reporter, nbr_list
-            )
+            self.apply(thermodynamic_state, sampler_state, nbr_list)
             if trials % 100 == 0:
                 log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-                if self.simulation_reporter is not None:
-                    self.simulation_reporter.report(
+                if self.reporter is not None:
+                    self.reporter.report(
                         {
                             "Acceptance rate": self.n_accepted / self.n_proposed,
                             "step": self.n_proposed,
