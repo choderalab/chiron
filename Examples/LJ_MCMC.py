@@ -124,7 +124,7 @@ initial_density = (
 )
 densities = []
 densities.append(initial_density)
-sampler.run(n_iterations=20000, nbr_list=nbr_list)  # how many times to repeat
+sampler.run(n_iterations=100, nbr_list=nbr_list)  # how many times to repeat
 
 final_density = (
     mass

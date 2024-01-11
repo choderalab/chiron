@@ -273,7 +273,8 @@ class ThermodynamicState:
         """
         if self.beta is None:
             self.beta = 1.0 / (unit.BOLTZMANN_CONSTANT_kB * (self.temperature))
-        log.debug(f"sample state: {sampler_state.x0}")
+        # log.debug(f"beta: {self.beta}")
+        # log.debug(f"sample state: {sampler_state.x0}")
         reduced_potential = (
             unit.Quantity(
                 self.potential.compute_energy(sampler_state.x0, nbr_list),
@@ -289,8 +290,8 @@ class ThermodynamicState:
                     * sampler_state.box_vectors[1][1]
                     * sampler_state.box_vectors[2][2]
                 ) * unit.nanometer**3
-
             reduced_potential += self.pressure * self.volume
+            log.debug(f"pV: {self.pressure * self.volume}")
             log.debug(f"reduced potential energy + pV: {reduced_potential}")
 
         return self.beta * reduced_potential

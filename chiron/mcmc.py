@@ -320,7 +320,6 @@ class MCMCSampler(object):
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
                 move.run(self.sampler_state, self.thermodynamic_state, nbr_list)
-
         log.info("Finished running Gibbs sampler")
         log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
@@ -439,14 +438,14 @@ class MetropolizedMove(MCMove):
                 thermodynamic_state.volume.value_in_unit_system(unit.md_unit_system)
             )
 
-        log.debug(f"Initial positions are {initial_positions} nm.")
+        # log.debug(f"Initial positions are {initial_positions} nm.")
         # Propose perturbed positions. Modifying the reference changes the sampler state.
         # This will also return box vectors for methodologies that change both position and box
         proposed_positions, proposed_box_vectors = self._propose_positions(
             initial_positions, initial_box_vectors
         )
 
-        log.debug(f"Proposed positions are {proposed_positions} nm.")
+        # log.debug(f"Proposed positions are {proposed_positions} nm.")
         # Compute the energy of the proposed positions.
         if atom_subset is None:
             sampler_state.x0 = proposed_positions
@@ -456,6 +455,11 @@ class MetropolizedMove(MCMove):
             )
         # set the box vectors in the sampler state  if they changed
         sampler_state.box_vectors = proposed_box_vectors
+        thermodynamic_state.volume = (
+            proposed_box_vectors[0][0]
+            * proposed_box_vectors[1][1]
+            * proposed_box_vectors[2][2]
+        ) * unit.nanometer**3
 
         if nbr_list is not None:
             # nbr_list box_vectors setter also sets space.box_vectors
@@ -476,6 +480,7 @@ class MetropolizedMove(MCMove):
             sampler_state, nbr_list
         )  # NOTE: in kT
         log.debug(f"Proposed energy is {proposed_energy} kT.")
+        log.debug(f"Initial energy is {initial_energy} kT.")
         # Accept or reject with Metropolis criteria.
         delta_energy = proposed_energy - initial_energy
         log.debug(f"Delta energy is {delta_energy} kT.")
@@ -488,12 +493,12 @@ class MetropolizedMove(MCMove):
                 * proposed_box_vectors[2][2]
             )
             thermodynamic_state.volume = proposed_volume * unit.nanometer**3
-            import math
 
             log.debug(
                 f"Proposed volume is {proposed_volume} initial volume {initial_volume}"
             )
-            volume_term = sampler_state.x0.shape[0] * math.log(
+            log.debug(f"shape: {sampler_state.x0.shape[0]}")
+            volume_term = sampler_state.x0.shape[0] * jnp.log(
                 proposed_volume / initial_volume
             )
             delta_energy -= volume_term
@@ -534,7 +539,7 @@ class MetropolizedMove(MCMove):
                 )
             if thermodynamic_state.pressure is not None:
                 thermodynamic_state.volume = initial_volume * unit.nanometer**3
-                thermodynamic_state.box_vectors = initial_box_vectors
+                sampler_state.box_vectors = initial_box_vectors
 
             log.debug(
                 f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
@@ -743,6 +748,8 @@ class MCBarostatMove(MetropolizedMove):
         seed: int = 1234,
         volume_max_scale=0.01,
         nr_of_moves: int = 100,
+        adjust_box_scaling: bool = False,
+        adjust_frequency: int = 100,
         atom_subset: Optional[List[int]] = None,
         simulation_reporter: Optional[SimulationReporter] = None,
     ):
@@ -757,6 +764,10 @@ class MCBarostatMove(MetropolizedMove):
             The length scale to apply to each box length of the system. Default is 1.1.
         nr_of_moves : int, optional
             The number of moves to perform. Default is 100.
+        adjust_box_scaling : bool, optional
+            Whether to adjust the box scaling based on the acceptance rate. Default is False.
+        adjust_frequency : int, optional
+            How often to adjust the box scaling of adjust_box_scaling is True. Default is 100.
         atom_subset : list of int, optional
             A subset of atom indices to consider for the moves. Default is None.
         simulation_reporter : SimulationReporter, optional
@@ -770,6 +781,9 @@ class MCBarostatMove(MetropolizedMove):
         self.volume_max_scale = volume_max_scale
 
         self.atom_subset = atom_subset
+        self.adjust_box_scaling = adjust_box_scaling
+        self.adjust_frequency = adjust_frequency
+
         self.simulation_reporter = simulation_reporter
         if self.simulation_reporter is not None:
             log.info(
@@ -807,7 +821,10 @@ class MCBarostatMove(MetropolizedMove):
         volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
         log.debug(f"Volume is {volume}.")
         volume_scale_factor = volume_max_scale * volume
-        delta_volume = jrandom.uniform(subkey, minval=-1) * volume_scale_factor
+        delta_volume = (
+            jrandom.uniform(self.key, minval=-1, maxval=1) * volume_scale_factor
+        )
+
         log.debug(f"Delta volume is {delta_volume}.")
 
         new_volume = volume + delta_volume
@@ -862,17 +879,22 @@ class MCBarostatMove(MetropolizedMove):
                 #             "step": self.n_proposed,
                 #         }
                 #     )
+            log.debug(f"{self.n_proposed} {self.n_accepted}")
             # adjust the volume scaling if the acceptance rate is too high or too low
-            if self.n_proposed > 10 and self.n_proposed % 10 == 0:
-                if self.n_accepted < 0.25 * self.n_proposed:
-                    self.volume_max_scale /= 1.1
-                    log.debug(
-                        f"Acceptance rate is too low, reducing volume_max_scale to {self.volume_max_scale}"
-                    )
-                elif self.n_accepted > 0.75 * self.n_proposed and trials % 10 == 0:
-                    self.volume_max_scale = 1.1 * self.volume_max_scale
-                    log.debug(
-                        f"Acceptance rate is too high, increasing volumeScale to {self.volume_max_scale}"
-                    )
+            if self.adjust_box_scaling:
+                if (
+                    self.n_proposed > self.adjust_frequency
+                    and self.n_proposed % self.adjust_frequency == 0
+                ):
+                    if self.n_accepted < 0.25 * self.n_proposed:
+                        self.volume_max_scale /= 1.1
+                        log.debug(
+                            f"Acceptance rate is too low, reducing volume_max_scale to {self.volume_max_scale}"
+                        )
+                    elif self.n_accepted > 0.75 * self.n_proposed:
+                        self.volume_max_scale = 1.1 * self.volume_max_scale
+                        log.debug(
+                            f"Acceptance rate is too high, increasing volumeScale to {self.volume_max_scale}"
+                        )
         log.debug(f"volume max scaling: {self.volume_max_scale}")
         log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
