@@ -42,26 +42,24 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
     id = uuid.uuid4()
-    h5_file_name = f"test_{id}.h5"
-    BaseReporter.set_directory(prep_temp_dir)
-    reporter = LangevinDynamicsReporter(h5_file_name, 1)
+    wd = prep_temp_dir.join(f"_test_{id}")
+    BaseReporter.set_directory(wd)
+    reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
         stepsize=2 * unit.femtosecond, reporter=reporter, save_frequency=1
     )
 
-    r = integrator.run(
+    integrator.run(
         sampler_state,
         thermodynamic_state,
         n_steps=5,
     )
-    reporter.close()
+    integrator.reporter.close()
     import jax.numpy as jnp
     import h5py
 
-    h5 = h5py.File(
-        f"{prep_temp_dir}/{LangevinDynamicsReporter.get_name()}_{h5_file_name}", "r"
-    )
+    h5 = h5py.File(f"{wd}/{LangevinDynamicsReporter.get_name()}.h5", "r")
     keys = h5.keys()
 
     assert "energy" in keys, "Energy not in keys"
@@ -115,7 +113,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     BaseReporter.set_directory(prep_temp_dir)
 
-    simulation_reporter = LangevinDynamicsReporter(f"test_{uuid.uuid4()}.h5", 1)
+    simulation_reporter = LangevinDynamicsReporter(1)
     langevin_move = LangevinDynamicsMove(
         nr_of_steps=10, seed=1234, reporter=simulation_reporter
     )
@@ -165,8 +163,9 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter
 
-    BaseReporter.set_directory(prep_temp_dir)
-    simulation_reporter = MCReporter(f"test_{uuid.uuid4()}.h5", 1)
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+    simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
@@ -219,9 +218,10 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter
 
-    BaseReporter.set_directory(prep_temp_dir)
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
 
-    simulation_reporter = MCReporter(f"test_{uuid.uuid4()}.h5", 1)
+    simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
