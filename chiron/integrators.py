@@ -4,8 +4,10 @@ import jax.numpy as jnp
 from jax import random
 from openmm import unit
 from .states import SamplerState, ThermodynamicState
-from .reporters import LangevinIntegrator
+from .reporters import LangevinDynamicsReporter
 from typing import Optional
+from .potential import NeuralNetworkPotential
+from .neighbors import PairsBase
 
 
 class LangevinIntegrator:
@@ -25,7 +27,7 @@ class LangevinIntegrator:
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
         save_frequency: int = 100,
-        reporter: Optional[LangevinIntegrator] = None,
+        reporter: Optional[LangevinDynamicsReporter] = None,
         save_traj_in_memory: bool = False,
     ) -> None:
         """
@@ -78,7 +80,7 @@ class LangevinIntegrator:
         thermodynamic_state: ThermodynamicState,
         n_steps: int = 5_000,
         key=random.PRNGKey(0),
-        nbr_list=None,
+        nbr_list: Optional[PairsBase] = None,
         progress_bar=False,
     ):
         """
@@ -94,7 +96,7 @@ class LangevinIntegrator:
             Number of simulation steps to perform.
         key : jax.random.PRNGKey, optional
             Random key for generating random numbers.
-        nbr_list : NeighborListNsqrd, optional
+        nbr_list : PairBase, optional
             Neighbor list for the system.
         progress_bar : bool, optional
             Flag indicating whether to display a progress bar during integration.
@@ -118,6 +120,7 @@ class LangevinIntegrator:
         log.debug(f"temperature = {temperature}")
         log.debug(f"Using seed: {key}")
 
+        # Convert to dimensionless quantities
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
         mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[
             :, None
@@ -127,22 +130,24 @@ class LangevinIntegrator:
         collision_rate_unitless = self.collision_rate.value_in_unit_system(
             unit.md_unit_system
         )
+        a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
+        b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
         # Initialize velocities
         if self.velocities is None:
             v0 = sigma_v * random.normal(key, x0.shape)
         else:
             v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
-        # Convert to dimensionless quantities
-        a = jnp.exp((-collision_rate_unitless * stepsize_unitless))
-        b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
         x = x0
         v = v0
+
         if nbr_list is not None:
             nbr_list.build_from_state(sampler_state)
 
         F = potential.compute_force(x, nbr_list)
+
+        # propagation loop
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
             key, subkey = random.split(key)
             # v
@@ -151,46 +156,78 @@ class LangevinIntegrator:
             x += (stepsize_unitless * 0.5) * v
 
             if nbr_list is not None:
-                x = nbr_list.space.wrap(x)
-                # check if we need to rebuild the neighborlist after moving the particles
-                if nbr_list.check(x):
-                    nbr_list.build(x, self.box_vectors)
+                self._wrap_and_rebuild_neighborlist(x, nbr_list)
             # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 
             x += (stepsize_unitless * 0.5) * v
             if nbr_list is not None:
-                x = nbr_list.space.wrap(x)
-                # check if we need to rebuild the neighborlist after moving the particles
-                if nbr_list.check(x):
-                    nbr_list.build(x, self.box_vectors)
+                self._wrap_and_rebuild_neighborlist(x, nbr_list)
 
             F = potential.compute_force(x, nbr_list)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
             if step % self.save_frequency == 0:
-                # log.debug(f"Saving at step {step}")
-                # check if reporter is attribute of the class
-                # log.debug(f"step {step} energy {potential.compute_energy(x, nbr_list)}")
-                # log.debug(f"step {step} force {F}")
-
                 if hasattr(self, "reporter") and self.reporter is not None:
-                    d = {
-                        "traj": x,
-                        "energy": potential.compute_energy(x, nbr_list),
-                        "step": step,
-                    }
-                    if nbr_list is not None:
-                        d["box_vectors"] = nbr_list.space.box_vectors
-
-                    # log.debug(d)
-                    self.reporter.report(d)
+                    self._report(x, potential, nbr_list, step)
                 if self.save_traj_in_memory:
                     self.traj.append(x)
 
         log.debug("Finished running Langevin dynamics")
         # save the final state of the simulation in the sampler_state object
         sampler_state.x0 = x
+        sampler_state.v0 = v
         # self.reporter.close()
+
+    def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
+        """
+        Wrap the coordinates and rebuild the neighborlist if necessary.
+
+        Parameters
+        ----------
+        x: jnp.array
+            The coordinates of the particles.
+        nbr_list: PairsBsse
+            The neighborlist object.
+        """
+
+        x = nbr_list.space.wrap(x)
+        # check if we need to rebuild the neighborlist after moving the particles
+        if nbr_list.check(x):
+            nbr_list.build(x, self.box_vectors)
+
+    def _report(
+        self,
+        x: jnp.array,
+        potential: NeuralNetworkPotential,
+        nbr_list: PairsBase,
+        step: int,
+    ):
+        """
+        Reports the trajectory, energy, step, and box vectors (if available) to the reporter.
+
+        Parameters
+        ----------
+            x : jnp.array
+                current coordinate set
+            potential: NeuralNetworkPotential
+                potential used to compute the energy and force
+            nbr_list: PairsBase
+                The neighbor list
+            step: int
+                The current time step.
+
+        Returns:
+            None
+        """
+        d = {
+            "traj": x,
+            "energy": potential.compute_energy(x, nbr_list),
+            "step": step,
+        }
+        if nbr_list is not None:
+            d["box_vectors"] = nbr_list.space.box_vectors
+
+        self.reporter.report(d)
