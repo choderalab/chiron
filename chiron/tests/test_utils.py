@@ -28,9 +28,12 @@ def test_reporter():
     import numpy as np
     from chiron.utils import get_data_file_path
     import pathlib
-    h5_file = "test_md.h5"
+
+    h5_file = "langevin_reporter_test_md.h5"
     h5_test_file = get_data_file_path(h5_file)
-    base_dir = pathlib.Path(h5_test_file).parent.absolute()
+    base_dir = (
+        pathlib.Path(h5_test_file).parent.parent.absolute().joinpath("tests/data")
+    )
     print(h5_test_file)
     print(base_dir)
 
@@ -58,7 +61,7 @@ def test_reporter():
 
     BaseReporter.set_directory(base_dir)
 
-    reporter = LangevinDynamicsReporter(h5_file, 1)
+    reporter = LangevinDynamicsReporter("test_md.h5", 1)
     assert np.allclose(reference_energy, reporter.get_property("energy")[:5])
     reporter.close()
     # test the topology
@@ -66,7 +69,7 @@ def test_reporter():
 
     ho = HarmonicOscillatorArray()
     topology = ho.topology
-    reporter = LangevinDynamicsReporter(h5_file, 1, topology)
+    reporter = LangevinDynamicsReporter("test_md.h5", 1, topology)
     traj = reporter.get_mdtraj_trajectory()
     import mdtraj as md
 

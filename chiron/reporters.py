@@ -116,7 +116,7 @@ class _SimulationReporter:
         np.ndarray
             The property.
 
-        """            
+        """
         if name not in self.h5file:
             log.warning(f"{name} not in HDF5 file")
             return None
@@ -127,11 +127,29 @@ class _SimulationReporter:
 from typing import Optional
 
 
+class MultistateReporter(_SimulationReporter):
+    _name = "multistate_reporter"
+
+    def __init__(self, name_suffix: str, buffer_size: int = 1) -> None:
+        filename = MultistateReporter.get_name()
+        directory = BaseReporter.get_directory()
+        import os
+
+        os.makedirs(directory, exist_ok=True)
+        self.file_path = directory / f"{filename}_{name_suffix}"
+
+        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+
+    @classmethod
+    def get_name(cls):
+        return cls._name
+
+
 class MCReporter(_SimulationReporter):
     _name = "mc_reporter"
 
-    def __init__(self, name: str, buffer_size: int = 1):
-        filename = LangevinDynamicsReporter.get_name()
+    def __init__(self, name: str, buffer_size: int = 1) -> None:
+        filename = MCReporter.get_name()
         directory = BaseReporter.get_directory()
         import os
 
@@ -149,15 +167,18 @@ class LangevinDynamicsReporter(_SimulationReporter):
     _name = "langevin_reporter"
 
     def __init__(
-        self, name: str, buffer_size: int = 1, topology: Optional[Topology] = None
+        self,
+        name_suffix: str,
+        buffer_size: int = 1,
+        topology: Optional[Topology] = None,
     ):
         """
         Initialize the SimulationReporter.
 
         Parameters
         ----------
-        name : str
-            Name of the HDF5 file to write the simulation data.
+        name_suffix : str
+            Prefix of the HDF5 file to write the simulation data.
         buffer_size : int, optional
             Number of data points to buffer before writing to disk (default is 1).
         topology: openmm.Topology, optional
@@ -168,7 +189,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
         import os
 
         os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{name}"
+        self.file_path = directory / f"{filename}_{name_suffix}"
 
         self.topology = topology
         super().__init__(file_path=self.file_path, buffer_size=buffer_size)

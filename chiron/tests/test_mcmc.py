@@ -60,7 +60,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     import h5py
 
     h5 = h5py.File(
-        f"{prep_temp_dir}/{h5_file_name}", "r"
+        f"{prep_temp_dir}/{LangevinDynamicsReporter.get_name()}_{h5_file_name}", "r"
     )
     keys = h5.keys()
 

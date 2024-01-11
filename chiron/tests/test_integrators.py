@@ -34,7 +34,7 @@ def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
         from chiron.reporters import BaseReporter
 
         BaseReporter.set_directory(prep_temp_dir)
-        reporter = LangevinDynamicsReporter(name=f"test{i}")
+        reporter = LangevinDynamicsReporter(name_suffix=f"test{i}")
 
         integrator = LangevinIntegrator(reporter=reporter, save_frequency=1)
         integrator.run(
