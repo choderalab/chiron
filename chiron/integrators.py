@@ -28,7 +28,6 @@ class LangevinIntegrator:
         collision_rate=1.0 / unit.picoseconds,
         save_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
-        save_traj_in_memory: bool = False,
     ) -> None:
         """
         Initialize the LangevinIntegrator object.
@@ -43,8 +42,6 @@ class LangevinIntegrator:
             Frequency of saving the simulation data. Default is 100.
         reporter : SimulationReporter, optional
             Reporter object for saving the simulation data. Default is None.
-        save_traj_in_memory : bool
-            Whether to save the trajectory in memory. For debugging purposes only.
         """
         from loguru import logger as log
 
@@ -59,8 +56,6 @@ class LangevinIntegrator:
             log.info(f"Using reporter {reporter} saving to {reporter.file_path}")
             self.reporter = reporter
         self.save_frequency = save_frequency
-        self.save_traj_in_memory = save_traj_in_memory
-        self.traj = []
         self.velocities = None
 
     def set_velocities(self, vel: unit.Quantity) -> None:
@@ -172,8 +167,6 @@ class LangevinIntegrator:
             if step % self.save_frequency == 0:
                 if hasattr(self, "reporter") and self.reporter is not None:
                     self._report(x, potential, nbr_list, step)
-                if self.save_traj_in_memory:
-                    self.traj.append(x)
 
         log.debug("Finished running Langevin dynamics")
         # save the final state of the simulation in the sampler_state object
