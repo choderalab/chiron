@@ -63,6 +63,72 @@ class NeuralNetworkPotential:
         return distance[interacting_mask], displacement_vectors[interacting_mask], pairs
 
 
+class IdealGasPotential(NeuralNetworkPotential):
+    def __init__(
+        self,
+        topology: Topology,
+    ):
+        """
+        Initialize the Ideal Gas potential.
+
+        Parameters
+        ----------
+        topology : Topology
+            The topology of the system
+
+        """
+
+        if not isinstance(topology, Topology):
+            if not isinstance(topology, property):
+                if topology is not None:
+                    raise TypeError(
+                        f"Topology must be a Topology object or None, type(topology) = {type(topology)}"
+                    )
+
+        self.topology = topology
+
+    def compute_energy(self, positions: jnp.array, nbr_list=None, debug_mode=False):
+        """
+        Compute the energy for an ideal gas, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, default=None
+            Instance of a neighbor list or pair list class to use.
+            If None, an unoptimized N^2 pairlist will be used without PBC conditions.
+        Returns
+        -------
+        potential_energy : float
+            The total potential energy of the system.
+
+        """
+        # Compute the pair distances and displacement vectors
+
+        return 0.0
+
+    def compute_force(self, positions: jnp.array, nbr_list=None) -> jnp.array:
+        """
+        Compute the  force for ideal gas particles, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        force : jnp.array
+            The forces on the particles in the system
+
+        """
+
+        return 0.0
+
+
 class LJPotential(NeuralNetworkPotential):
     def __init__(
         self,
