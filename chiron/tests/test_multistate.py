@@ -25,10 +25,10 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
     )
 
     move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=500)
+    reporter = MultistateReporter()
+    reporter.reset_reporter_file()
 
-    multistate_sampler = MultiStateSampler(
-        mcmc_moves=move, reporter=MultistateReporter()
-    )
+    multistate_sampler = MultiStateSampler(mcmc_moves=move, reporter=reporter)
     return nbr_list, multistate_sampler
 
 

@@ -48,9 +48,7 @@ class MultiStateSampler:
         self._replica_thermodynamic_states = None
         self._iteration = None
         self._energy_thermodynamic_states = None
-        self._energy_thermodynamic_states_for_each_iteration = None
         self._neighborhoods = None
-        self._energy_unsampled_states = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
         self._reporter = reporter
@@ -531,7 +529,6 @@ class MultiStateSampler:
         self._energy_thermodynamic_states_for_each_iteration_in_run = np.zeros(
             [self.n_replicas, self.n_states, n_iterations + 1], np.float64
         )
-
         # Initialize energies if this is the first iteration
         if self._iteration == 0:
             self._compute_energies()
@@ -566,7 +563,7 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug("Reporting energy per thermodynamic state...")
-        self._reporter.report({"u_kn": self._energy_thermodynamic_states})
+        self._reporter.report({"u_kn": self._energy_thermodynamic_states.T})
 
     def _report_positions(self):
         """Store positions of current iteration."""
@@ -625,7 +622,9 @@ class MultiStateSampler:
             log.debug("Performing offline free energy estimate...")
             N_k = [self._iteration] * self.n_states
             u_kn = self._reporter.get_property("u_kn")
-            log.debug(u_kn)
+            u_kn = np.transpose(
+                u_kn, (2, 1, 0)
+            )  # shape: n_states, n_replicas, n_iterations
             self._offline_estimator.initialize(
                 u_kn=u_kn,
                 N_k=N_k,
@@ -633,11 +632,7 @@ class MultiStateSampler:
             log.debug(self._offline_estimator.f_k)
         elif self._online_estimator:
             log.debug("Performing online free energy estimate...")
-            self._online_estimator.update(
-                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run[
-                    :, :, self._iteration
-                ]
-            )
+            self._online_estimator.update()
         else:
             raise RuntimeError("No free energy estimator provided.")
 

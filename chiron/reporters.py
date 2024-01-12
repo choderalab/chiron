@@ -110,6 +110,16 @@ class _SimulationReporter:
 
         self.buffer[key] = []
 
+    def reset_reporter_file(self):
+        # delete the reporter files
+        import os
+
+        # if file exists, delete it
+        if os.path.exists(self.file_path):
+            log.debug(f"Deleting {self.file_path}")
+            os.remove(self.file_path)
+            self.h5file = h5py.File(self.file_path, "a")
+
     def close(self):
         """
         Write any remaining data in the buffer to disk and close the HDF5 file.
