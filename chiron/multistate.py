@@ -563,15 +563,10 @@ class MultiStateSampler:
             self._update_analysis()
 
     def _report_energy_matrix(self):
-        # self._energy_thermodynamic_states_for_each_iteration_in_run[
-        #     :, :, self._iteration
-        # ] = self._energy_thermodynamic_states
+        from loguru import logger as log
 
-        # TODO: write energies
-        # TODO: write trajectory
-
-        # TODO: write mixing statistics
-        pass
+        log.debug("Reporting energy per thermodynamic state...")
+        self._reporter.report({"u_kn": self._energy_thermodynamic_states})
 
     def _report_positions(self):
         """Store positions of current iteration."""
@@ -604,11 +599,10 @@ class MultiStateSampler:
         match property:
             case "positions":
                 self._report_positions()
-
             case "states":
                 pass
-            case "energies":
-                pass
+            case "u_kn":
+                self._report_energy_matrix()
             case "trajectory":
                 pass
             case "mixing_statistics":
@@ -630,10 +624,13 @@ class MultiStateSampler:
         if self._offline_estimator:
             log.debug("Performing offline free energy estimate...")
             N_k = [self._iteration] * self.n_states
+            u_kn = self._reporter.get_property("u_kn")
+            log.debug(u_kn)
             self._offline_estimator.initialize(
-                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run,
+                u_kn=u_kn,
                 N_k=N_k,
             )
+            log.debug(self._offline_estimator.f_k)
         elif self._online_estimator:
             log.debug("Performing online free energy estimate...")
             self._online_estimator.update(

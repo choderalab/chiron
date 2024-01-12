@@ -79,7 +79,7 @@ class _SimulationReporter:
             if len(self.buffer[key]) >= self.buffer_size:
                 if key == "positions" and hasattr(self, "_write_to_trajectory"):
                     log.debug(f"Writing positions to trajectory")
-                    log.debug(f"Positions: {value}")
+                    log.debug(f"Positions: {value['xyz']}")
                     self._write_to_trajectory(
                         positions=value["xyz"],
                         replica_id=value["replica_id"],
@@ -150,7 +150,7 @@ class MultistateReporter(_SimulationReporter):
     _default_properties = [
         "positions",
         "box_vectors",
-        "potential_energy",
+        "u_kn",
         "state_index",
         "time",
     ]
