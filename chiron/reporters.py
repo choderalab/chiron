@@ -148,6 +148,11 @@ class _SimulationReporter:
         if name not in self.h5file:
             log.warning(f"{name} not in HDF5 file")
             return None
+        elif name == "u_kn":
+            return np.transpose(
+                np.array(self.h5file[name]), (2, 1, 0)
+            )  # shape: n_states, n_replicas, n_iterations
+
         else:
             return np.array(self.h5file[name])
 

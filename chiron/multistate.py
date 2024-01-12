@@ -622,9 +622,6 @@ class MultiStateSampler:
             log.debug("Performing offline free energy estimate...")
             N_k = [self._iteration] * self.n_states
             u_kn = self._reporter.get_property("u_kn")
-            u_kn = np.transpose(
-                u_kn, (2, 1, 0)
-            )  # shape: n_states, n_replicas, n_iterations
             self._offline_estimator.initialize(
                 u_kn=u_kn,
                 N_k=N_k,
