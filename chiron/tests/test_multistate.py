@@ -14,6 +14,7 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
     from openmm import unit
     from chiron.mcmc import LangevinDynamicsMove
     from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+    from chiron.reporters import MultistateReporter
 
     sigma = 0.34 * unit.nanometer
     cutoff = 3.0 * sigma
@@ -25,7 +26,9 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
 
     move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=500)
 
-    multistate_sampler = MultiStateSampler(mcmc_moves=move)
+    multistate_sampler = MultiStateSampler(
+        mcmc_moves=move, reporter=MultistateReporter()
+    )
     return nbr_list, multistate_sampler
 
 

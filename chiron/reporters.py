@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 
 from openmm.app import Topology
+from typing import List
 
 
 class BaseReporter:
@@ -42,11 +43,20 @@ class _SimulationReporter:
         if file_path.suffix != ".h5":
             file_path = file_path.with_suffix(".h5")
         self.file_path = file_path
+        self.workdir = file_path.parent
         log.info(f"Writing simulation data to {self.file_path}")
 
         self.buffer_size = buffer_size
         self.buffer = {}
         self.h5file = h5py.File(self.file_path, "a")
+
+    @property
+    def properties_to_report(self):
+        return self._properties_to_report
+
+    @properties_to_report.setter
+    def properties_to_report(self, properties: List[str]):
+        self._properties_to_report = properties
 
     def get_available_keys(self):
         return self.h5file.keys()
@@ -67,7 +77,15 @@ class _SimulationReporter:
             self.buffer[key].append(value)
 
             if len(self.buffer[key]) >= self.buffer_size:
-                self._write_to_disk(key)
+                if key == "positions" and hasattr(self, "_write_to_trajectory"):
+                    log.debug(f"Writing positions to trajectory")
+                    log.debug(f"Positions: {value}")
+                    self._write_to_trajectory(
+                        positions=value["xyz"],
+                        replica_id=value["replica_id"],
+                    )
+                else:
+                    self._write_to_disk(key)
 
     def _write_to_disk(self, key: str):
         """
@@ -129,6 +147,13 @@ from typing import Optional
 
 class MultistateReporter(_SimulationReporter):
     _name = "multistate_reporter"
+    _default_properties = [
+        "positions",
+        "box_vectors",
+        "potential_energy",
+        "state_index",
+        "time",
+    ]
 
     def __init__(self, buffer_size: int = 1) -> None:
         filename = MultistateReporter.get_name()
@@ -139,10 +164,30 @@ class MultistateReporter(_SimulationReporter):
         self.file_path = directory / f"{filename}.h5"
 
         super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+        self._properties_to_report = MultistateReporter._default_properties
+        self._file_handle = {}
 
     @classmethod
     def get_name(cls):
         return cls._name
+
+    def _write_to_trajectory(self, positions: np.ndarray, replica_id: int):
+        import mdtraj as md
+
+        # append to xtc trajectory the new positions
+        file_name = f"replica_{replica_id}"
+        if self._file_handle.get(file_name) is None:
+            self._file_handle[file_name] = md.formats.XTCTrajectoryFile(
+                f"{self.workdir}/{file_name}.xtc", mode="w"
+            )
+
+        open_xtc_file = self._file_handle[file_name]
+
+        open_xtc_file.write(
+            positions,
+            #            time=iteration,
+            box=self.get_property("box_vectors"),
+        )
 
 
 class MCReporter(_SimulationReporter):
@@ -165,6 +210,7 @@ class MCReporter(_SimulationReporter):
 
 class LangevinDynamicsReporter(_SimulationReporter):
     _name = "langevin_reporter"
+    _default_properties = ["trajectory", "box_vectors", "potential_energy", "time"]
 
     def __init__(
         self,
@@ -192,6 +238,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
 
         self.topology = topology
         super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+        self._default_properties = LangevinDynamicsReporter._default_properties
 
     @classmethod
     def get_name(cls):
@@ -206,17 +253,3 @@ class LangevinDynamicsReporter(_SimulationReporter):
             unitcell_lengths=self.get_property("box_vectors"),
             unitcell_angles=self.get_property("box_angles"),
         )
-
-
-# class MultistateReporter:
-#     def __init__(self, path_to_dir: str) -> None:
-#         self.path_to_dir = path_to_dir
-
-#     def _write_trajectories():
-#         pass
-
-#     def _write_energies():
-#         pass
-
-#     def _write_states():
-#         pass

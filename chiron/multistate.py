@@ -20,8 +20,7 @@ class MultiStateSampler:
     """
 
     def __init__(
-        self,
-        mcmc_moves: Union[MCMCMove, List[MCMCMove]],
+        self, mcmc_moves: Union[MCMCMove, List[MCMCMove]], reporter: MultistateReporter
     ):
         """
         Parameters
@@ -54,17 +53,12 @@ class MultiStateSampler:
         self._energy_unsampled_states = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
-        self._reporter = None
+        self._reporter = reporter
         self._metadata = None
         self._timing_data = dict()
-        self.free_energy_estimator = None
-        self._traj = None
 
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
-        self._last_mbar_f_k = None
-        self._last_err_free_energy = None
-        
     @property
     def n_states(self):
         """The integer number of thermodynamic states (read-only)."""
@@ -244,10 +238,8 @@ class MultiStateSampler:
         # Reset statistics.
 
         # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        # Allocate memory for energy matrix. energy_thermodynamic_states[k][l]
-        # is the reduced potential computed at the positions of SamplerState sampler_states[k]
-        # and ThermodynamicState thermodynamic_states[l].
+        # energy_thermodynamic_states[k][l] is the reduced potential computed at the positions of
+        # SamplerState sampler_states[k] and ThermodynamicState thermodynamic_states[l].
 
         self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
         self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
@@ -543,11 +535,7 @@ class MultiStateSampler:
         # Initialize energies if this is the first iteration
         if self._iteration == 0:
             self._compute_energies()
-            # store energies for mbar analysis
-            self._energy_thermodynamic_states_for_each_iteration_in_run[
-                :, :, self._iteration
-            ] = self._energy_thermodynamic_states
-            # TODO report energies
+            self._report_iteration()
 
         # start the sampling loop
         log.debug(f"{n_iterations=}")
@@ -568,25 +556,71 @@ class MultiStateSampler:
             # Compute energies of all replicas at all states
             self._compute_energies()
 
-            # Add energies to the energy matrix
-            self._energy_thermodynamic_states_for_each_iteration_in_run[
-                :, :, self._iteration
-            ] = self._energy_thermodynamic_states
             # Write iteration to storage file
-            # TODO
-            # self._report_iteration()
+            self._report_iteration()
 
             # Update analysis
             self._update_analysis()
 
-    def _report_iteration(self):
-        """Store positions, states, and energies of current iteration."""
+    def _report_energy_matrix(self):
+        # self._energy_thermodynamic_states_for_each_iteration_in_run[
+        #     :, :, self._iteration
+        # ] = self._energy_thermodynamic_states
 
         # TODO: write energies
-
         # TODO: write trajectory
 
         # TODO: write mixing statistics
+        pass
+
+    def _report_positions(self):
+        """Store positions of current iteration."""
+        from loguru import logger as log
+
+        log.debug("Reporting positions...")
+        for replica_id in range(self.n_replicas):
+            self._reporter.report(
+                {
+                    "positions": {
+                        "xyz": self._sampler_states[replica_id].x0,
+                        "replica_id": replica_id,
+                    }
+                }
+            )
+
+    def _report(self, property: str):
+        """
+        Report a property of the simulation.
+
+        Parameters
+        ----------
+        property : str
+            The property to report. Options are 'positions', 'states', 'energies',
+            'trajectory', 'mixing_statistics', and 'all'.
+        """
+        from loguru import logger as log
+
+        log.debug(f"Reporting {property}...")
+        match property:
+            case "positions":
+                self._report_positions()
+
+            case "states":
+                pass
+            case "energies":
+                pass
+            case "trajectory":
+                pass
+            case "mixing_statistics":
+                pass
+                # reporter.write_mixing_statistics()
+        a = 7
+
+    def _report_iteration(self):
+        """Store positions, states, and energies of current iteration."""
+
+        for property in self._reporter.properties_to_report:
+            self._report(property)
 
     def _update_analysis(self):
         """Update analysis of free energies"""
