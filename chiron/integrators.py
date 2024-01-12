@@ -151,14 +151,14 @@ class LangevinIntegrator:
             x += (stepsize_unitless * 0.5) * v
 
             if nbr_list is not None:
-                self._wrap_and_rebuild_neighborlist(x, nbr_list)
+                x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
             # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 
             x += (stepsize_unitless * 0.5) * v
             if nbr_list is not None:
-                self._wrap_and_rebuild_neighborlist(x, nbr_list)
+                x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
 
             F = potential.compute_force(x, nbr_list)
             # v
@@ -190,6 +190,7 @@ class LangevinIntegrator:
         # check if we need to rebuild the neighborlist after moving the particles
         if nbr_list.check(x):
             nbr_list.build(x, self.box_vectors)
+        return x
 
     def _report(
         self,
