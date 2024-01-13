@@ -605,7 +605,6 @@ class MultiStateSampler:
             case "mixing_statistics":
                 pass
                 # reporter.write_mixing_statistics()
-        a = 7
 
     def _report_iteration(self):
         """Store positions, states, and energies of current iteration."""
