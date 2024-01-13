@@ -570,15 +570,12 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug("Reporting positions...")
+        # numpy array with shape (n_replicas, n_atoms, 3)
+        xyz = np.zeros((self.n_replicas, self._sampler_states[0].x0.shape[0], 3))
         for replica_id in range(self.n_replicas):
-            self._reporter.report(
-                {
-                    "positions": {
-                        "xyz": self._sampler_states[replica_id].x0,
-                        "replica_id": replica_id,
-                    }
-                }
-            )
+            xyz[replica_id] = self._sampler_states[replica_id].x0
+            print(self._sampler_states[replica_id].x0)
+        self._reporter.report({"positions": xyz})
 
     def _report(self, property: str):
         """

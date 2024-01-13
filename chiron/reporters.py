@@ -90,14 +90,11 @@ class _SimulationReporter:
 
         """
         if key == "positions" and hasattr(self, "_write_to_trajectory"):
-            data = self.buffer[key]
-            xyz = data["xyz"]
-            replica_id = data["replica_id"]
+            xyz = np.stack(self.buffer[key])
             log.debug(f"Writing to trajectory")
             log.debug(f"Positions: {xyz}")
             self._write_to_trajectory(
                 positions=xyz,
-                replica_id=replica_id,
             )
         elif key in self.h5file:
             data = np.array(self.buffer[key])
@@ -196,23 +193,26 @@ class MultistateReporter(_SimulationReporter):
     def get_name(cls):
         return cls._name
 
-    def _write_to_trajectory(self, positions: np.ndarray, replica_id: int):
+    def _write_to_trajectory(self, positions: np.ndarray):
         import mdtraj as md
 
+        nr_of_runs, n_of_replicas, n_of_atoms, _ = positions.shape
+
         # append to xtc trajectory the new positions
-        file_name = f"replica_{replica_id}"
-        if self._file_handle.get(file_name) is None:
-            self._file_handle[file_name] = md.formats.XTCTrajectoryFile(
-                f"{self.workdir}/{file_name}.xtc", mode="w"
+        for replica_id in range(n_of_replicas):
+            file_name = f"replica_{replica_id}"
+            if self._file_handle.get(file_name) is None:
+                self._file_handle[file_name] = md.formats.XTCTrajectoryFile(
+                    f"{self.workdir}/{file_name}.xtc", mode="w"
+                )
+
+            open_xtc_file = self._file_handle[file_name]
+            xyz = positions[:, replica_id, :, :]
+            open_xtc_file.write(
+                xyz,
+                #            time=iteration,
+                box=self.get_property("box_vectors"),
             )
-
-        open_xtc_file = self._file_handle[file_name]
-
-        open_xtc_file.write(
-            positions,
-            #            time=iteration,
-            box=self.get_property("box_vectors"),
-        )
 
 
 class MCReporter(_SimulationReporter):
