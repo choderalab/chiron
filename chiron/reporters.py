@@ -77,15 +77,7 @@ class _SimulationReporter:
             self.buffer[key].append(value)
 
             if len(self.buffer[key]) >= self.buffer_size:
-                if key == "positions" and hasattr(self, "_write_to_trajectory"):
-                    log.debug(f"Writing positions to trajectory")
-                    log.debug(f"Positions: {value['xyz']}")
-                    self._write_to_trajectory(
-                        positions=value["xyz"],
-                        replica_id=value["replica_id"],
-                    )
-                else:
-                    self._write_to_disk(key)
+                self._write_to_disk(key)
 
     def _write_to_disk(self, key: str):
         """
@@ -97,12 +89,23 @@ class _SimulationReporter:
             The key of the data to write to disk.
 
         """
-        data = np.array(self.buffer[key])
-        if key in self.h5file:
+        if key == "positions" and hasattr(self, "_write_to_trajectory"):
+            data = self.buffer[key]
+            xyz = data["xyz"]
+            replica_id = data["replica_id"]
+            log.debug(f"Writing to trajectory")
+            log.debug(f"Positions: {xyz}")
+            self._write_to_trajectory(
+                positions=xyz,
+                replica_id=replica_id,
+            )
+        elif key in self.h5file:
+            data = np.array(self.buffer[key])
             dset = self.h5file[key]
             dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
             dset[-data.shape[0] :] = data
         else:
+            data = np.array(self.buffer[key])
             log.debug(f"Creating {key} in {self.file_path}")
             self.h5file.create_dataset(
                 key, data=data, maxshape=(None,) + data.shape[1:], chunks=True
@@ -120,14 +123,21 @@ class _SimulationReporter:
             os.remove(self.file_path)
             self.h5file = h5py.File(self.file_path, "a")
 
-    def close(self):
+    def flush_buffer(self):
         """
-        Write any remaining data in the buffer to disk and close the HDF5 file.
+        Write any remaining data in the buffer to disk.
 
         """
         for key in self.buffer:
             if self.buffer[key]:
                 self._write_to_disk(key)
+
+    def close(self):
+        """
+        Write any remaining data in the buffer to disk and close the HDF5 file.
+
+        """
+        self.flush_buffer()
         self.h5file.close()
 
     def get_property(self, name: str):
