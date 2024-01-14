@@ -9,7 +9,6 @@ class MCMCMove:
     def __init__(
         self,
         nr_of_moves: int,
-        seed: int,
         reporter: Optional[_SimulationReporter] = None,
     ):
         """
@@ -22,10 +21,8 @@ class MCMCMove:
         seed : int
             Seed for random number generation.
         """
-        import jax.random as jrandom
 
         self.nr_of_moves = nr_of_moves
-        self.key = jrandom.PRNGKey(seed)  # 'seed' is an integer seed value
         self.reporter = reporter
         from loguru import logger as log
 
@@ -42,7 +39,7 @@ class LangevinDynamicsMove(MCMCMove):
         collision_rate=1.0 / unit.picoseconds,
         reporter: Optional[LangevinDynamicsReporter] = None,
         nr_of_steps=1_000,
-        seed: int = 1234,
+        save_traj_in_memory: bool = False,
     ):
         """
         Initialize the LangevinDynamicsMove with a molecular system.
@@ -55,16 +52,22 @@ class LangevinDynamicsMove(MCMCMove):
             Collision rate for the Langevin dynamics.
         nr_of_steps : int
             Number of steps to run the integrator for.
+        save_traj_in_memory: bool
+            Flag indicating whether to save the trajectory in memory.
+            Default is False. NOTE: Only for debugging purposes.
         """
-        super().__init__(nr_of_steps, seed, reporter)
+        super().__init__(nr_of_steps, reporter)
         self.stepsize = stepsize
         self.collision_rate = collision_rate
+        self.save_traj_in_memory = save_traj_in_memory
+        self.traj = []
         from chiron.integrators import LangevinIntegrator
 
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
             reporter=reporter,
+            save_traj_in_memory=save_traj_in_memory,
         )
 
     def run(
@@ -94,15 +97,18 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
-            key=self.key,
         )
+
+        if self.save_traj_in_memory:
+            self.traj.append(self.integrator.traj)
+            self.integrator.traj = []
 
 
 class MCMove(MCMCMove):
     def __init__(
-        self, nr_of_moves: int, seed: int, reporter: Optional[_SimulationReporter]
+        self, nr_of_moves: int, reporter: Optional[_SimulationReporter]
     ) -> None:
-        super().__init__(nr_of_moves, seed, reporter=reporter)
+        super().__init__(nr_of_moves, reporter=reporter)
 
     def apply_move(self):
         """
