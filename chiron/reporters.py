@@ -91,8 +91,6 @@ class _SimulationReporter:
         """
         if key == "positions" and hasattr(self, "_write_to_trajectory"):
             xyz = np.stack(self.buffer[key])
-            log.debug(f"Writing to trajectory")
-            log.debug(f"Positions: {xyz}")
             self._write_to_trajectory(
                 positions=xyz,
             )
