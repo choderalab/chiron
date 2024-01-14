@@ -28,6 +28,7 @@ class LangevinIntegrator:
         collision_rate=1.0 / unit.picoseconds,
         save_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
+        save_traj_in_memory: bool = False,
     ) -> None:
         """
         Initialize the LangevinIntegrator object.
@@ -42,6 +43,9 @@ class LangevinIntegrator:
             Frequency of saving the simulation data. Default is 100.
         reporter : SimulationReporter, optional
             Reporter object for saving the simulation data. Default is None.
+        save_traj_in_memory: bool
+            Flag indicating whether to save the trajectory in memory.
+            Default is False. NOTE: Only for debugging purposes.
         """
         from loguru import logger as log
 
@@ -57,6 +61,8 @@ class LangevinIntegrator:
             self.reporter = reporter
         self.save_frequency = save_frequency
         self.velocities = None
+        self.save_traj_in_memory = save_traj_in_memory
+        self.traj = []
 
     def set_velocities(self, vel: unit.Quantity) -> None:
         """
@@ -74,7 +80,6 @@ class LangevinIntegrator:
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         n_steps: int = 5_000,
-        key=random.PRNGKey(0),
         nbr_list: Optional[PairsBase] = None,
         progress_bar=False,
     ):
@@ -89,8 +94,6 @@ class LangevinIntegrator:
             The thermodynamic state of the system, including temperature and potential.
         n_steps : int, optional
             Number of simulation steps to perform.
-        key : jax.random.PRNGKey, optional
-            Random key for generating random numbers.
         nbr_list : PairBase, optional
             Neighbor list for the system.
         progress_bar : bool, optional
@@ -113,7 +116,6 @@ class LangevinIntegrator:
         log.debug("Running Langevin dynamics")
         log.debug(f"n_steps = {n_steps}")
         log.debug(f"temperature = {temperature}")
-        log.debug(f"Using seed: {key}")
 
         # Convert to dimensionless quantities
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
@@ -130,7 +132,7 @@ class LangevinIntegrator:
 
         # Initialize velocities
         if self.velocities is None:
-            v0 = sigma_v * random.normal(key, x0.shape)
+            v0 = sigma_v * random.normal(sampler_state.random_seed, x0.shape)
         else:
             v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
 
@@ -144,7 +146,6 @@ class LangevinIntegrator:
 
         # propagation loop
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
-            key, subkey = random.split(key)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
             # r
@@ -153,7 +154,7 @@ class LangevinIntegrator:
             if nbr_list is not None:
                 x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
             # o
-            random_noise_v = random.normal(subkey, x.shape)
+            random_noise_v = random.normal(sampler_state.random_seed, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 
             x += (stepsize_unitless * 0.5) * v
@@ -167,6 +168,9 @@ class LangevinIntegrator:
             if step % self.save_frequency == 0:
                 if hasattr(self, "reporter") and self.reporter is not None:
                     self._report(x, potential, nbr_list, step)
+
+                if self.save_traj_in_memory:
+                    self.traj.append(x)
 
         log.debug("Finished running Langevin dynamics")
         # save the final state of the simulation in the sampler_state object
