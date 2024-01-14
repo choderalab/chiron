@@ -2,6 +2,7 @@ from openmm import unit
 from typing import List, Optional, Union
 from jax import numpy as jnp
 from .potential import NeuralNetworkPotential
+from jax import random
 
 
 class SamplerState:
@@ -22,6 +23,7 @@ class SamplerState:
     def __init__(
         self,
         x0: unit.Quantity,
+        random_seed: random.PRNGKey,
         velocities: Optional[unit.Quantity] = None,
         box_vectors: Optional[unit.Quantity] = None,
     ) -> None:
@@ -61,9 +63,16 @@ class SamplerState:
             raise ValueError(
                 f"box_vectors must be a 3x3 array, got {box_vectors.shape} instead."
             )
+        if velocities is not None and x0.shape != velocities.shape:
+            raise ValueError(
+                f"x0 and velocities must have the same shape, got {x0.shape} and {velocities.shape} instead."
+            )
+        if random_seed is None:
+            raise ValueError(f"random_seed must be set.")
 
         self._x0 = x0
         self._velocities = velocities
+        self._random_seed = random_seed
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
 
@@ -97,6 +106,12 @@ class SamplerState:
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
+
+    @property
+    def random_seed(self) -> random.PRNGKey:
+        key, subkey = random.split(self._random_seed)
+        self._random_seed = key
+        return subkey
 
     def _convert_to_jnp(self, array: unit.Quantity) -> jnp.array:
         """

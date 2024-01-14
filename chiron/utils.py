@@ -1,5 +1,25 @@
 from openmm.app import Topology
 from openmm import unit
+from jax import random
+
+
+class PRNG:
+    _key: random.PRNGKey
+    _seed: int
+
+    def __init__(self) -> None:
+        pass
+
+    @classmethod
+    def set_seed(cls, seed: int) -> None:
+        cls._seed = seed
+        cls._key = random.PRNGKey(seed)
+
+    @classmethod
+    def get_random_key(cls) -> int:
+        key, subkey = random.split(cls._key)
+        cls._key = key
+        return subkey
 
 
 def get_data_file_path(relative_path: str) -> str:

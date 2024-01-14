@@ -20,7 +20,9 @@ class MultiStateSampler:
     """
 
     def __init__(
-        self, mcmc_moves: Union[MCMCMove, List[MCMCMove]], reporter: MultistateReporter
+        self,
+        mcmc_moves: Union[MCMCMove, List[MCMCMove]],
+        reporter: MultistateReporter,
     ):
         """
         Parameters
@@ -30,7 +32,7 @@ class MultiStateSampler:
             they will be assigned to the correspondent thermodynamic state on
             creation.
         reporter : MultistateReporter
-        Attributes
+            The reporter used to store the simulation data.
         ----------
         n_replicas
         n_states
@@ -54,7 +56,6 @@ class MultiStateSampler:
         self._reporter = reporter
         self._metadata = None
         self._timing_data = dict()
-
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
     @property
@@ -200,11 +201,6 @@ class MultiStateSampler:
             A list of ThermodynamicState objects to be used in the sampler.
         sampler_states : List[SamplerState]
             A list of SamplerState objects for initializing the sampler.
-        unsampled_thermodynamic_states : Optional[List[ThermodynamicState]], optional
-            A list of additional ThermodynamicState objects that are not directly sampled but
-            for which energies will be computed for reweighting schemes. Defaults to None,
-            meaning no unsampled states are considered.
-
         Raises
         ------
         RuntimeError
@@ -245,6 +241,7 @@ class MultiStateSampler:
             [self.n_replicas, self.n_states], np.float64
         )
         self._traj = [[] for _ in range(self.n_replicas)]
+
         # Ensure there is an MCMCMove for each thermodynamic state.
         from chiron.mcmc import MCMCMove
 
@@ -371,6 +368,7 @@ class MultiStateSampler:
         RuntimeError
             If an error occurs during the propagation of the replica.
         """
+
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
