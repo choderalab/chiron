@@ -62,7 +62,11 @@ def ho_multistate_sampler_multiple_minima() -> MultiStateSampler:
         )
         for x0 in x0s
     ]
-    sampler_state = [SamplerState(ho.positions) for _ in x0s]
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
     nbr_list, multistate_sampler = setup_sampler()
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
@@ -105,8 +109,13 @@ def ho_multistate_sampler_multiple_ks() -> MultiStateSampler:
     from loguru import logger as log
 
     log.info(f"Initialize harmonic oscillator with {n_states} states and ks {Ks}")
+    from chiron.utils import PRNG
 
-    sampler_state = [SamplerState(ho.positions) for _ in sigmas]
+    PRNG.set_seed(1234)
+
+    sampler_state = [
+        SamplerState(ho.positions, random_seed=PRNG.get_random_key()) for _ in sigmas
+    ]
     import numpy as np
 
     f_i = np.array(
