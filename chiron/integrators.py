@@ -117,6 +117,9 @@ class LangevinIntegrator:
         log.debug(f"n_steps = {n_steps}")
         log.debug(f"temperature = {temperature}")
 
+        # Initialize the random number generator
+        key = sampler_state.random_seed
+
         # Convert to dimensionless quantities
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
         mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[
@@ -132,7 +135,7 @@ class LangevinIntegrator:
 
         # Initialize velocities
         if self.velocities is None:
-            v0 = sigma_v * random.normal(sampler_state.random_seed, x0.shape)
+            v0 = sigma_v * random.normal(key, x0.shape)
         else:
             v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
 
@@ -146,6 +149,7 @@ class LangevinIntegrator:
 
         # propagation loop
         for step in tqdm(range(n_steps)) if self.progress_bar else range(n_steps):
+            key, subkey = random.split(key)
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
             # r
@@ -154,7 +158,7 @@ class LangevinIntegrator:
             if nbr_list is not None:
                 x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
             # o
-            random_noise_v = random.normal(sampler_state.random_seed, x.shape)
+            random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 
             x += (stepsize_unitless * 0.5) * v

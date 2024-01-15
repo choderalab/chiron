@@ -318,7 +318,6 @@ class MetropolizedMove(MCMove):
 
     def __init__(
         self,
-        seed: int = 1234,
         atom_subset: Optional[List[int]] = None,
         nr_of_moves: int = 100,
         reporter: Optional[_SimulationReporter] = None,
@@ -326,7 +325,7 @@ class MetropolizedMove(MCMove):
         self.n_accepted = 0
         self.n_proposed = 0
         self.atom_subset = atom_subset
-        super().__init__(nr_of_moves=nr_of_moves, seed=seed, reporter=reporter)
+        super().__init__(nr_of_moves=nr_of_moves, reporter=reporter)
         from loguru import logger as log
 
         log.debug(f"Atom subset is {atom_subset}.")
@@ -485,7 +484,6 @@ class MetropolisDisplacementMove(MetropolizedMove):
 
     def __init__(
         self,
-        seed: int = 1234,
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
@@ -510,9 +508,10 @@ class MetropolisDisplacementMove(MetropolizedMove):
         -------
         None
         """
-        super().__init__(nr_of_moves=nr_of_moves, seed=seed, reporter=reporter)
+        super().__init__(nr_of_moves=nr_of_moves, reporter=reporter)
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
+        self.key = None
 
     def displace_positions(
         self, positions: jnp.array, displacement_sigma=1.0 * unit.nanometer
@@ -561,6 +560,9 @@ class MetropolisDisplacementMove(MetropolizedMove):
     ):
         from tqdm import tqdm
         from loguru import logger as log
+        from jax import random
+
+        self.key = sampler_state.random_seed
 
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
