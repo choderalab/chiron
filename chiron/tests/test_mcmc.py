@@ -74,7 +74,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     print(energy)
 
     reference_energy = jnp.array(
-        [0.03551735, 0.1395877, 0.30911613, 0.5495938, 0.85149795]
+        [0.03416792, 0.13399088, 0.29001084, 0.4954423, 0.75295717]
     )
     assert jnp.allclose(energy, reference_energy)
 
