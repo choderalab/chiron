@@ -256,7 +256,9 @@ class MultiStateSampler:
         self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
         self._sampler_states = sampler_states
         assert len(self._thermodynamic_states) == len(self._sampler_states)
-        self._replica_thermodynamic_states = np.arange(len(thermodynamic_states), dtype=int)
+        self._replica_thermodynamic_states = np.arange(
+            len(thermodynamic_states), dtype=int
+        )
 
         # Initialize matrices for tracking acceptance and proposal statistics.
         self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
@@ -560,7 +562,7 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug("Reporting energy per thermodynamic state...")
-        self._reporter.report({"u_kn": self._energy_thermodynamic_states.T})
+        return {"u_kn": self._energy_thermodynamic_states.T}
 
     def _report_positions(self):
         """
@@ -576,7 +578,7 @@ class MultiStateSampler:
         xyz = np.zeros((self.n_replicas, self._sampler_states[0].x0.shape[0], 3))
         for replica_id in range(self.n_replicas):
             xyz[replica_id] = self._sampler_states[replica_id].x0
-        self._reporter.report({"positions": xyz})
+        return {"positions": xyz}
 
     def _report(self, property: str) -> None:
         """
@@ -596,15 +598,15 @@ class MultiStateSampler:
         log.debug(f"Reporting {property}...")
         match property:
             case "positions":
-                self._report_positions()
+                return self._report_positions()
             case "states":
                 pass
             case "u_kn":
-                self._report_energy_matrix()
+                return self._report_energy_matrix()
             case "trajectory":
-                pass
+                return
             case "mixing_statistics":
-                pass
+                return
 
     def _report_iteration(self):
         """
@@ -616,9 +618,13 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug("Reporting data for current iteration...")
-
+        log.debug(self._reporter.properties_to_report)
+        prop = {}
         for property in self._reporter.properties_to_report:
-            self._report(property)
+            p = self._report(property)
+            if p:
+                prop.update(p)
+        self._reporter.report(prop)
 
     def _update_analysis(self):
         """

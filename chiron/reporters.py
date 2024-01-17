@@ -69,7 +69,6 @@ class _SimulationReporter:
 
         self.buffer_size = buffer_size
         self.buffer = {}
-        self._default_properties = []
 
     @property
     def properties_to_report(self):
@@ -93,16 +92,13 @@ class _SimulationReporter:
             Dictionary containing data to report. Keys are data labels (e.g., 'energy'),
             and values are the data points (usually numpy arrays).
         """
-        no_flush = False
         for key, value in data_dict.items():
             if key not in self.buffer:
                 # new key shouldn't trigger a flush
-                no_flush = True
                 self.buffer[key] = []
             self.buffer[key].append(value)
 
-        if not no_flush:
-            self._flush_buffer_if_necessary()
+        self._flush_buffer_if_necessary()
 
     def _flush_buffer_if_necessary(self):
         """
@@ -187,16 +183,21 @@ class _SimulationReporter:
             return self.read_from_trajectory()
 
         with h5py.File(self.log_file_path, "r") as h5file:
-            if name not in h5file:
+            if name in h5file:
+                data = np.array(h5file[name])
+            elif name in self.buffer and name not in h5file:
+                data = np.array(self.buffer[name])
+            elif name not in h5file:
                 log.warning(f"{name} not in HDF5 file")
                 return None
-            elif name == "u_kn":
+
+            if name == "u_kn":
                 return np.transpose(
-                    np.array(h5file[name]), (2, 1, 0)
+                    data, (2, 1, 0)
                 )  # shape: n_states, n_replicas, n_iterations
 
             else:
-                return np.array(h5file[name])
+                return data
 
 
 from typing import Optional
@@ -234,8 +235,8 @@ class MultistateReporter(_SimulationReporter):
             file_name = MultistateReporter.get_name()
 
         super().__init__(file_name=file_name, buffer_size=buffer_size)
-        self._properties_to_report = MultistateReporter._default_properties
         self._replica_reporter = {}
+
 
     @classmethod
     def get_name(cls):
