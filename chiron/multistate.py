@@ -57,7 +57,6 @@ class MultiStateSampler:
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
-        self._online_analysis_interval = online_analysis_interval
         self._timing_data = dict()
         self.free_energy_estimator = None
         self._traj = None
@@ -186,10 +185,17 @@ class MultiStateSampler:
         """
         # TODO: initialize reporter here
         # TODO: consider unsampled thermodynamic states for reweighting schemes
-        self.free_energy_estimator = "mbar"
+        self._online_estimator = None
+
+        from chiron.analysis import MBAREstimator
+
+        n_thermodynamic_states = len(thermodynamic_states)
+        n_sampler_states = len(sampler_states)
+
+        self._offline_estimator = MBAREstimator(N_u=n_thermodynamic_states)
 
         # Ensure the number of thermodynamic states matches the number of sampler states
-        if len(thermodynamic_states) != len(sampler_states):
+        if n_thermodynamic_states != n_sampler_states:
             raise RuntimeError(
                 "Number of thermodynamic states and sampler states must be equal."
             )
@@ -553,16 +559,14 @@ class MultiStateSampler:
             ] = self._energy_thermodynamic_states
             # TODO report energies
 
-        iteration_limit = n_iterations
-
         # start the sampling loop
-        log.debug(f"{iteration_limit=}")
-        while not self._is_completed(iteration_limit):
+        log.debug(f"{n_iterations=}")
+        while not self._is_completed(n_iterations):
             # Increment iteration counter.
             self._iteration += 1
 
             log.info("-" * 80)
-            log.info(f"Iteration {self._iteration}/{iteration_limit}")
+            log.info(f"Iteration {self._iteration}/{n_iterations}")
             log.info("-" * 80)
 
             # Update thermodynamic states
@@ -598,34 +602,29 @@ class MultiStateSampler:
         """Update analysis of free energies"""
         from loguru import logger as log
 
-        if self._online_analysis_interval is None:
-            log.debug("No online analysis requested")
-            # Perform no analysis and exit function
-            return
-
         # Perform offline free energy estimate if requested
-        if self.free_energy_estimator == "mbar":
-            self._last_err_free_energy = self._mbar_analysis()
+        if self._offline_estimator:
+            log.debug("Performing offline free energy estimate...")
+            N_k = [self._iteration] * self.n_states
+            self._offline_estimator.initialize(
+                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run,
+                N_k=N_k,
+            )
+        elif self._online_estimator:
+            log.debug("Performing online free energy estimate...")
+            self._online_estimator.update(
+                u_kn=self._energy_thermodynamic_states_for_each_iteration_in_run[
+                    :, :, self._iteration
+                ]
+            )
+        else:
+            raise RuntimeError("No free energy estimator provided.")
 
-        return
-
-    def _mbar_analysis(self):
-        """
-        Perform mbar analysis
-        """
-        from pymbar import MBAR
-        from loguru import logger as log
-
-        self._last_mbar_f_k_offline = np.zeros(len(self._thermodynamic_states))
-
-        log.debug(
-            f"{self._energy_thermodynamic_states_for_each_iteration_in_run.shape=}"
-        )
-        log.debug(f"{self.n_states=}")
-        u_kn = self._energy_thermodynamic_states_for_each_iteration_in_run
-        log.debug(f"{self._iteration=}")
-        N_k = [self._iteration] * self.n_states
-        log.debug(f"{N_k=}")
-        mbar = MBAR(u_kn=u_kn, N_k=N_k)
-        log.debug(mbar.f_k)
-        self._last_mbar_f_k_offline = mbar.f_k
+    @property
+    def f_k(self):
+        if self._offline_estimator:
+            return self._offline_estimator.f_k
+        elif self._online_estimator:
+            return self._online_estimator.f_k
+        else:
+            raise RuntimeError("No free energy estimator found.")

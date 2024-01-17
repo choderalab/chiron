@@ -113,3 +113,23 @@ class SimulationReporter:
             unitcell_lengths=self.get_property("box_vectors"),
             unitcell_angles=self.get_property("box_angles"),
         )
+
+
+
+class MultistateReporter:
+    
+    def __init__(self, path_to_dir:str) -> None:
+        self.path_to_dir = path_to_dir
+        
+    def _write_trajectories():
+        pass
+    
+    def _write_energies():
+        pass
+    
+    def _write_states():
+        pass
+    
+        
+    
+    
