@@ -36,7 +36,11 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     thermodynamic_state = ThermodynamicState(
         potential=harmonic_potential, temperature=300 * unit.kelvin
     )
-    sampler_state = SamplerState(x0=ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(x0=ho.positions, random_seed=PRNG.get_random_key())
     from chiron.integrators import LangevinIntegrator
 
     from chiron.reporters import LangevinDynamicsReporter, BaseReporter
@@ -70,7 +74,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     print(energy)
 
     reference_energy = jnp.array(
-        [0.01984119, 0.08067884, 0.17772843, 0.30644223, 0.4665345]
+        [0.03551735, 0.1395877, 0.30911613, 0.5495938, 0.85149795]
     )
     assert jnp.allclose(energy, reference_energy)
 
@@ -100,13 +104,15 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     # Initalize the sampler and thermodynamic state
     from chiron.states import ThermodynamicState, SamplerState
+    from chiron.utils import PRNG
 
+    PRNG.set_seed(1234)
     thermodynamic_state = ThermodynamicState(
         harmonic_potential,
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
 
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
     from chiron.reporters import LangevinDynamicsReporter, BaseReporter
@@ -114,9 +120,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     BaseReporter.set_directory(prep_temp_dir)
 
     simulation_reporter = LangevinDynamicsReporter(1)
-    langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, seed=1234, reporter=simulation_reporter
-    )
+    langevin_move = LangevinDynamicsMove(nr_of_steps=10, reporter=simulation_reporter)
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
@@ -158,7 +162,10 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
 
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter
@@ -213,7 +220,11 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
 
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter

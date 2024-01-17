@@ -24,7 +24,7 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
         OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
     )
 
-    move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=500)
+    move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=200)
     reporter = MultistateReporter()
     reporter.reset_reporter_file()
 
@@ -62,7 +62,11 @@ def ho_multistate_sampler_multiple_minima() -> MultiStateSampler:
         )
         for x0 in x0s
     ]
-    sampler_state = [SamplerState(ho.positions) for _ in x0s]
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
     nbr_list, multistate_sampler = setup_sampler()
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
@@ -105,8 +109,13 @@ def ho_multistate_sampler_multiple_ks() -> MultiStateSampler:
     from loguru import logger as log
 
     log.info(f"Initialize harmonic oscillator with {n_states} states and ks {Ks}")
+    from chiron.utils import PRNG
 
-    sampler_state = [SamplerState(ho.positions) for _ in sigmas]
+    PRNG.set_seed(1234)
+
+    sampler_state = [
+        SamplerState(ho.positions, random_seed=PRNG.get_random_key()) for _ in sigmas
+    ]
     import numpy as np
 
     f_i = np.array(
@@ -201,7 +210,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iteratinos = 25
+    n_iteratinos = 50
     ho_sampler.run(n_iteratinos)
 
     # check that we have the correct number of iterations, replicas and states
