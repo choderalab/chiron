@@ -10,6 +10,7 @@ class MCMCMove:
         self,
         nr_of_moves: int,
         reporter: Optional[_SimulationReporter] = None,
+        report_frequency: Optional[int] = 100,
     ):
         """
         Initialize a move within the molecular system.
@@ -18,18 +19,22 @@ class MCMCMove:
         ----------
         nr_of_moves : int
             Number of moves to be applied.
-        seed : int
-            Seed for random number generation.
+        reporter : _SimulationReporter, optional
+            Reporter object for saving the simulation data.
+            Default is None.
+        report_frequency : int, optional
         """
 
         self.nr_of_moves = nr_of_moves
         self.reporter = reporter
+        self.report_frequency = report_frequency
         from loguru import logger as log
 
         if self.reporter is not None:
             log.info(
-                f"Using reporter {self.reporter} saving to {self.reporter.file_path}"
+                f"Using reporter {self.reporter} saving to {self.reporter.workdir}"
             )
+            assert self.report_frequency is not None
 
 
 class LangevinDynamicsMove(MCMCMove):
@@ -38,6 +43,7 @@ class LangevinDynamicsMove(MCMCMove):
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
         reporter: Optional[LangevinDynamicsReporter] = None,
+        report_frequency: int = 100,
         nr_of_steps=1_000,
         save_traj_in_memory: bool = False,
     ):
@@ -50,13 +56,25 @@ class LangevinDynamicsMove(MCMCMove):
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
-        nr_of_steps : int
+        reporter : LangevinDynamicsReporter, optional
+            Reporter object for saving the simulation data.
+            Default is None.
+        report_frequency : int
+            Frequency of saving the simulation data.
+            Default is 100.
+        nr_of_steps : int, optional
             Number of steps to run the integrator for.
+            Default is 1_000.
         save_traj_in_memory: bool
             Flag indicating whether to save the trajectory in memory.
             Default is False. NOTE: Only for debugging purposes.
         """
-        super().__init__(nr_of_steps, reporter)
+        super().__init__(
+            nr_of_moves=nr_of_steps,
+            reporter=reporter,
+            report_frequency=report_frequency,
+        )
+
         self.stepsize = stepsize
         self.collision_rate = collision_rate
         self.save_traj_in_memory = save_traj_in_memory
@@ -66,6 +84,7 @@ class LangevinDynamicsMove(MCMCMove):
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
+            report_frequency=report_frequency,
             reporter=reporter,
             save_traj_in_memory=save_traj_in_memory,
         )
@@ -287,8 +306,12 @@ class MCMCSampler:
         log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
             if move.reporter is not None:
-                move.reporter.close()
-                log.debug(f"Closed reporter {move.reporter.file_path}")
+                move.reporter.flush_buffer()
+                # TODO: flush reporter
+                log.debug(f"Closed reporter {move.reporter.log_file_path}")
+
+
+from .neighbors import PairsBase
 
 
 class MetropolizedMove(MCMove):
@@ -321,6 +344,7 @@ class MetropolizedMove(MCMove):
         atom_subset: Optional[List[int]] = None,
         nr_of_moves: int = 100,
         reporter: Optional[_SimulationReporter] = None,
+        report_frequency: int = 1,
     ):
         self.n_accepted = 0
         self.n_proposed = 0
@@ -328,6 +352,7 @@ class MetropolizedMove(MCMove):
         super().__init__(nr_of_moves=nr_of_moves, reporter=reporter)
         from loguru import logger as log
 
+        self.report_frequency = report_frequency
         log.debug(f"Atom subset is {atom_subset}.")
 
     @property
@@ -344,7 +369,7 @@ class MetropolizedMove(MCMove):
         self,
         thermodynamic_state: ThermodynamicState,
         sampler_state: SamplerState,
-        nbr_list=None,
+        nbr_list=Optional[PairsBase],
     ):
         """Apply a metropolized move to the sampler state.
 
@@ -411,15 +436,14 @@ class MetropolizedMove(MCMove):
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
-            self.reporter.report(
-                {
-                    "energy": thermodynamic_state.kT_to_kJ_per_mol(
-                        proposed_energy
-                    ).value_in_unit_system(unit.md_unit_system),
-                    "step": self.n_proposed,
-                    "traj": sampler_state.x0,
-                }
-            )
+            if self.n_proposed % self.report_frequency == 0:
+                self.reporter.report(
+                    {
+                        "energy": proposed_energy,  # in kT
+                        "step": self.n_proposed,
+                        "traj": sampler_state.x0,
+                    }
+                )
         else:
             # Restore original positions.
             if atom_subset is None:
@@ -562,7 +586,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         from loguru import logger as log
         from jax import random
 
-        self.key = sampler_state.random_seed
+        self.key = sampler_state.current_PRNG_key
 
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)

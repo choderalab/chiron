@@ -57,7 +57,10 @@ class LangevinIntegrator:
         self.stepsize = stepsize
         self.collision_rate = collision_rate
         if reporter:
-            log.info(f"Using reporter {reporter} saving to {reporter.file_path}")
+            log.info(
+                f"Using reporter {reporter} saving trajectory to {reporter.xtc_file_path}"
+            )
+            log.info(f"and logging to {reporter.log_file_path}")
             self.reporter = reporter
         self.save_frequency = save_frequency
         self.velocities = None
@@ -180,6 +183,7 @@ class LangevinIntegrator:
         # save the final state of the simulation in the sampler_state object
         sampler_state.x0 = x
         sampler_state.v0 = v
+
         # self.reporter.close()
 
     def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
@@ -225,8 +229,8 @@ class LangevinIntegrator:
             None
         """
         d = {
-            "traj": x,
-            "energy": potential.compute_energy(x, nbr_list),
+            "positions": x,
+            "potential_energy": potential.compute_energy(x, nbr_list),
             "step": step,
         }
         if nbr_list is not None:
