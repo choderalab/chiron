@@ -13,10 +13,27 @@ class BaseReporter:
 
     @classmethod
     def set_directory(cls, directory: str):
+        """
+        Set the base directory for saving reporter files.
+
+        Parameters
+        ----------
+        directory : str
+            The path to the directory where files will be saved.
+        """
         cls._directory = directory
 
     @classmethod
     def get_directory(cls):
+        """
+        Get the current directory set for saving reporter files.
+
+        Returns
+        -------
+        Path
+            The path to the directory where files will be saved. Defaults to the
+            current working directory if no directory has been set.
+        """
         from pathlib import Path
 
         if cls._directory is None:
@@ -27,39 +44,44 @@ class BaseReporter:
         return Path(cls._directory)
 
 
-import pathlib
-
-
 class _SimulationReporter:
-    def __init__(self, file_path: pathlib.Path, buffer_size: int = 10):
+    def __init__(self, file_name: str, buffer_size: int = 10):
         """
-        Initialize the SimulationReporter.
+        Initialize the _SimulationReporter class.
 
         Parameters
         ----------
-        filename : str
-            Name of the HDF5 file to write the simulation data.
+        file_name : str
+            Name of the HDF5 file for writing simulation data.
+        buffer_size : int, optional
+            The size of the buffer before flushing data to disk (default is 10).
         """
-        if file_path.suffix != ".h5":
-            file_path = file_path.with_suffix(".h5")
-        self.file_path = file_path
-        self.workdir = file_path.parent
-        log.info(f"Writing simulation data to {self.file_path}")
+        workdir = BaseReporter.get_directory()
+        self.file_path_base = workdir / f"{file_name}"
+        self.log_file_path = self.file_path_base.with_suffix(".h5")
+        self.workdir = workdir
+        self.report_iteration = 0
+        import os
+
+        os.makedirs(workdir, exist_ok=True)
+
+        log.info(f"Writing simulation log data to {self.log_file_path}")
 
         self.buffer_size = buffer_size
         self.buffer = {}
-        self.h5file = h5py.File(self.file_path, "a")
+        self._default_properties = []
 
     @property
     def properties_to_report(self):
-        return self._properties_to_report
+        return self._default_properties
 
     @properties_to_report.setter
     def properties_to_report(self, properties: List[str]):
-        self._properties_to_report = properties
+        self._default_properties = properties
 
     def get_available_keys(self):
-        return self.h5file.keys()
+        with h5py.File(self.log_file_path, "r") as h5file:
+            return h5file.keys()
 
     def report(self, data_dict):
         """
@@ -71,13 +93,26 @@ class _SimulationReporter:
             Dictionary containing data to report. Keys are data labels (e.g., 'energy'),
             and values are the data points (usually numpy arrays).
         """
+        no_flush = False
         for key, value in data_dict.items():
             if key not in self.buffer:
+                # new key shouldn't trigger a flush
+                no_flush = True
                 self.buffer[key] = []
             self.buffer[key].append(value)
 
-            if len(self.buffer[key]) >= self.buffer_size:
-                self._write_to_disk(key)
+        if not no_flush:
+            self._flush_buffer_if_necessary()
+
+    def _flush_buffer_if_necessary(self):
+        """
+        Flush the buffer to disk if it reaches the specified buffer size.
+        """
+        # NOTE: we assume that every property is updated with the same frequency!
+        if all(len(self.buffer[key]) > self.buffer_size for key in self.buffer):
+            # flush and reset the buffer
+            log.debug(self.buffer)
+            self.flush_buffer()
 
     def _write_to_disk(self, key: str):
         """
@@ -89,36 +124,36 @@ class _SimulationReporter:
             The key of the data to write to disk.
 
         """
+        log.debug(f"Writing {key} to file")
         if key == "positions" and hasattr(self, "_write_to_trajectory"):
             xyz = np.stack(self.buffer[key])
             self._write_to_trajectory(
                 positions=xyz,
             )
-        elif key in self.h5file:
-            data = np.array(self.buffer[key])
-            dset = self.h5file[key]
-            dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
-            dset[-data.shape[0] :] = data
-        else:
-            data = np.array(self.buffer[key])
-            log.debug(f"Creating {key} in {self.file_path}")
-            self.h5file.create_dataset(
-                key, data=data, maxshape=(None,) + data.shape[1:], chunks=True
-            )
 
-        self.buffer[key] = []
+        with h5py.File(self.log_file_path, "a") as h5file:
+            if key in h5file:
+                data = np.array(self.buffer[key])
+                dset = h5file[key]
+                dset.resize((dset.shape[0] + data.shape[0],) + data.shape[1:])
+                dset[-data.shape[0] :] = data
+            else:
+                data = np.array(self.buffer[key])
+                log.debug(f"Creating {key} in {self.log_file_path}")
+                h5file.create_dataset(
+                    key, data=data, maxshape=(None,) + data.shape[1:], chunks=True
+                )
 
     def reset_reporter_file(self):
         # delete the reporter files
         import os
 
         # if file exists, delete it
-        if os.path.exists(self.file_path):
-            log.debug(f"Deleting {self.file_path}")
-            os.remove(self.file_path)
-            self.h5file = h5py.File(self.file_path, "a")
+        if os.path.exists(self.log_file_path):
+            log.debug(f"Deleting {self.log_file_path}")
+            os.remove(self.log_file_path)
 
-    def flush_buffer(self):
+    def flush_buffer(self) -> None:
         """
         Write any remaining data in the buffer to disk.
 
@@ -126,43 +161,46 @@ class _SimulationReporter:
         for key in self.buffer:
             if self.buffer[key]:
                 self._write_to_disk(key)
+        self._reset_buffer()
 
-    def close(self):
+    def _reset_buffer(self) -> None:
         """
-        Write any remaining data in the buffer to disk and close the HDF5 file.
+        Reset the data buffer after writing to disk.
+        """
+        self.buffer = {key: [] for key in self.buffer}
 
+    def get_property(self, name: str) -> np.ndarray:
         """
-        self.flush_buffer()
-        self.h5file.close()
-
-    def get_property(self, name: str):
-        """
-        Get the property from the HDF5 file.
+        Retrieve a specific property from the HDF5 file.
 
         Parameters
         ----------
         name : str
-            Name of the property to get.
+            The name of the property to retrieve.
 
         Returns
         -------
         np.ndarray
-            The property.
-
+            The retrieved property data, if available.
         """
-        if name not in self.h5file:
-            log.warning(f"{name} not in HDF5 file")
-            return None
-        elif name == "u_kn":
-            return np.transpose(
-                np.array(self.h5file[name]), (2, 1, 0)
-            )  # shape: n_states, n_replicas, n_iterations
+        if name == "positions" and hasattr(self, "read_from_trajectory"):
+            return self.read_from_trajectory()
 
-        else:
-            return np.array(self.h5file[name])
+        with h5py.File(self.log_file_path, "r") as h5file:
+            if name not in h5file:
+                log.warning(f"{name} not in HDF5 file")
+                return None
+            elif name == "u_kn":
+                return np.transpose(
+                    np.array(h5file[name]), (2, 1, 0)
+                )  # shape: n_states, n_replicas, n_iterations
+
+            else:
+                return np.array(h5file[name])
 
 
 from typing import Optional
+import mdtraj as md
 
 
 class MultistateReporter(_SimulationReporter):
@@ -172,59 +210,83 @@ class MultistateReporter(_SimulationReporter):
         "box_vectors",
         "u_kn",
         "state_index",
-        "time",
+        "step",
     ]
 
-    def __init__(self, buffer_size: int = 1) -> None:
-        filename = MultistateReporter.get_name()
-        directory = BaseReporter.get_directory()
-        import os
+    def __init__(
+        self,
+        file_name: Optional[str] = None,
+        buffer_size: int = 1,
+    ) -> None:
+        """
+        Initialize the MultistateReporter class.
 
-        os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{filename}.h5"
+        Parameters
+        ----------
+        file_name : Optional[str], optional
+            Name of the file for storing multistate simulation data. If None, a
+            default name based on the reporter name is used.
+        buffer_size : int, optional
+            The size of the buffer before flushing data to disk (default is 1).
+        """
 
-        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+        if file_name is None:
+            file_name = MultistateReporter.get_name()
+
+        super().__init__(file_name=file_name, buffer_size=buffer_size)
         self._properties_to_report = MultistateReporter._default_properties
-        self._file_handle = {}
+        self._replica_reporter = {}
 
     @classmethod
     def get_name(cls):
         return cls._name
 
-    def _write_to_trajectory(self, positions: np.ndarray):
-        import mdtraj as md
+    def _write_to_trajectory(self, positions: np.ndarray) -> None:
+        nr_of_frames, n_replicas, n_of_atoms, _ = positions.shape
 
-        nr_of_runs, n_of_replicas, n_of_atoms, _ = positions.shape
+        for replica_id in range(n_replicas):
+            # if file does not exist, create it
+            key = f"replica_{replica_id}"
+            if self._replica_reporter.get(key) is None:
+                self._replica_reporter[key] = LangevinDynamicsReporter(key)
 
-        # append to xtc trajectory the new positions
-        for replica_id in range(n_of_replicas):
-            file_name = f"replica_{replica_id}"
-            if self._file_handle.get(file_name) is None:
-                self._file_handle[file_name] = md.formats.XTCTrajectoryFile(
-                    f"{self.workdir}/{file_name}.xtc", mode="w"
-                )
+            reporter = self._replica_reporter.get(key)
 
-            open_xtc_file = self._file_handle[file_name]
-            xyz = positions[:, replica_id, :, :]
-            open_xtc_file.write(
-                xyz,
-                #            time=iteration,
-                box=self.get_property("box_vectors"),
-            )
+            for frame_id in range(nr_of_frames):
+                data = {"positions": positions[frame_id, replica_id]}
+                if self.buffer.get("box_vectors") is not None:
+                    data["box_vectors"] = self.buffer.get("box_vectors")[frame_id]
+                reporter.report(data)
+
+    def flush_buffer(self):
+        for reporter in self._replica_reporter.values():
+            reporter.flush_buffer()
+            reporter._write_xtc_file_handle.flush()
+
+        return super().flush_buffer()
+
+
+from typing import Optional
 
 
 class MCReporter(_SimulationReporter):
     _name = "mc_reporter"
 
-    def __init__(self, buffer_size: int = 1) -> None:
-        filename = MCReporter.get_name()
-        directory = BaseReporter.get_directory()
-        import os
+    def __init__(self, file_name: Optional[str] = None, buffer_size: int = 1) -> None:
+        """
+        Initialize the MCReporter class for Monte Carlo simulations.
 
-        os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{filename}.h5"
+        Parameters
+        ----------
+        file_name : Optional[str], optional
+            The file name for storing simulation data.
+        buffer_size : int, optional
+            The size of the buffer before flushing data to disk.
+        """
+        if file_name is None:
+            file_name = MCReporter.get_name()
 
-        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
+        super().__init__(file_name=file_name, buffer_size=buffer_size)
 
     @classmethod
     def get_name(cls):
@@ -233,41 +295,47 @@ class MCReporter(_SimulationReporter):
 
 class LangevinDynamicsReporter(_SimulationReporter):
     _name = "langevin_reporter"
-    _default_properties = ["trajectory", "box_vectors", "potential_energy", "time"]
+    _default_properties = ["positions", "box_vectors", "potential_energy", "step"]
 
     def __init__(
         self,
+        file_name: Optional[str] = None,
         buffer_size: int = 1,
         topology: Optional[Topology] = None,
     ):
         """
-        Initialize the SimulationReporter.
+        Initialize the LangevinDynamicsReporter for Langevin dynamics simulations.
 
         Parameters
         ----------
-        name_suffix : str
-            Prefix of the HDF5 file to write the simulation data.
+        file_name : Optional[str], optional
+            The file name for storing simulation data.
         buffer_size : int, optional
-            Number of data points to buffer before writing to disk (default is 1).
-        topology: openmm.Topology, optional
-            Topology of the system to generate the mdtraj trajectory.
+            The size of the buffer before flushing data to disk.
+        topology : Optional[Topology], optional
+            The system topology for generating trajectories.
         """
-        filename = LangevinDynamicsReporter.get_name()
-        directory = BaseReporter.get_directory()
-        import os
+        if file_name is None:
+            file_name = LangevinDynamicsReporter.get_name()
 
-        os.makedirs(directory, exist_ok=True)
-        self.file_path = directory / f"{filename}.h5"
-
+        super().__init__(file_name=file_name, buffer_size=buffer_size)
         self.topology = topology
-        super().__init__(file_path=self.file_path, buffer_size=buffer_size)
-        self._default_properties = LangevinDynamicsReporter._default_properties
+        self._write_xtc_file_handle = None
+        self.xtc_file_path = f"{self.file_path_base}.xtc"
 
     @classmethod
     def get_name(cls):
         return cls._name
 
-    def get_mdtraj_trajectory(self):
+    def get_mdtraj_trajectory(self) -> md.Trajectory:
+        """
+        Generate an MDTraj trajectory object from the stored positions.
+
+        Returns
+        -------
+        md.Trajectory
+            The MDTraj trajectory object created from the stored position data.
+        """
         import mdtraj as md
 
         return md.Trajectory(
@@ -275,4 +343,87 @@ class LangevinDynamicsReporter(_SimulationReporter):
             topology=md.Topology.from_openmm(self.topology),
             unitcell_lengths=self.get_property("box_vectors"),
             unitcell_angles=self.get_property("box_angles"),
+        )
+
+    def _write_to_trajectory(self, positions: np.ndarray) -> None:
+        """
+        Write position data to a trajectory file for molecular dynamics.
+
+        Parameters
+        ----------
+        positions : np.ndarray
+            The positions of particles to be written to the trajectory.
+        """
+        if self._write_xtc_file_handle is None:
+            log.debug(f"Creating trajectory in {self.xtc_file_path}")
+            self._write_xtc_file_handle = md.formats.XTCTrajectoryFile(
+                self.xtc_file_path, mode="w"
+            )
+
+        LangevinDynamicsReporter._write_to_xtc(
+            file_handler=self._write_xtc_file_handle,
+            positions=positions,
+            iteration=self.buffer.get("step"),
+            box_vecotrs=self.buffer.get("box_vectors"),
+        )
+
+    def read_from_trajectory(self) -> np.ndarray:
+        """
+        Read position data from a trajectory file.
+
+        Returns
+        -------
+        np.ndarray
+            The positions read from the trajectory file.
+        """
+        # flush the write buffer
+        self._write_xtc_file_handle.flush()
+        with md.formats.XTCTrajectoryFile(
+            self.xtc_file_path, mode="r"
+        ) as _read_xtc_file_handle:
+            return LangevinDynamicsReporter._read_from_xtc(_read_xtc_file_handle)
+
+    @classmethod
+    def _read_from_xtc(cls, file_handler) -> np.ndarray:
+        """
+        Read data from an XTC file.
+
+        Parameters
+        ----------
+        file_handler : md.formats.XTCTrajectoryFile
+            The file handler for reading XTC files.
+
+        Returns
+        -------
+        np.ndarray
+            The data read from the XTC file.
+        """
+        return file_handler.read()
+
+    @classmethod
+    def _write_to_xtc(
+        cls,
+        file_handler: md.formats.XTCTrajectoryFile,
+        positions: np.ndarray,
+        iteration: np.ndarray,
+        box_vecotrs: Optional[np.ndarray] = None,
+    ):
+        """
+        Write position data to an XTC file.
+
+        Parameters
+        ----------
+        file_handler : md.formats.XTCTrajectoryFile
+            The file handler for writing to XTC files.
+        positions : np.ndarray
+            The positions to be written.
+        iteration : np.ndarray
+            The iteration numbers corresponding to the positions.
+        box_vectors : Optional[np.ndarray], optional
+            Box vectors for each position frame.
+        """
+        file_handler.write(
+            positions,
+            time=iteration,
+            box=box_vecotrs,
         )

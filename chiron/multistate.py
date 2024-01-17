@@ -9,14 +9,40 @@ from chiron.reporters import MultistateReporter
 
 class MultiStateSampler:
     """
-    Base class for samplers that sample multiple thermodynamic states using
-    one or more replicas.
+    A sampler for simulating multiple thermodynamic states using replicas.
 
-    This base class provides a general simulation facility for multistate from multiple
-    thermodynamic states, allowing any set of thermodynamic states to be specified.
-    If instantiated on its own, the thermodynamic state indices associated with each
-    state are specified and replica mixing does not change any thermodynamic states,
+    This class provides a general simulation facility for sampling from multiple
+    thermodynamic states. It allows specifying any set of thermodynamic states.
+    If instantiated on its own, the thermodynamic state indices associated with
+    each state are specified, and replica mixing does not change any thermodynamic states,
     meaning that each replica remains in its original thermodynamic state.
+
+    Attributes
+    ----------
+    n_states : int
+        Number of thermodynamic states (read-only).
+    n_replicas : int
+        Number of replicas (read-only).
+    iteration : int
+        Current iteration of the simulation (read-only).
+    mcmc_moves : List[MCMCMove]
+        MCMC moves used to propagate the simulation.
+    sampler_states : List[SamplerState]
+        Sampler states list at the current iteration.
+    is_periodic : bool
+        True if system is periodic, False if not, None if not initialized.
+    is_completed : bool
+        Check if the sampler has reached any stop target criteria (read-only).
+
+    Methods
+    -------
+    create(thermodynamic_states: List[ThermodynamicState], sampler_states: List[SamplerState], nbr_list: NeighborListNsqrd)
+        Creates a new multistate sampler simulation.
+    minimize(tolerance: unit.Quantity = 1.0 * unit.kilojoules_per_mole / unit.nanometers, max_iterations: int = 1000)
+        Minimizes all replicas in the sampler.
+    run(n_iterations: int = 10)
+        Executes the replica-exchange simulation for a specified number of iterations.
+
     """
 
     def __init__(
@@ -25,22 +51,18 @@ class MultiStateSampler:
         reporter: MultistateReporter,
     ):
         """
+        Initialize the MultiStateSampler.
+
         Parameters
         ----------
-        mcmc_moves : MCMCMove or list of MCMCMove
-            The MCMCMove used to propagate the thermodynamic states. If a list of MCMCMoves,
-            they will be assigned to the correspondent thermodynamic state on
-            creation.
+        mcmc_moves : Union[MCMCMove, List[MCMCMove]]
+            The MCMCMove or list of MCMCMoves used to propagate the thermodynamic states.
         reporter : MultistateReporter
             The reporter used to store the simulation data.
-        ----------
-        n_replicas
-        n_states
-        mcmc_moves
-        sampler_states
-        is_completed
         """
+
         import copy
+        from chiron.analysis import MBAREstimator
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -55,20 +77,35 @@ class MultiStateSampler:
         self._n_proposed_matrix = None
         self._reporter = reporter
         self._metadata = None
-        self._timing_data = dict()
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
+        self._online_estimator = None
+        self._offline_estimator = MBAREstimator()
 
     @property
-    def n_states(self):
-        """The integer number of thermodynamic states (read-only)."""
+    def n_states(self) -> int:
+        """
+        Get the number of thermodynamic states in the sampler.
+
+        Returns
+        -------
+        int
+            The number of thermodynamic states.
+        """
         if self._thermodynamic_states is None:
             return 0
         else:
             return len(self._thermodynamic_states)
 
     @property
-    def n_replicas(self):
-        """The integer number of replicas (read-only)."""
+    def n_replicas(self) -> int:
+        """
+        Get the number of replicas in the sampler.
+
+        Returns
+        -------
+        int
+            The number of replicas.
+        """
         if self._sampler_states is None:
             return 0
         else:
@@ -95,18 +132,33 @@ class MultiStateSampler:
         return copy.deepcopy(self._mcmc_moves)
 
     @property
-    def sampler_states(self):
-        """A copy of the sampler states list at the current iteration.
-
-        This can be set only before running.
+    def sampler_states(self) -> Optional[List[SamplerState]]:
         """
+        Get a copy of the sampler states list at the current iteration.
+
+        This property can only be set before running the simulation.
+
+        Returns
+        -------
+        Optional[List[SamplerState]]
+            The list of sampler states at the current iteration, or None if not set.
+        """
+        if self._sampler_states is None:
+            return None
         import copy
 
         return copy.deepcopy(self._sampler_states)
 
     @property
     def is_periodic(self):
-        """Return True if system is periodic, False if not, and None if not initialized"""
+        """
+        Determine if the system is periodic.
+
+        Returns
+        -------
+        Optional[bool]
+            True if the system is periodic, False if not, and None if not initialized.
+        """
         if self._sampler_states is None:
             return None
         return self._thermodynamic_states[0].is_periodic
@@ -118,31 +170,27 @@ class MultiStateSampler:
 
     def _compute_replica_energies(self, replica_id: int) -> np.ndarray:
         """
-        Compute the energy for the replica in every ThermodynamicState.
+        Compute the energy of a replica across all thermodynamic states.
 
         Parameters
         ----------
         replica_id : int
-            The ID of the replica to compute energies for.
+            The index of the replica for which to compute energies.
 
         Returns
         -------
         np.ndarray
-            Array of energies for the specified replica across all thermodynamic states.
+            An array of energies for the replica across all thermodynamic states.
         """
-        import jax.numpy as jnp
         from chiron.states import calculate_reduced_potential_at_states
 
-        # Only compute energies of the sampled states over neighborhoods.
-        thermodynamic_states = [
-            self._thermodynamic_states[n] for n in range(self.n_states)
-        ]
         # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
         # Compute energy for all thermodynamic states.
-        return calculate_reduced_potential_at_states(
-            sampler_state, thermodynamic_states, self.nbr_list
+        energies = calculate_reduced_potential_at_states(
+            sampler_state, self._thermodynamic_states, self.nbr_list
         )
+        return energies
 
     def create(
         self,
@@ -150,41 +198,36 @@ class MultiStateSampler:
         sampler_states: List[SamplerState],
         nbr_list: NeighborListNsqrd,
     ):
-        """Create new multistate sampler simulation.
+        """
+        Create a new multistate sampler simulation.
 
+        Parameters
+        ----------
         thermodynamic_states : List[ThermodynamicState]
-            List of ThermodynamicStates to simulate, with one replica allocated per state.
+            List of ThermodynamicStates to simulate, with one replica per state.
         sampler_states : List[SamplerState]
-            List of initial SamplerStates. The number of replicas is taken to be the number
-            of sampler states provided.
+            List of initial SamplerStates. The number of states is the number of replicas.
         nbr_list : NeighborListNsqrd
-            Neighbor list object to be used in the simulation.
+            Neighbor list object for the simulation.
 
         Raises
         ------
         RuntimeError
-            If the lengths of thermodynamic_states and sampler_states are not equal.
+            If the lengths of `thermodynamic_states` and `sampler_states` are not equal.
         """
-        # TODO: initialize reporter here
-        # TODO: consider unsampled thermodynamic states for reweighting schemes
+
         self._online_estimator = None
 
-        from chiron.analysis import MBAREstimator
         from chiron.reporters import MultistateReporter
 
-        n_thermodynamic_states = len(thermodynamic_states)
-        n_sampler_states = len(sampler_states)
-
-        self._offline_estimator = MBAREstimator()
-
         # Ensure the number of thermodynamic states matches the number of sampler states
-        if n_thermodynamic_states != n_sampler_states:
+        if len(thermodynamic_states) != len(sampler_states):
             raise RuntimeError(
                 "Number of thermodynamic states and sampler states must be equal."
             )
 
-        self._allocate_variables(thermodynamic_states, sampler_states)
         self.nbr_list = nbr_list
+        self._allocate_variables(thermodynamic_states, sampler_states)
         self._reporter = MultistateReporter()
 
     def _allocate_variables(
@@ -201,6 +244,7 @@ class MultiStateSampler:
             A list of ThermodynamicState objects to be used in the sampler.
         sampler_states : List[SamplerState]
             A list of SamplerState objects for initializing the sampler.
+
         Raises
         ------
         RuntimeError
@@ -209,32 +253,15 @@ class MultiStateSampler:
         import copy
         import numpy as np
 
-        # Save thermodynamic states. This sets n_replicas.
-        self._thermodynamic_states = [
-            copy.deepcopy(thermodynamic_state)
-            for thermodynamic_state in thermodynamic_states
-        ]
-
-        # Deep copy sampler states.
-        self._sampler_states = [
-            copy.deepcopy(sampler_state) for sampler_state in sampler_states
-        ]
-
         assert len(self._thermodynamic_states) == len(self._sampler_states)
-        # Set initial thermodynamic state indices
-        initial_thermodynamic_states = np.arange(
-            len(self._thermodynamic_states), dtype=int
-        )
+
+        self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
+        self._sampler_states = sampler_states
         self._replica_thermodynamic_states = np.array(
-            initial_thermodynamic_states, np.int64
+            len(self._thermodynamic_states), np.int64
         )
 
-        # Reset statistics.
-
-        # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        # energy_thermodynamic_states[k][l] is the reduced potential computed at the positions of
-        # SamplerState sampler_states[k] and ThermodynamicState thermodynamic_states[l].
-
+        # Initialize matrices for tracking acceptance and proposal statistics.
         self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
         self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
         self._energy_thermodynamic_states = np.zeros(
@@ -271,10 +298,9 @@ class MultiStateSampler:
         replica_id : int
             The index of the replica to minimize.
         tolerance : unit.Quantity, optional
-            The energy tolerance to which the system should be minimized.
-            Defaults to 1.0 kilojoules/mole/nanometers.
+            The energy tolerance for minimization (default: 1.0 kJ/mol/nm).
         max_iterations : int, optional
-            The maximum number of minimization iterations. Defaults to 1000.
+            Maximum number of minimization iterations (default: 1000).
 
         Notes
         -----
@@ -284,7 +310,6 @@ class MultiStateSampler:
         from chiron.minimze import minimize_energy
         from loguru import logger as log
 
-        # Retrieve thermodynamic and sampler states.
         thermodynamic_state = self._thermodynamic_states[
             self._replica_thermodynamic_states[replica_id]
         ]
@@ -354,95 +379,90 @@ class MultiStateSampler:
 
     def _propagate_replica(self, replica_id: int):
         """
-        Propagate the state of a single replica.
-
-        This method applies the MCMC move to the replica to change its state
-        according to the specified thermodynamic state.
+        Propagate the state of a single replica using its assigned MCMC move.
 
         Parameters
         ----------
         replica_id : int
             The index of the replica to propagate.
+
         Raises
         ------
         RuntimeError
             If an error occurs during the propagation of the replica.
         """
 
-        # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
-
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
         mcmc_move = self._mcmc_moves[thermodynamic_state_id]
-        # Apply MCMC move.
+        # Apply the MCMC move to the replica.
         mcmc_move.run(sampler_state, thermodynamic_state)
+        # Append the new state to the trajectory for analysis.
         self._traj[replica_id].append(sampler_state.x0)
 
     def _perform_swap_proposals(self):
         """
         Perform swap proposals between replicas.
 
-        Placeholder method for replica swapping logic. Subclasses should
-        override this method with specific swapping algorithms.
+        This method should be overridden by subclasses to implement specific swapping algorithms.
 
         Returns
         -------
         np.ndarray
             An array of updated thermodynamic state indices for each replica.
         """
-
         # Placeholder implementation, should be overridden by subclasses
         # For this example, we'll just return the current state indices
         return self._replica_thermodynamic_states
 
     def _mix_replicas(self) -> np.ndarray:
         """
-        Propose and execute swaps between replicas.
+        Propose and execute swaps between replicas to enhance sampling efficiency.
 
-        This method is responsible for enhancing sampling efficiency by proposing
-        swaps between different thermodynamic states of the replicas. The actual
-        swapping algorithm depends on the specific subclass implementation.
+        This method handles the logic for proposing swaps between different thermodynamic states
+        of the replicas. The specifics of the swapping algorithm depend on subclass implementations.
 
         Returns
         -------
         np.ndarray
-            An array of updated thermodynamic state indices for each replica.
+            An array of updated thermodynamic state indices for each replica after swapping.
         """
         from loguru import logger as log
 
         log.debug("Mixing replicas (does nothing for MultiStateSampler)...")
 
-        # Reset storage to keep track of swap attempts this iteration.
+        # Reset swap attempt counters for this iteration.
         self._n_accepted_matrix[:, :] = 0
         self._n_proposed_matrix[:, :] = 0
 
-        # Perform replica mixing (swap proposals and acceptances)
-        # The actual swapping logic would depend on subclass implementations
-        # Here, we assume a placeholder implementation
+        # Perform the swap proposals and acceptances.
         new_replica_states = self._perform_swap_proposals()
 
         # Calculate swap acceptance statistics
         n_swaps_proposed = self._n_proposed_matrix.sum()
         n_swaps_accepted = self._n_accepted_matrix.sum()
         swap_fraction_accepted = 0.0
-        if n_swaps_proposed > 0:
-            swap_fraction_accepted = n_swaps_accepted / n_swaps_proposed
+        swap_fraction_accepted = (
+            n_swaps_accepted / n_swaps_proposed if n_swaps_proposed > 0 else 0.0
+        )
         log.debug(
             f"Accepted {n_swaps_accepted}/{n_swaps_proposed} attempted swaps ({swap_fraction_accepted * 100.0:.1f}%)"
         )
+        return new_replica_states
 
     def _propagate_replicas(self) -> None:
         """
         Propagate all replicas through their respective MCMC moves.
 
-        This method iterates over all replicas and applies the corresponding MCMC move
-        to each one, based on its current thermodynamic state.
+        This method applies the corresponding MCMC move to each replica based on its
+        current thermodynamic state, thus advancing the state of each replica.
         """
         from loguru import logger as log
 
         log.debug("Propagating all replicas...")
 
+        # Iterate over all replicas and propagate each one.
         for replica_id in range(self.n_replicas):
             self._propagate_replica(replica_id)
 
@@ -450,9 +470,8 @@ class MultiStateSampler:
         """
         Compute the energies of all replicas at all thermodynamic states.
 
-        This method calculates the energy for each replica in every thermodynamic state,
-        considering the defined neighborhoods to optimize the computation. The energies
-        are stored in the internal energy matrix of the sampler.
+        This method calculates the energy for each replica in every thermodynamic state.
+        The energies are stored in the internal energy matrix of the sampler.
         """
         from loguru import logger as log
 
@@ -460,9 +479,8 @@ class MultiStateSampler:
         # Initialize the energy matrix and neighborhoods
         self._energy_thermodynamic_states = np.zeros((self.n_replicas, self.n_states))
 
-        # Calculate energies for each replica
+        # Calculate and store energies for each replica.
         for replica_id in range(self.n_replicas):
-            # Compute and store energies for the neighborhood states
             self._energy_thermodynamic_states[
                 replica_id, :
             ] = self._compute_replica_energies(replica_id)
@@ -471,20 +489,18 @@ class MultiStateSampler:
         """
         Determine if the sampling process has met its completion criteria.
 
-        This method checks if the simulation has reached a specified iteration limit
-        or any other predefined stopping condition.
+        Checks if the simulation has reached a specified iteration limit or any other
+        predefined stopping condition.
 
         Parameters
         ----------
         iteration_limit : Optional[int], default=None
-            An optional iteration limit. If specified, the method checks if the
-            current iteration number has reached this limit.
+            An optional iteration limit to check against the current iteration number.
 
         Returns
         -------
         bool
-            True if the simulation has completed based on the stopping criteria,
-            False otherwise.
+            True if the simulation has completed based on the stopping criteria, False otherwise.
         """
         from loguru import logger as log
 
@@ -501,70 +517,61 @@ class MultiStateSampler:
 
     def run(self, n_iterations: int = 10) -> None:
         """
-        Execute the replica-exchange simulation.
+        Execute the replica-exchange simulation for a specified number of iterations.
 
-        Run the simulation for a specified number of iterations. If no number is
-        specified, it runs for the number of iterations set during the initialization
-        of the sampler.
+        Runs the simulation, performing replica propagation, mixing, and energy computation
+        for the specified number of iterations.
 
         Parameters
         ----------
         n_iterations : int, default=10
-            The number of iterations to run.
-
-        Raises
-        ------
-        RuntimeError
-            If an error occurs during the computation of energies.
+            The number of iterations to run the simulation.
         """
         from loguru import logger as log
 
-        # If this is the first iteration, compute and store the
-        # starting energies of the minimized/equilibrated structures.
+        log.info("Running simulation...")
+
         self.number_of_iterations = n_iterations
 
-        log.info("Running simulation...")
-        self._energy_thermodynamic_states_for_each_iteration_in_run = np.zeros(
-            [self.n_replicas, self.n_states, n_iterations + 1], np.float64
-        )
-        # Initialize energies if this is the first iteration
         if self._iteration == 0:
+            # Initialize energies if this is the first iteration
             self._compute_energies()
             self._report_iteration()
 
         # start the sampling loop
-        log.debug(f"{n_iterations=}")
         while not self._is_completed(n_iterations):
-            # Increment iteration counter.
             self._iteration += 1
-
             log.info("-" * 80)
             log.info(f"Iteration {self._iteration}/{n_iterations}")
             log.info("-" * 80)
 
-            # Update thermodynamic states
             self._mix_replicas()
-
-            # Propagate replicas.
             self._propagate_replicas()
-
-            # Compute energies of all replicas at all states
             self._compute_energies()
-
-            # Write iteration to storage file
             self._report_iteration()
-
-            # Update analysis
             self._update_analysis()
 
+        self._reporter.flush_buffer()
+
     def _report_energy_matrix(self):
+        """
+        Report the energy matrix for each thermodynamic state.
+
+        This method logs the energy per thermodynamic state, which is useful for analysis
+        and debugging purposes.
+        """
         from loguru import logger as log
 
         log.debug("Reporting energy per thermodynamic state...")
         self._reporter.report({"u_kn": self._energy_thermodynamic_states.T})
 
     def _report_positions(self):
-        """Store positions of current iteration."""
+        """
+        Store and report the positions of all replicas at the current iteration.
+
+        This method compiles and reports the position data for each replica, which
+        is critical for trajectory analysis.
+        """
         from loguru import logger as log
 
         log.debug("Reporting positions...")
@@ -574,15 +581,18 @@ class MultiStateSampler:
             xyz[replica_id] = self._sampler_states[replica_id].x0
         self._reporter.report({"positions": xyz})
 
-    def _report(self, property: str):
+    def _report(self, property: str) -> None:
         """
-        Report a property of the simulation.
+        Report a specific property of the simulation.
+
+        Depending on the specified property, this method delegates to the appropriate
+        internal reporting method.
 
         Parameters
         ----------
         property : str
-            The property to report. Options are 'positions', 'states', 'energies',
-            'trajectory', 'mixing_statistics', and 'all'.
+            The property to report. Can be 'positions', 'states', 'energies',
+            'trajectory', 'mixing_statistics', or 'all'.
         """
         from loguru import logger as log
 
@@ -598,17 +608,31 @@ class MultiStateSampler:
                 pass
             case "mixing_statistics":
                 pass
-                # reporter.write_mixing_statistics()
 
     def _report_iteration(self):
-        """Store positions, states, and energies of current iteration."""
+        """
+        Store and report various properties of the current iteration.
+
+        This method is called at each iteration to report essential simulation data,
+        such as positions, states, energies, and other properties defined in the reporter.
+        """
+        from loguru import logger as log
+
+        log.debug("Reporting data for current iteration...")
 
         for property in self._reporter.properties_to_report:
             self._report(property)
 
     def _update_analysis(self):
-        """Update analysis of free energies"""
+        """
+        Update the analysis of free energies based on the current simulation data.
+
+        This method is responsible for updating the free energy estimates, either using
+        online or offline estimation methods, as configured in the sampler.
+        """
         from loguru import logger as log
+
+        log.debug("Updating free energy analysis...")
 
         # Perform offline free energy estimate if requested
         if self._offline_estimator:
@@ -627,7 +651,24 @@ class MultiStateSampler:
             raise RuntimeError("No free energy estimator provided.")
 
     @property
-    def f_k(self):
+    def f_k(self) -> np.ndarray:
+        """
+        Get the current free energy estimates.
+
+        Returns the free energy estimates calculated by the sampler's free energy estimator.
+        The specific estimator used (online or offline) depends on the sampler configuration.
+
+        Returns
+        -------
+        np.ndarray
+            Array of free energy estimates for each thermodynamic state.
+
+        Raises
+        ------
+        RuntimeError
+            If no free energy estimator is found.
+        """
+
         if self._offline_estimator:
             return self._offline_estimator.f_k
         elif self._online_estimator:
