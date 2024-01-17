@@ -114,7 +114,8 @@ def ho_multistate_sampler_multiple_ks() -> MultiStateSampler:
     PRNG.set_seed(1234)
 
     sampler_state = [
-        SamplerState(ho.positions, random_seed=PRNG.get_random_key()) for _ in sigmas
+        SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
+        for _ in sigmas
     ]
     import numpy as np
 

@@ -158,7 +158,7 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     id = uuid.uuid4()
     reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
-    integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
+    integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
     integrator.run(
         sampler_state,
         thermodynamic_state,

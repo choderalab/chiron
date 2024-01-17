@@ -187,7 +187,7 @@ def test_LJ_fluid():
         PRNG.set_seed(1234)
         state = SamplerState(
             x0=lj_openmm.positions,
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=lj_openmm.system.getDefaultPeriodicBoxVectors(),
         )
 

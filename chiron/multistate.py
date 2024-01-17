@@ -253,13 +253,10 @@ class MultiStateSampler:
         import copy
         import numpy as np
 
-        assert len(self._thermodynamic_states) == len(self._sampler_states)
-
         self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
         self._sampler_states = sampler_states
-        self._replica_thermodynamic_states = np.array(
-            len(self._thermodynamic_states), np.int64
-        )
+        assert len(self._thermodynamic_states) == len(self._sampler_states)
+        self._replica_thermodynamic_states = np.arange(len(thermodynamic_states), dtype=int)
 
         # Initialize matrices for tracking acceptance and proposal statistics.
         self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)

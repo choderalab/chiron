@@ -40,7 +40,9 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
 
     PRNG.set_seed(1234)
 
-    sampler_state = SamplerState(x0=ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(
+        x0=ho.positions, current_PRNG_key=PRNG.get_random_key()
+    )
     from chiron.integrators import LangevinIntegrator
 
     from chiron.reporters import LangevinDynamicsReporter, BaseReporter
@@ -51,7 +53,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
-        stepsize=2 * unit.femtosecond, reporter=reporter, save_frequency=1
+        stepsize=2 * unit.femtosecond, reporter=reporter, report_frequency=1
     )
 
     integrator.run(
@@ -59,22 +61,22 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
         thermodynamic_state,
         n_steps=5,
     )
-    integrator.reporter.close()
+    integrator.reporter.flush_buffer()
     import jax.numpy as jnp
     import h5py
 
     h5 = h5py.File(f"{wd}/{LangevinDynamicsReporter.get_name()}.h5", "r")
     keys = h5.keys()
 
-    assert "energy" in keys, "Energy not in keys"
+    assert "potential_energy" in keys, "Energy not in keys"
     assert "step" in keys, "Step not in keys"
-    assert "traj" in keys, "Traj not in keys"
+    assert "traj" not in keys, "Traj is not in keys"
 
-    energy = h5["energy"][:]
+    energy = h5["potential_energy"][:]
     print(energy)
 
     reference_energy = jnp.array(
-        [0.03416792, 0.13399088, 0.29001084, 0.4954423, 0.75295717]
+        [0.03551735, 0.1395877, 0.30911613, 0.5495938, 0.85149795]
     )
     assert jnp.allclose(energy, reference_energy)
 
@@ -112,7 +114,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
     from chiron.reporters import LangevinDynamicsReporter, BaseReporter
@@ -165,7 +167,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     from chiron.utils import PRNG
 
     PRNG.set_seed(1234)
-    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter
@@ -224,7 +226,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     from chiron.utils import PRNG
 
     PRNG.set_seed(1234)
-    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
     from chiron.reporters import MCReporter, BaseReporter

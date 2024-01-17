@@ -101,7 +101,7 @@ def test_neighborlist_pair():
 
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -214,7 +214,7 @@ def test_inputs():
 
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=None,
     )
 
@@ -288,7 +288,7 @@ def test_neighborlist_pair_multiple_particles():
 
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -363,7 +363,7 @@ def test_pairlist_pair():
 
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -417,7 +417,7 @@ def test_pair_list_multiple_particles():
 
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 

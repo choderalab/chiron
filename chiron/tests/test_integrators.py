@@ -42,7 +42,7 @@ def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
 
         reporter = LangevinDynamicsReporter()
 
-        integrator = LangevinIntegrator(reporter=reporter, save_frequency=1)
+        integrator = LangevinIntegrator(reporter=reporter, report_frequency=1)
         integrator.run(
             sampler_state,
             thermodynamic_state,

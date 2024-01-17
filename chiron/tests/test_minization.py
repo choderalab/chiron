@@ -21,7 +21,7 @@ def test_minimization():
     PRNG.set_seed(1234)
     sampler_state = SamplerState(
         lj_fluid.positions,
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
     )
     # use parilist
@@ -104,7 +104,7 @@ def test_minimize_two_particles():
     # define the sampler state
     sampler_state = SamplerState(
         x0=coordinates * unit.nanometer,
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
         * unit.nanometer,
     )

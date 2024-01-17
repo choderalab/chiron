@@ -26,7 +26,7 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
-        save_frequency: int = 100,
+        report_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
         save_traj_in_memory: bool = False,
     ) -> None:
@@ -39,7 +39,7 @@ class LangevinIntegrator:
             Time step of integration with units of time. Default is 1.0 * unit.femtoseconds.
         collision_rate : unit.Quantity, optional
             Collision rate for the Langevin dynamics, with units 1/time. Default is 1.0 / unit.picoseconds.
-        save_frequency : int, optional
+        report_frequency : int, optional
             Frequency of saving the simulation data. Default is 100.
         reporter : SimulationReporter, optional
             Reporter object for saving the simulation data. Default is None.
@@ -52,7 +52,7 @@ class LangevinIntegrator:
         self.kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         log.info(f"stepsize = {stepsize}")
         log.info(f"collision_rate = {collision_rate}")
-        log.info(f"save_frequency = {save_frequency}")
+        log.info(f"report_frequency = {report_frequency}")
 
         self.stepsize = stepsize
         self.collision_rate = collision_rate
@@ -62,7 +62,7 @@ class LangevinIntegrator:
             )
             log.info(f"and logging to {reporter.log_file_path}")
             self.reporter = reporter
-        self.save_frequency = save_frequency
+        self.report_frequency = report_frequency
         self.velocities = None
         self.save_traj_in_memory = save_traj_in_memory
         self.traj = []
@@ -121,7 +121,7 @@ class LangevinIntegrator:
         log.debug(f"temperature = {temperature}")
 
         # Initialize the random number generator
-        key = sampler_state.random_seed
+        key = sampler_state.new_PRNG_key
 
         # Convert to dimensionless quantities
         kbT_unitless = (self.kB * temperature).value_in_unit_system(unit.md_unit_system)
@@ -172,7 +172,7 @@ class LangevinIntegrator:
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
-            if step % self.save_frequency == 0:
+            if step % self.report_frequency == 0:
                 if hasattr(self, "reporter") and self.reporter is not None:
                     self._report(x, potential, nbr_list, step)
 

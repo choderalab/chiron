@@ -28,7 +28,7 @@ def test_initialize_state():
 
     PRNG.set_seed(1234)
 
-    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     assert jnp.allclose(
         sampler_state.x0,
@@ -50,7 +50,7 @@ def test_sampler_state_conversion():
 
     sampler_state = SamplerState(
         unit.Quantity(jnp.array([[10.0, 10.0, 10.0]]), unit.nanometer),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
     )
 
     assert jnp.allclose(
@@ -60,7 +60,7 @@ def test_sampler_state_conversion():
 
     sampler_state = SamplerState(
         unit.Quantity(jnp.array([[10.0, 10.0, 10.0]]), unit.angstrom),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
     )
 
     assert jnp.allclose(
@@ -86,7 +86,7 @@ def test_sampler_state_inputs():
     with pytest.raises(ValueError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.radians),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
         )
 
     # test input of velocities
@@ -94,14 +94,14 @@ def test_sampler_state_inputs():
     with pytest.raises(TypeError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             velocities=jnp.array([1, 2, 3]),
         )
     # velocities should have units of distance/time
     with pytest.raises(ValueError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             velocities=unit.Quantity(jnp.array([1, 2, 3]), unit.nanometers),
         )
 
@@ -110,14 +110,14 @@ def test_sampler_state_inputs():
     with pytest.raises(TypeError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=jnp.array([1, 2, 3]),
         )
     # box_vectors should have units of distance
     with pytest.raises(ValueError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(
                 jnp.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]), unit.radians
             ),
@@ -126,7 +126,7 @@ def test_sampler_state_inputs():
     with pytest.raises(ValueError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(
                 jnp.array([[1, 0, 0], [0, 1, 0]]), unit.nanometers
             ),
@@ -141,7 +141,7 @@ def test_sampler_state_inputs():
     # check openmm_box conversion:
     state = SamplerState(
         x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-        random_seed=PRNG.get_random_key(),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=openmm_box,
     )
     assert jnp.allclose(
@@ -156,7 +156,7 @@ def test_sampler_state_inputs():
     with pytest.raises(TypeError):
         SamplerState(
             x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=[123],
         )
 
@@ -176,7 +176,7 @@ def test_reduced_potential():
     state = ThermodynamicState(
         potential, temperature=300 * unit.kelvin, volume=30 * (unit.angstrom**3)
     )
-    sampler_state = SamplerState(ho.positions, random_seed=PRNG.get_random_key())
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     reduced_e = state.get_reduced_potential(sampler_state)
     assert reduced_e == 0.0

@@ -56,7 +56,7 @@ reporter = _SimulationReporter("test_lj.h5", lj_fluid.topology, 1)
 from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
-integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
+integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
 print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
 integrator.run(

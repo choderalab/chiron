@@ -179,7 +179,7 @@ def test_lennard_jones():
 
         state = SamplerState(
             x0=unit.Quantity(positions, unit.nanometer),
-            random_seed=PRNG.get_random_key(),
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(box_vectors, unit.nanometer),
         )
         nbr_list = NeighborListNsqrd(

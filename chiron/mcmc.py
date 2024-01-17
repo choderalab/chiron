@@ -586,7 +586,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         from loguru import logger as log
         from jax import random
 
-        self.key = sampler_state.current_PRNG_key
+        self.key = sampler_state.new_PRNG_key
 
         for trials in (
             tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
