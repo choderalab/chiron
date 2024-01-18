@@ -207,6 +207,8 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     assert ho_sampler.n_replicas == 4
     assert ho_sampler.n_states == 4
 
+    u_kn = ho_sampler._reporter.get_property("u_kn")
+    assert u_kn.shape == (4, 4, n_iteratinos + 1)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     print(ho_sampler.delta_f_ij_analytical)
