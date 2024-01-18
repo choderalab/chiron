@@ -23,6 +23,7 @@ def test_get_list_of_mass():
 
 
 import pytest
+from .test_multistate import ho_multistate_sampler_multiple_ks
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +33,7 @@ def prep_temp_dir(tmpdir_factory):
     return tmpdir
 
 
-def test_reporter(prep_temp_dir):
+def test_reporter(prep_temp_dir, ho_multistate_sampler_multiple_ks):
     from chiron.integrators import LangevinIntegrator
     from chiron.potential import HarmonicOscillatorPotential
     from openmm import unit
@@ -60,7 +61,7 @@ def test_reporter(prep_temp_dir):
     BaseReporter.set_directory(prep_temp_dir)
 
     # test langevin reporter
-    reporter = LangevinDynamicsReporter("testing")
+    reporter = LangevinDynamicsReporter("langevin_test")
     reporter.reset_reporter_file()
 
     integrator = LangevinIntegrator(reporter=reporter, report_frequency=1)
@@ -113,11 +114,21 @@ def test_reporter(prep_temp_dir):
 
     assert os.path.exists(reporter.xtc_file_path)
     assert os.path.exists(reporter.log_file_path)
-    
+
     # test multistate reporter
-    from .test_multistate import ho_multistate_sampler_multiple_ks
     ho_sampler = ho_multistate_sampler_multiple_ks
+    ho_sampler._reporter.reset_reporter_file()
     ho_sampler.run(5)
-    
-    
-    a = 7
+
+    assert len(ho_sampler._reporter._replica_reporter.keys()) == 4
+    assert ho_sampler._reporter._replica_reporter.get("replica_0")
+    assert ho_sampler._reporter._default_properties == [
+        "positions",
+        "box_vectors",
+        "u_kn",
+        "state_index",
+        "step",
+    ]
+    u_kn = ho_sampler._reporter.get_property("u_kn")
+    assert u_kn.shape == (4, 4, 6)
+    assert os.path.exists(ho_sampler._reporter.log_file_path)
