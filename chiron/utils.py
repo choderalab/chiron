@@ -1,5 +1,40 @@
 from openmm.app import Topology
 from openmm import unit
+from jax import random
+
+
+class PRNG:
+    _key: random.PRNGKey
+    _seed: int
+
+    def __init__(self) -> None:
+        """
+        A PRNG class that can be used to generate random numbers in JAX.
+        The intended use case is to initialize new PRN streams in the `SamplerState` class.
+        
+        Example:
+        --------
+        from chiron.utils import PRNG
+        from chiron.states import SamplerState
+        from openmmtools.testsystems import HarmonicOscillator
+        
+        ho = HarmonicOscillator()
+        PRNG.set_seed(1234)
+        sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
+        
+        """
+        
+        pass
+    @classmethod
+    def set_seed(cls, seed: int) -> None:
+        cls._seed = seed
+        cls._key = random.PRNGKey(seed)
+
+    @classmethod
+    def get_random_key(cls) -> int:
+        key, subkey = random.split(cls._key)
+        cls._key = key
+        return subkey
 
 
 def get_data_file_path(relative_path: str) -> str:

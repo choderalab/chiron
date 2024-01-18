@@ -182,8 +182,12 @@ def test_LJ_fluid():
             dispersion_correction=False,
             shift=False,
         )
+        from chiron.utils import PRNG
+
+        PRNG.set_seed(1234)
         state = SamplerState(
             x0=lj_openmm.positions,
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=lj_openmm.system.getDefaultPeriodicBoxVectors(),
         )
 

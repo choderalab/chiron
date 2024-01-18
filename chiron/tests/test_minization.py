@@ -16,8 +16,13 @@ def test_minimization():
     cutoff = unit.Quantity(1.0, unit.nanometer)
     lj_potential = LJPotential(lj_fluid.topology, cutoff=cutoff)
 
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
     sampler_state = SamplerState(
-        lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+        lj_fluid.positions,
+        current_PRNG_key=PRNG.get_random_key(),
+        box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
     )
     # use parilist
     nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
@@ -92,10 +97,14 @@ def test_minimize_two_particles():
     lj_potential = LJPotential(None, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
 
     coordinates = jnp.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
 
     # define the sampler state
     sampler_state = SamplerState(
         x0=coordinates * unit.nanometer,
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
         * unit.nanometer,
     )
