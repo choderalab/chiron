@@ -8,8 +8,23 @@ class PRNG:
     _seed: int
 
     def __init__(self) -> None:
+        """
+        A PRNG class that can be used to generate random numbers in JAX.
+        The intended use case is to initialize new PRN streams in the `SamplerState` class.
+        
+        Example:
+        --------
+        from chiron.utils import PRNG
+        from chiron.states import SamplerState
+        from openmmtools.testsystems import HarmonicOscillator
+        
+        ho = HarmonicOscillator()
+        PRNG.set_seed(1234)
+        sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
+        
+        """
+        
         pass
-
     @classmethod
     def set_seed(cls, seed: int) -> None:
         cls._seed = seed
