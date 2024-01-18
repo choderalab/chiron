@@ -24,7 +24,7 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
         OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
     )
 
-    move = LangevinDynamicsMove(stepsize=2.0 * unit.femtoseconds, nr_of_steps=200)
+    move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
     BaseReporter.set_directory("multistate_test")
     reporter = MultistateReporter()
     reporter.reset_reporter_file()
@@ -212,7 +212,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iteratinos = 50
+    n_iteratinos = 250
     ho_sampler.run(n_iteratinos)
 
     # check that we have the correct number of iterations, replicas and states
@@ -221,8 +221,11 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     assert ho_sampler.n_replicas == 4
     assert ho_sampler.n_states == 4
 
+    u_kn = ho_sampler.reporter.get_property("u_kn")
+    assert u_kn.shape == (n_iteratinos, 4, 4)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
+    # [ 0.        , -0.28593054, -0.54696467, -0.78709279]
     print(ho_sampler.delta_f_ij_analytical)
     print(ho_sampler.f_k)
 

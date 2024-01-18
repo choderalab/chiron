@@ -562,6 +562,8 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug("Reporting energy per thermodynamic state...")
+        # NOTE: self._energy_thermodynamic_states is transposed from
+        # shape (n_replicas, n_states) to (n_states, n_replicas)
         return {"u_kn": self._energy_thermodynamic_states.T}
 
     def _report_positions(self):

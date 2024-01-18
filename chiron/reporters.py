@@ -79,8 +79,11 @@ class _SimulationReporter:
         self._default_properties = properties
 
     def get_available_keys(self):
+        keys = []
         with h5py.File(self.log_file_path, "r") as h5file:
-            return h5file.keys()
+            for key in h5file:
+                keys.append(key)
+        return keys
 
     def report(self, data_dict):
         """
@@ -236,7 +239,6 @@ class MultistateReporter(_SimulationReporter):
 
         super().__init__(file_name=file_name, buffer_size=buffer_size)
         self._replica_reporter = {}
-
 
     @classmethod
     def get_name(cls):

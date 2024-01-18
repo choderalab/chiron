@@ -184,8 +184,6 @@ class LangevinIntegrator:
         sampler_state.x0 = x
         sampler_state.v0 = v
 
-        # self.reporter.close()
-
     def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
         """
         Wrap the coordinates and rebuild the neighborlist if necessary.

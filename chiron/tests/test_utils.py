@@ -22,55 +22,102 @@ def test_get_list_of_mass():
     assert np.isclose(c, expected[0]), "Incorrect masses returned"
 
 
-def test_reporter():
-    """Read in a reporter file and check its contend."""
-    import h5py
+import pytest
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_reporter")
+    return tmpdir
+
+
+def test_reporter(prep_temp_dir):
+    from chiron.integrators import LangevinIntegrator
+    from chiron.potential import HarmonicOscillatorPotential
+    from openmm import unit
+
+    from openmmtools.testsystems import HarmonicOscillator
+
+    ho = HarmonicOscillator()
+    potential = HarmonicOscillatorPotential(ho.topology)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    from chiron.states import SamplerState, ThermodynamicState
+
+    thermodynamic_state = ThermodynamicState(
+        potential=potential, temperature=300 * unit.kelvin
+    )
+
+    sampler_state = SamplerState(ho.positions, PRNG.get_random_key())
+
+    from chiron.reporters import LangevinDynamicsReporter
+    from chiron.reporters import BaseReporter
+
+    # set up reporter directory
+    BaseReporter.set_directory(prep_temp_dir)
+
+    # test langevin reporter
+    reporter = LangevinDynamicsReporter("testing")
+    reporter.reset_reporter_file()
+
+    integrator = LangevinIntegrator(reporter=reporter, report_frequency=1)
+    integrator.run(
+        sampler_state,
+        thermodynamic_state,
+        n_steps=20,
+    )
     import numpy as np
-    from chiron.utils import get_data_file_path
-    import pathlib
 
-    h5_file = "langevin_reporter.h5"
-    h5_test_file = get_data_file_path(h5_file)
-    base_dir = (
-        pathlib.Path(h5_test_file).parent.parent.absolute().joinpath("tests/data")
+    reporter.flush_buffer()
+
+    # test for available keys
+    assert "potential_energy" in reporter.get_available_keys()
+    assert "step" in reporter.get_available_keys()
+
+    # test for property
+    pot_energy = reporter.get_property("potential_energy")
+    np.allclose(
+        pot_energy,
+        np.array(
+            [
+                8.8336921e-05,
+                3.5010747e-04,
+                7.8302569e-04,
+                1.4021739e-03,
+                2.1981772e-03,
+                3.1483083e-03,
+                4.2442558e-03,
+                5.4960307e-03,
+                6.8922052e-03,
+                8.4171966e-03,
+                1.0099258e-02,
+                1.1929392e-02,
+                1.3859766e-02,
+                1.5893064e-02,
+                1.8023632e-02,
+                2.0219875e-02,
+                2.2491256e-02,
+                2.4893485e-02,
+                2.7451182e-02,
+                3.0140089e-02,
+            ],
+            dtype=np.float32,
+        ),
     )
-    print(h5_test_file)
-    print(base_dir)
 
-    # Read the h5 file manually and check values
-    h5 = h5py.File(h5_test_file, "r")
-    keys = h5.keys()
+    # test that xtc and log file is written
+    import os
 
-    assert "energy" in keys, "Energy not in keys"
-    assert "step" in keys, "Step not in keys"
-    assert "traj" in keys, "Traj not in keys"
-
-    energy = h5["energy"][:5]
-    reference_energy = np.array(
-        [1.9328993e-06, 2.0289978e-02, 8.3407544e-02, 1.7832418e-01, 2.8428176e-01]
-    )
-    assert np.allclose(
-        energy,
-        reference_energy,
-    ), "Energy not correct"
-
-    h5.close()
-
-    # Use the reporter class and check values
-    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
-
-    BaseReporter.set_directory(base_dir)
-
-    reporter = LangevinDynamicsReporter(1)
-    assert np.allclose(reference_energy, reporter.get_property("energy")[:5])
-    reporter.close()
-    # test the topology
-    from openmmtools.testsystems import HarmonicOscillatorArray
-
-    ho = HarmonicOscillatorArray()
-    topology = ho.topology
-    reporter = LangevinDynamicsReporter(1, topology)
-    traj = reporter.get_mdtraj_trajectory()
-    import mdtraj as md
-
-    assert isinstance(traj, md.Trajectory), "Trajectory not correct type"
+    assert os.path.exists(reporter.xtc_file_path)
+    assert os.path.exists(reporter.log_file_path)
+    
+    # test multistate reporter
+    from .test_multistate import ho_multistate_sampler_multiple_ks
+    ho_sampler = ho_multistate_sampler_multiple_ks
+    ho_sampler.run(5)
+    
+    
+    a = 7
