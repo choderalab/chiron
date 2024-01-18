@@ -4,6 +4,10 @@ from typing import Tuple, List, Optional
 import jax.numpy as jnp
 from chiron.reporters import SimulationReporter
 
+
+# MCMCMOve - > MCMove with differenf flavors
+
+
 class MCMCMove:
     def __init__(self, nr_of_moves: int, seed: int):
         """
@@ -20,6 +24,11 @@ class MCMCMove:
 
         self.nr_of_moves = nr_of_moves
         self.key = jrandom.PRNGKey(seed)  # 'seed' is an integer seed value
+
+    # draw proposal move
+    # compute probability of acceptance
+    # TOD: @abc
+    # def run
 
 
 class LangevinDynamicsMove(MCMCMove):
@@ -59,16 +68,17 @@ class LangevinDynamicsMove(MCMCMove):
             save_traj_in_memory=save_traj_in_memory,
         )
 
-    def run(
+    def update(
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
     ):
         """
-        Run the integrator to perform molecular dynamics simulation.
+        Update the sampler state in place by running the langevin integrator.
 
         Args:
             state_variables (StateVariablesCollection): State variables of the system.
+            # NOTE: update
         """
 
         assert isinstance(
@@ -78,6 +88,7 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state, ThermodynamicState
         ), f"Thermodynamic state must be ThermodynamicState, not {type(thermodynamic_state)}"
 
+        # NOTE: should this return the sampler state object?
         self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
@@ -93,29 +104,7 @@ class MCMove(MCMCMove):
     def __init__(self, nr_of_moves: int, seed: int) -> None:
         super().__init__(nr_of_moves, seed)
 
-    def _check_state_compatiblity(
-        self,
-        old_state: SamplerState,
-        new_state: SamplerState,
-    ):
-        """
-        Check if the states are compatible.
-
-        Parameters
-        ----------
-        old_state : StateVariablesCollection
-            The state of the system before the move.
-        new_state : StateVariablesCollection
-            The state of the system after the move.
-
-        Raises
-        ------
-        ValueError
-            If the states are not compatible.
-        """
-        pass
-
-    def apply_move(self):
+    def step(self):
         """
         Apply a Monte Carlo move to the system.
 
@@ -126,59 +115,27 @@ class MCMove(MCMCMove):
         NotImplementedError
             If the method is not implemented in subclasses.
         """
-
+        # needs to be subclassed
+        # (
+        #     proposed_sampler_state,
+        #     log_proposal_ratio,
+        #     proposed_thermodynamic_state,
+        # ) = self._propose(current_sampler_state, current_thermodynamic_state)  # log proposal ratio + proposal sampler state
+        # # current_reduced_pot = current_thermodynamic_state.get_reduced_potential(current_sampler_state)
+        # # proposed_reduced_pot = proposed_thermodynamic_state.get_reduced_potential(proposed_sampler_state)
+        # decicion = self._accept_or_reject(
+        #     current_reduced_pot,
+        #     proposed_reduced_pot,
+        #     log_proposal_ratio,
+        #     method="metropolis",  # or other flavors
+        # )  # including the log acceptance ratio
+        # if decicion:
+        #     self._replace_states(proposed_sampler_state, proposed_thermodynamic_state)
         raise NotImplementedError("apply_move() must be implemented in subclasses")
-
-    def compute_acceptance_probability(
-        self,
-        old_state: SamplerState,
-        new_state: SamplerState,
-    ):
-        """
-        Compute the acceptance probability for a move from an old state to a new state.
-
-        Parameters
-        ----------
-        old_state : object
-            The state of the system before the move.
-        new_state : object
-            The state of the system after the move.
-
-        Returns
-        -------
-        float
-            Acceptance probability as a float.
-        """
-        self._check_state_compatiblity(old_state, new_state)
-        old_system = self.system(old_state)
-        new_system = self.system(new_state)
-
-        energy_before_state_change = old_system.compute_energy(old_state.position)
-        energy_after_state_change = new_system.compute_energy(new_state.position)
-        # Implement the logic to compute the acceptance probability
-        pass
-
-    def accept_or_reject(self, probability):
-        """
-        Decide whether to accept or reject the move based on the acceptance probability.
-
-        Parameters
-        ----------
-        probability : float
-            Acceptance probability.
-
-        Returns
-        -------
-        bool
-            Boolean indicating if the move is accepted.
-        """
-        import jax.numpy as jnp
-
-        return jnp.random.rand() < probability
 
 
 class RotamerMove(MCMove):
-    def apply_move(self):
+    def step(self):
         """
         Implement the logic specific to rotamer changes.
         """
@@ -186,15 +143,21 @@ class RotamerMove(MCMove):
 
 
 class ProtonationStateMove(MCMove):
-    def apply_move(self):
+    def step(self):
         """
         Implement the logic specific to protonation state changes.
         """
+
+        # this becomes more complicated
+        # proposed_sampler_state, proposed_thermodynamic_state = self._propose()
+
+        # ...
+        # ...
         pass
 
 
 class TautomericStateMove(MCMove):
-    def apply_move(self):
+    def step(self):
         """
         Implement the logic specific to tautomeric state changes.
         """
@@ -238,7 +201,16 @@ class MoveSchedule:
             if not isinstance(move_class, MCMCMove):
                 raise ValueError(f"Move {move_name} in the sequence is not available.")
 
+    # self.acceptance_statistics = [] # provide probabilites for each MC move
 
+    # def _bias_sequence_based_on_acceptace_statistics()
+
+    # def get_sequence():
+
+    # def random_sequence()
+
+
+# NOTE: update the MultistateSampler class using the MCMCSampler
 class MCMCSampler(object):
     """
     Basic Markov chain Monte Carlo Gibbs sampler.
