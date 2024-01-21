@@ -95,8 +95,13 @@ def test_neighborlist_pair():
 
     coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -203,8 +208,14 @@ def test_inputs():
         nbr_list.build_from_state(123)
 
     coordinates = jnp.array([[1, 2, 3], [0, 0, 0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer), box_vectors=None
+        x0=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
+        box_vectors=None,
     )
 
     # check that boxvectors are defined in the state
@@ -271,8 +282,13 @@ def test_neighborlist_pair_multiple_particles():
     coordinates = jnp.stack(coord_mesh.reshape(3, -1), axis=1, dtype=jnp.float32)
 
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -341,8 +357,13 @@ def test_pairlist_pair():
 
     coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
@@ -390,8 +411,13 @@ def test_pair_list_multiple_particles():
     coordinates = jnp.stack(coord_mesh.reshape(3, -1), axis=1, dtype=jnp.float32)
 
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
         x0=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 

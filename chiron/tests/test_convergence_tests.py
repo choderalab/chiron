@@ -48,11 +48,11 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     )
     sampler_state = SamplerState(ho.positions)
 
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import _SimulationReporter
 
     id = uuid.uuid4()
 
-    simulation_reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    simulation_reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
     from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
@@ -61,7 +61,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
         nr_of_moves=100_000,
         displacement_sigma=0.5 * unit.angstrom,
         atom_subset=[0],
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
@@ -153,12 +153,12 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
         potential=lj_potential, temperature=300 * unit.kelvin
     )
 
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import _SimulationReporter
 
     id = uuid.uuid4()
-    reporter = SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
-    integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
+    integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
     integrator.run(
         sampler_state,
         thermodynamic_state,
