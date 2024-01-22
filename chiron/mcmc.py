@@ -4,6 +4,8 @@ from typing import Tuple, List, Optional
 import jax.numpy as jnp
 from chiron.reporters import LangevinDynamicsReporter, _SimulationReporter
 
+from abc import ABC, abstractmethod
+
 
 class MCMCMove:
     def __init__(
@@ -35,6 +37,28 @@ class MCMCMove:
                 f"Using reporter {self.reporter} saving to {self.reporter.workdir}"
             )
             assert self.report_frequency is not None
+
+    @abstractmethod
+    def update(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
+    ):
+        """
+        Update the state of the system.
+
+        Parameters
+        ----------
+        sampler_state : SamplerState
+            The sampler state to run the integrator on.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state to run the integrator on.
+        nbr_list : PairsBase, optional
+            The neighbor list to use for the simulation.
+
+        """
+        pass
 
 
 class LangevinDynamicsMove(MCMCMove):
@@ -89,10 +113,11 @@ class LangevinDynamicsMove(MCMCMove):
             save_traj_in_memory=save_traj_in_memory,
         )
 
-    def run(
+    def update(
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -103,6 +128,8 @@ class LangevinDynamicsMove(MCMCMove):
             The sampler state to run the integrator on.
         thermodynamic_state : ThermodynamicState
             The thermodynamic state to run the integrator on.
+        nbr_list : PairsBase, optional
+            The neighbor list to use for the simulation.
         """
 
         assert isinstance(
@@ -116,6 +143,7 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
+            nbr_list=nbr_list,
         )
 
         if self.save_traj_in_memory:
@@ -125,74 +153,169 @@ class LangevinDynamicsMove(MCMCMove):
 
 class MCMove(MCMCMove):
     def __init__(
-        self, nr_of_moves: int, reporter: Optional[_SimulationReporter]
-    ) -> None:
-        super().__init__(nr_of_moves, reporter=reporter)
-
-    def apply_move(self):
-        """
-        Apply a Monte Carlo move to the system.
-
-        This method should be overridden by subclasses to define specific types of moves.
-
-        Raises
-        ------
-        NotImplementedError
-            If the method is not implemented in subclasses.
-        """
-
-        raise NotImplementedError("apply_move() must be implemented in subclasses")
-
-    def compute_acceptance_probability(
         self,
-        old_state: SamplerState,
-        new_state: SamplerState,
+        nr_of_moves: int,
+        reporter: Optional[_SimulationReporter],
+        report_frequency: int = 1,
+        method: str = "metropolis",
+    ) -> None:
+        """
+        Initialize the move.
+
+        Parameters
+        ----------
+        nr_of_moves
+            Number of moves to be applied in each call to update.
+        reporter
+            Reporter object for saving the simulation step data.
+        report_frequency
+            Frequency of saving the simulation data.
+        method
+            Methodology to use for accepting or rejecting the proposed state.
+            Default is "metropolis".
+        """
+        super().__init__(nr_of_moves, reporter=reporter)
+        self.method = "metropolis"
+
+    def update(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
     ):
         """
-        Compute the acceptance probability for a move from an old state to a new state.
+        Perform the defined move and update the state.
 
         Parameters
         ----------
-        old_state : object
-            The state of the system before the move.
-        new_state : object
-            The state of the system after the move.
+        sampler_state : SamplerState
+            The initial state of the simulation, including positions.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system, including temperature and potential.
+        nbr_list : PairBase, optional
+            Neighbor list for the system.
+
+
+        """
+        calculate_current_potential = True
+        for i in range(self.nr_of_moves):
+            self._step(
+                sampler_state,
+                thermodynamic_state,
+                nbr_list,
+                calculate_current_potential=calculate_current_potential,
+            )
+            # after the first step, we don't need to recalculate the current potential, it will be stored
+            calculate_current_potential = False
+
+    def _step(
+        self,
+    ):
+        # if this is the first time we are calling this,
+        # we will need to recalculate the reduced potential for the current state
+        if calculate_current_potential:
+            current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
+                current_sampler_state
+            )
+            # save the current_reduced_pot so we don't have to recalculate
+            # it on the next iteration if the move is rejected
+            self._current_reduced_pot = current_reduced_pot
+        else:
+            current_reduced_pot = self._current_reduced_pot
+
+        # propose a new state and calculate the log proposal ratio
+        # this will be specific to the type of move
+        # in addition to the sampler_state, this will require/return the thermodynamic state
+        # for systems that e.g., make changes to particle identity.
+        (
+            proposed_sampler_state,
+            log_proposal_ratio,
+            proposed_thermodynamic_state,
+        ) = self._propose(current_sampler_state, current_thermodynamic_state)
+
+        # calculate the reduced potential for the proposed state
+        proposed_reduced_pot = proposed_thermodynamic_state.get_reduced_potential(
+            proposed_sampler_state
+        )
+
+        # accept or reject the proposed state
+        decision = self._accept_or_reject(
+            current_reduced_pot,
+            proposed_reduced_pot,
+            log_proposal_ratio,
+            method=self.method,
+        )
+
+        if decision:
+            # save the reduced potential of the accepted state so
+            # we don't have to recalculate it the next iteration
+            self._current_reduced_pot = proposed_reduced_pot
+
+            # replace the current state with the proposed state
+            # not sure this needs to be a separate function but for simplicity in outlining the code it is fine
+            # or should this return the new sampler_state and thermodynamic_state?
+            self._replace_states(
+                current_sampler_state,
+                proposed_sampler_state,
+                current_thermodynamic_state,
+                proposed_thermodynamic_state,
+            )
+
+        # a function that will update the statistics for the move
+        self._update_statistics(decision)
+
+    @abstractmethod
+    def _propose(self, current_sampler_state, current_thermodynamic_state):
+        """
+        Propose a new state and calculate the log proposal ratio.
+
+        This will need to be defined for each move
+
+        Parameters
+        ----------
+        current_sampler_state : SamplerState, required
+            Current sampler state.
+        current_thermodynamic_state : ThermodynamicState, required
 
         Returns
         -------
-        float
-            Acceptance probability as a float.
-        """
-        self._check_state_compatiblity(old_state, new_state)
-        old_system = self.system(old_state)
-        new_system = self.system(new_state)
+        proposed_sampler_state : SamplerState
+            Proposed sampler state.
+        log_proposal_ratio : float
+            Log proposal ratio.
+        proposed_thermodynamic_state : ThermodynamicState
+            Proposed thermodynamic state.
 
-        energy_before_state_change = old_system.compute_energy(old_state.position)
-        energy_after_state_change = new_system.compute_energy(new_state.position)
-        # Implement the logic to compute the acceptance probability
+        """
         pass
 
-    def accept_or_reject(self, probability):
+    def _replace_states(
+        self,
+        current_sampler_state,
+        proposed_sampler_state,
+        current_thermodynamic_state,
+        proposed_thermodynamic_state,
+    ):
         """
-        Decide whether to accept or reject the move based on the acceptance probability.
-
-        Parameters
-        ----------
-        probability : float
-            Acceptance probability.
-
-        Returns
-        -------
-        bool
-            Boolean indicating if the move is accepted.
+        Replace the current state with the proposed state.
         """
-        import jax.numpy as jnp
+        # define the code to copy the proposed state to the current state
 
-        return jnp.random.rand() < probability
+    def _accept_or_reject(
+        self,
+        current_reduced_pot,
+        proposed_reduced_pot,
+        log_proposal_ratio,
+        method=method,
+    ):
+        """
+        Accept or reject the proposed state with a given methodology.
+        """
+        # define the acceptance probability
 
 
 class RotamerMove(MCMove):
-    def apply_move(self):
+    def _step(self):
         """
         Implement the logic specific to rotamer changes.
         """
@@ -200,7 +323,7 @@ class RotamerMove(MCMove):
 
 
 class ProtonationStateMove(MCMove):
-    def apply_move(self):
+    def _step(self):
         """
         Implement the logic specific to protonation state changes.
         """
@@ -208,7 +331,7 @@ class ProtonationStateMove(MCMove):
 
 
 class TautomericStateMove(MCMove):
-    def apply_move(self):
+    def _step(self):
         """
         Implement the logic specific to tautomeric state changes.
         """
