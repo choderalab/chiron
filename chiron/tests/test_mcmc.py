@@ -36,40 +36,47 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     thermodynamic_state = ThermodynamicState(
         potential=harmonic_potential, temperature=300 * unit.kelvin
     )
-    sampler_state = SamplerState(x0=ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(
+        x0=ho.positions, current_PRNG_key=PRNG.get_random_key()
+    )
     from chiron.integrators import LangevinIntegrator
 
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
     id = uuid.uuid4()
-    h5_file = f"test_{id}.h5"
-    reporter = SimulationReporter(f"{prep_temp_dir}/{h5_file}", 1)
+    wd = prep_temp_dir.join(f"_test_{id}")
+    BaseReporter.set_directory(wd)
+    reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
-        stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
+        stepsize=2 * unit.femtosecond, reporter=reporter, report_frequency=1
     )
 
-    r = integrator.run(
+    integrator.run(
         sampler_state,
         thermodynamic_state,
         n_steps=5,
     )
-
+    integrator.reporter.flush_buffer()
     import jax.numpy as jnp
     import h5py
 
-    h5 = h5py.File(f"{prep_temp_dir}/{h5_file}", "r")
+    h5 = h5py.File(f"{wd}/{LangevinDynamicsReporter.get_name()}.h5", "r")
     keys = h5.keys()
 
-    assert "energy" in keys, "Energy not in keys"
+    assert "potential_energy" in keys, "Energy not in keys"
     assert "step" in keys, "Step not in keys"
-    assert "traj" in keys, "Traj not in keys"
+    assert "traj" not in keys, "Traj is not in keys"
 
-    energy = h5["energy"][:]
+    energy = h5["potential_energy"][:]
     print(energy)
 
     reference_energy = jnp.array(
-        [0.00019308, 0.00077772, 0.00174247, 0.00307798, 0.00479007]
+        [0.03551735, 0.1395877, 0.30911613, 0.5495938, 0.85149795]
     )
     assert jnp.allclose(energy, reference_energy)
 
@@ -99,23 +106,23 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     # Initalize the sampler and thermodynamic state
     from chiron.states import ThermodynamicState, SamplerState
+    from chiron.utils import PRNG
 
+    PRNG.set_seed(1234)
     thermodynamic_state = ThermodynamicState(
         harmonic_potential,
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", None, 1
-    )
-    langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
-    )
+    BaseReporter.set_directory(prep_temp_dir)
+
+    simulation_reporter = LangevinDynamicsReporter(1)
+    langevin_move = LangevinDynamicsMove(nr_of_steps=10, reporter=simulation_reporter)
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
@@ -157,20 +164,23 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+    simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
@@ -212,20 +222,25 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+
+    simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
         nr_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=None,
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
