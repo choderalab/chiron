@@ -312,6 +312,7 @@ class MCMCSampler:
             if move.reporter is not None:
                 move.reporter.flush_buffer()
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
+        return sampler_state
 
 
 from .neighbors import PairsBase

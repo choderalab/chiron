@@ -128,6 +128,7 @@ class MultiStateSampler:
 
         """
         import copy
+
         return copy.deepcopy(self._mcmc_sampler)
 
     @property
@@ -393,11 +394,11 @@ class MultiStateSampler:
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
-        mcmc_move = self._mcmc_sampler[thermodynamic_state_id]
-        # Apply the MCMC move to the replica.
-        mcmc_move.run(sampler_state, thermodynamic_state)
+        mcmc_sampler = self._mcmc_sampler[thermodynamic_state_id]
+        # Propagate using the mcmc sampler
+        self._sampler_states[replica_id] = mcmc_sampler.run(sampler_state, thermodynamic_state)
         # Append the new state to the trajectory for analysis.
-        self._traj[replica_id].append(sampler_state.x0)
+        self._traj[replica_id].append(self._sampler_states[replica_id].x0)
 
     def _perform_swap_proposals(self):
         """

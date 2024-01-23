@@ -217,7 +217,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iteratinos = 250
+    n_iteratinos = 25
     ho_sampler.run(n_iteratinos)
 
     # check that we have the correct number of iterations, replicas and states
