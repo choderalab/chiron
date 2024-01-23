@@ -144,7 +144,13 @@ class LangevinIntegrator:
         # Initialize velocities
         if initialize_velocities:
             # we should probably move this to a separate function for unit testing purposes
-            v0 = sigma_v * random.normal(key, x0.shape)
+            # v0 = sigma_v * random.normal(key, x0.shape)
+            from .utils import initialize_velocities
+
+            v0 = initialize_velocities(
+                temperature, potential.topology, key
+            ).value_in_unit_system(unit.md_unit_system)
+
         else:
             if self.velocities is None:
                 raise ValueError("Velocities must be set before running the integrator")

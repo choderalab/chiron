@@ -125,6 +125,7 @@ class LangevinDynamicsMove(MCMCMove):
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         nbr_list: Optional[PairsBase] = None,
+        initialize_velocities: bool = False,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -137,6 +138,8 @@ class LangevinDynamicsMove(MCMCMove):
             The thermodynamic state to run the integrator on.
         nbr_list : PairsBase, optional
             The neighbor list to use for the simulation.
+        initialize_velocities : bool, optional
+            Flag indicating whether to initialize the velocities.
         """
 
         assert isinstance(

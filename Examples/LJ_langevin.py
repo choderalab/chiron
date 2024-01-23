@@ -8,7 +8,8 @@ lj_fluid = LennardJonesFluid(reduced_density=0.1, nparticles=1000)
 
 from chiron.potential import LJPotential
 from openmm import unit
-from chiron.utils import PRNG
+from chiron.utils import PRNG, initialize_velocities
+
 
 # initialize the LennardJones potential in chiron
 #
@@ -20,6 +21,7 @@ lj_potential = LJPotential(
     lj_fluid.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff
 )
 
+
 from chiron.states import SamplerState, ThermodynamicState
 
 PRNG.set_seed(1234)
@@ -30,10 +32,18 @@ sampler_state = SamplerState(
     box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
 
+velocities = initialize_velocities(
+    300 * unit.kelvin, lj_fluid.topology, PRNG.get_random_key()
+)
+
+print(velocities)
+
 # define the thermodynamic state
 thermodynamic_state = ThermodynamicState(
-    potential=lj_potential, temperature=300 * unit.kelvin
+    potential=lj_potential,
+    temperature=300 * unit.kelvin,
 )
+
 
 from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
 

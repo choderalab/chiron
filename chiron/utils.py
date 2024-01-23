@@ -11,20 +11,21 @@ class PRNG:
         """
         A PRNG class that can be used to generate random numbers in JAX.
         The intended use case is to initialize new PRN streams in the `SamplerState` class.
-        
+
         Example:
         --------
         from chiron.utils import PRNG
         from chiron.states import SamplerState
         from openmmtools.testsystems import HarmonicOscillator
-        
+
         ho = HarmonicOscillator()
         PRNG.set_seed(1234)
         sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
-        
+
         """
-        
+
         pass
+
     @classmethod
     def set_seed(cls, seed: int) -> None:
         cls._seed = seed
@@ -91,3 +92,33 @@ def get_list_of_mass(topology: Topology) -> unit.Quantity:
     for atom in topology.atoms():
         mass.append(atom.element.mass.value_in_unit(unit.amu))
     return mass * unit.amu
+
+
+def initialize_velocities(
+    temperature: unit.Quantity, topology: Topology, key
+) -> unit.Quantity:
+    """Initialize the velocities from the Maxwell-Boltzmann distribution at the given temperature.
+
+    Parameters
+    ----------
+    temperature : unit.Quantity
+        The temperature of the system.
+    topology : Topology
+        The topology of the system.
+    key : int
+        The PRNG key.
+
+    """
+    from openmm import unit
+    import jax.numpy as jnp
+
+    mass = get_list_of_mass(topology)
+    kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
+
+    kbT_unitless = (kB * temperature).value_in_unit_system(unit.md_unit_system)
+    mass_unitless = jnp.array(mass.value_in_unit_system(unit.md_unit_system))[:, None]
+    sigma_v = jnp.sqrt(kbT_unitless / mass_unitless)
+
+    v0 = sigma_v * random.normal(key, [len(mass), 3])
+
+    return v0 * unit.nanometer / unit.picosecond
