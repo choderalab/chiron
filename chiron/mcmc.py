@@ -272,18 +272,18 @@ class MCMCSampler:
     def __init__(
         self,
         move_set: MoveSchedule,
-        sampler_state: SamplerState,
-        thermodynamic_state: ThermodynamicState,
     ):
-        from copy import deepcopy
         from loguru import logger as log
 
-        log.info("Initializing Gibbs sampler")
+        log.info("Initializing MCMC sampler")
         self.move = move_set
-        self.sampler_state = deepcopy(sampler_state)
-        self.thermodynamic_state = deepcopy(thermodynamic_state)
 
-    def run(self, n_iterations: int = 1):
+    def run(
+        self,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        n_iterations: int = 1,
+    ):
         """
         Run the sampler for a specified number of iterations.
 
@@ -293,6 +293,10 @@ class MCMCSampler:
             Number of iterations of the sampler to run.
         """
         from loguru import logger as log
+        from copy import deepcopy
+
+        sampler_state = deepcopy(sampler_state)
+        thermodynamic_state = deepcopy(thermodynamic_state)
 
         log.info("Running MCMC sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
@@ -300,14 +304,13 @@ class MCMCSampler:
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                move.run(self.sampler_state, self.thermodynamic_state)
+                move.run(sampler_state, thermodynamic_state)
 
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
         for _, move in self.move.move_schedule:
             if move.reporter is not None:
                 move.reporter.flush_buffer()
-                # TODO: flush reporter
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
 
 

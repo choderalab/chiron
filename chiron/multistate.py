@@ -3,7 +3,7 @@ from chiron.states import SamplerState, ThermodynamicState
 from chiron.neighbors import NeighborListNsqrd
 from openmm import unit
 import numpy as np
-from chiron.mcmc import MCMCMove
+from chiron.mcmc import MCMCMove, MCMCSampler
 from chiron.reporters import MultistateReporter
 
 
@@ -25,8 +25,8 @@ class MultiStateSampler:
         Number of replicas (read-only).
     iteration : int
         Current iteration of the simulation (read-only).
-    mcmc_moves : List[MCMCMove]
-        MCMC moves used to propagate the simulation.
+    mcmc_sampler : MCMCSampler
+        MCMC sampler used to propagate the simulation.
     sampler_states : List[SamplerState]
         Sampler states list at the current iteration.
     is_periodic : bool
@@ -47,7 +47,7 @@ class MultiStateSampler:
 
     def __init__(
         self,
-        mcmc_moves: Union[MCMCMove, List[MCMCMove]],
+        mcmc_sampler: MCMCSampler,
         reporter: MultistateReporter,
     ):
         """
@@ -55,8 +55,8 @@ class MultiStateSampler:
 
         Parameters
         ----------
-        mcmc_moves : Union[MCMCMove, List[MCMCMove]]
-            The MCMCMove or list of MCMCMoves used to propagate the thermodynamic states.
+        mcmc_sampler : MCMCSampler
+            The MCMCSampler used to propagate the thermodynamic states.
         reporter : MultistateReporter
             The reporter used to store the simulation data.
         """
@@ -75,9 +75,9 @@ class MultiStateSampler:
         self._neighborhoods = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
-        self._reporter = reporter # NOTE: reporter needs to be putlic, API change ahead
+        self._reporter = reporter  # NOTE: reporter needs to be putlic, API change ahead
         self._metadata = None
-        self._mcmc_moves = copy.deepcopy(mcmc_moves)
+        self._mcmc_sampler = copy.deepcopy(mcmc_sampler)
         self._online_estimator = None
         self._offline_estimator = MBAREstimator()
 
@@ -121,15 +121,14 @@ class MultiStateSampler:
         return self._iteration
 
     @property
-    def mcmc_moves(self):
-        """A copy of the MCMCMoves list used to propagate the simulation.
+    def mcmc_sampler(self):
+        """A copy of the MCMCSampler used to propagate the simulation.
 
         This can be set only before creation.
 
         """
         import copy
-
-        return copy.deepcopy(self._mcmc_moves)
+        return copy.deepcopy(self._mcmc_sampler)
 
     @property
     def sampler_states(self) -> Optional[List[SamplerState]]:
@@ -268,16 +267,16 @@ class MultiStateSampler:
         )
         self._traj = [[] for _ in range(self.n_replicas)]
 
-        # Ensure there is an MCMCMove for each thermodynamic state.
-        from chiron.mcmc import MCMCMove
+        # Ensure there is an MCMCSampler for each thermodynamic state.
+        from chiron.mcmc import MCMCSampler
 
-        if isinstance(self._mcmc_moves, MCMCMove):
-            self._mcmc_moves = [
-                copy.deepcopy(self._mcmc_moves) for _ in range(self.n_states)
+        if isinstance(self._mcmc_sampler, MCMCSampler):
+            self._mcmc_sampler = [
+                copy.deepcopy(self._mcmc_sampler) for _ in range(self.n_states)
             ]
-        elif len(self._mcmc_moves) != self.n_states:
+        elif len(self._mcmc_sampler) != self.n_states:
             raise RuntimeError(
-                f"The number of MCMCMoves ({len(self._mcmc_moves)}) and ThermodynamicStates ({self.n_states}) must be the same."
+                f"The number of MCMCMoves ({len(self._mcmc_sampler)}) and ThermodynamicStates ({self.n_states}) must be the same."
             )
 
         # Reset iteration counter.
@@ -394,7 +393,7 @@ class MultiStateSampler:
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
-        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
+        mcmc_move = self._mcmc_sampler[thermodynamic_state_id]
         # Apply the MCMC move to the replica.
         mcmc_move.run(sampler_state, thermodynamic_state)
         # Append the new state to the trajectory for analysis.
