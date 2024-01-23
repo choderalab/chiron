@@ -18,6 +18,18 @@ class SamplerState:
     box_vectors : unit.Quantity, optional
         The box vectors defining the simulation's periodic boundary conditions.
 
+    Examples
+    --------
+
+    from chiron.states import SamplerState
+    from chiron.utils import PRNG
+    from openmmtools.testsystems import HarmonicOscillator
+
+    ho = HarmonicOscillator()
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(x0 = ho.positions, PRNG.get_random_key())
+
     """
 
     def __init__(
@@ -75,6 +87,7 @@ class SamplerState:
         self._current_PRNG_key = current_PRNG_key
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
+        self._velocity_unit = unit.nanometer / unit.picosecond
 
     @property
     def n_particles(self) -> int:
@@ -103,9 +116,19 @@ class SamplerState:
         else:
             self._x0 = unit.Quantity(x0, self._distance_unit)
 
+    @velocities.setter
+    def velocities(self, velocities: Union[jnp.array, unit.Quantity]) -> None:
+        if isinstance(velocities, unit.Quantity):
+            self._velocities = velocities
+        else:
+            self._velocities = unit.Quantity(velocities, self._velocity_unit)
+
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
+
+    def velocity_unit(self) -> unit.Unit:
+        return self._velocity_unit
 
     @property
     def new_PRNG_key(self) -> random.PRNGKey:

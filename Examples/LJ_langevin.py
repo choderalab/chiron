@@ -8,6 +8,7 @@ lj_fluid = LennardJonesFluid(reduced_density=0.1, nparticles=1000)
 
 from chiron.potential import LJPotential
 from openmm import unit
+from chiron.utils import PRNG
 
 # initialize the LennardJones potential in chiron
 #
@@ -21,9 +22,12 @@ lj_potential = LJPotential(
 
 from chiron.states import SamplerState, ThermodynamicState
 
+PRNG.set_seed(1234)
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+    x0=lj_fluid.positions,
+    current_PRNG_key=PRNG.get_random_key(),
+    box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
 
 # define the thermodynamic state
@@ -43,7 +47,7 @@ nbr_list = NeighborListNsqrd(
 # build the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import _SimulationReporter
+from chiron.reporters import LangevinDynamicsReporter
 
 # initialize a reporter to save the simulation data
 filename = "test_lj.h5"
@@ -51,7 +55,11 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = _SimulationReporter("test_lj.h5", lj_fluid.topology, 1)
+reporter = LangevinDynamicsReporter(
+    "test_lj.h5",
+    1,
+    lj_fluid.topology,
+)
 
 from chiron.integrators import LangevinIntegrator
 
@@ -59,19 +67,20 @@ from chiron.integrators import LangevinIntegrator
 integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
 print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
-integrator.run(
+updated_sampler_state = integrator.run(
     sampler_state,
     thermodynamic_state,
     n_steps=5000,
     nbr_list=nbr_list,
     progress_bar=True,
+    initialize_velocities=True,
 )
 
 import h5py
 
 # read the data from the reporter
 with h5py.File("test_lj.h5", "r") as f:
-    energies = f["energy"][:]
+    energies = f["potential_energy"][:]
     steps = f["step"][:]
 
 

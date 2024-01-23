@@ -57,6 +57,13 @@ class MCMCMove:
         nbr_list : PairsBase, optional
             The neighbor list to use for the simulation.
 
+        Returns
+        -------
+        sampler_state : SamplerState
+            The updated sampler state.
+        thermodynamic_state : ThermodynamicState
+            The updated thermodynamic state.
+
         """
         pass
 
@@ -139,7 +146,7 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state, ThermodynamicState
         ), f"Thermodynamic state must be ThermodynamicState, not {type(thermodynamic_state)}"
 
-        self.integrator.run(
+        updated_sampler_state = self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
@@ -149,6 +156,9 @@ class LangevinDynamicsMove(MCMCMove):
         if self.save_traj_in_memory:
             self.traj.append(self.integrator.traj)
             self.integrator.traj = []
+
+        # The thermodynamic_state will not change for the langevin move
+        return updated_sampler_state, thermodynamic_state
 
 
 class MCMove(MCMCMove):
@@ -175,7 +185,7 @@ class MCMove(MCMCMove):
             Default is "metropolis".
         """
         super().__init__(nr_of_moves, reporter=reporter)
-        self.method = "metropolis"
+        self.method = "metropolis"  # I think we should pass a class/function instead of a string, like space.
 
     def update(
         self,

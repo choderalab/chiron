@@ -43,9 +43,19 @@ def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
         reporter = LangevinDynamicsReporter()
 
         integrator = LangevinIntegrator(reporter=reporter, report_frequency=1)
+
+        with pytest.raises(ValueError):
+            integrator.run(
+                sampler_state,
+                thermodynamic_state,
+                n_steps=20,
+                initialize_velocities=False,
+            )
+
         integrator.run(
             sampler_state,
             thermodynamic_state,
             n_steps=20,
+            initialize_velocities=True,
         )
         i = i + 1

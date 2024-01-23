@@ -85,6 +85,7 @@ class LangevinIntegrator:
         n_steps: int = 5_000,
         nbr_list: Optional[PairsBase] = None,
         progress_bar=False,
+        initialize_velocities: bool = False,
     ):
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
@@ -102,6 +103,10 @@ class LangevinIntegrator:
         progress_bar : bool, optional
             Flag indicating whether to display a progress bar during integration.
 
+        Returns
+        -------
+        sampler_state : SamplerState
+            The final state of the simulation, including positions, velocities, and current PRNG key.
         """
         from .utils import get_list_of_mass
         from tqdm import tqdm
@@ -137,9 +142,12 @@ class LangevinIntegrator:
         b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
         # Initialize velocities
-        if self.velocities is None:
+        if initialize_velocities:
+            # we should probably move this to a separate function for unit testing purposes
             v0 = sigma_v * random.normal(key, x0.shape)
         else:
+            if self.velocities is None:
+                raise ValueError("Velocities must be set before running the integrator")
             v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
 
         x = x0
@@ -180,9 +188,17 @@ class LangevinIntegrator:
                     self.traj.append(x)
 
         log.debug("Finished running Langevin dynamics")
-        # save the final state of the simulation in the sampler_state object
-        sampler_state.x0 = x
-        sampler_state.v0 = v
+
+        # return the final state of the simulation as a sampler_state object
+        import copy
+
+        updated_sampler_state = copy.deepcopy(sampler_state)
+
+        updated_sampler_state.x0 = x
+        updated_sampler_state._velocities = v
+        updated_sampler_state.current_PRNG_key = key
+
+        return updated_sampler_state
 
     def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
         """
