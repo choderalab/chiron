@@ -2,7 +2,7 @@ from chiron.states import SamplerState, ThermodynamicState
 from openmm import unit
 from typing import Tuple, List, Optional
 import jax.numpy as jnp
-from chiron.reporters import LangevinDynamicsReporter, _SimulationReporter
+from chiron.reporters import LangevinDynamicsReporter, _SimulationReporter, MCReporter
 from .neighbors import PairsBase
 
 from abc import ABC, abstractmethod
@@ -235,6 +235,20 @@ class MCMove(MCMCMove):
             )
             # after the first step, we don't need to recalculate the current potential, it will be stored
             calculate_current_potential = False
+            if hasattr(self, "reporter"):
+                if self.reporter is not None:
+                    if i % self.report_frequency == 0:
+                        self._report(i, sampler_state, thermodynamic_state, nbr_list)
+
+    @abstractmethod
+    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
+        """
+        Report the current state of the MC move.
+
+        Since different moves will be modifying different quantities,
+        this needs to be defined for each move.
+        """
+        pass
 
     def _step(
         self,
@@ -499,6 +513,17 @@ class MonteCarloBarostatMove(MCMove):
         )
         self.volume_max_scale = volume_max_scale
         self.atom_subset = atom_subset
+
+    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
+        potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
+        volume = (
+            sampler_state.box_vectors[0][0]
+            * sampler_state.box_vectors[1][1]
+            * sampler_state.box_vectors[2][2]
+        )
+        self.reporter.report(
+            {"step": step, "potential_energy": potential, "volume": volume}
+        )
 
     def _propose(
         self,

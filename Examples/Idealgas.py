@@ -88,9 +88,9 @@ sampler.run(n_iterations=30, nbr_list=nbr_list)  # how many times to repeat
 
 import h5py
 
-# with h5py.File(filename, "r") as f:
-#     volume = f["volume"][:]
-#     steps = f["step"][:]
+with h5py.File(filename, "r") as f:
+    volume = f["volume"][:]
+    steps = f["step"][:]
 
 # get expectations
 ideal_volume = ideal_gas.get_volume_expectation(thermodynamic_state)
@@ -101,6 +101,9 @@ print(ideal_volume, ideal_volume_std)
 
 volume_mean = jnp.mean(jnp.array(volume)) * unit.nanometer**3
 volume_std = jnp.std(jnp.array(volume)) * unit.nanometer**3
+
+
+print(volume_mean, volume_std)
 
 ideal_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / ideal_volume
 measured_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / volume_mean
