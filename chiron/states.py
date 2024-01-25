@@ -118,6 +118,10 @@ class SamplerState:
 
     @velocities.setter
     def velocities(self, velocities: Union[jnp.array, unit.Quantity]) -> None:
+        if velocities.shape != self._x0.shape:
+            raise ValueError(
+                f"velocities must have the same shape as x0, got {velocities.shape} and {self._x0.shape} instead."
+            )
         if isinstance(velocities, unit.Quantity):
             self._velocities = velocities
         else:

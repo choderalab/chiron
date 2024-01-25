@@ -53,7 +53,10 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
-        stepsize=2 * unit.femtosecond, reporter=reporter, report_frequency=1
+        stepsize=2 * unit.femtosecond,
+        reporter=reporter,
+        report_frequency=1,
+        reinitialize_velocities=True,
     )
 
     integrator.run(
@@ -122,7 +125,43 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     BaseReporter.set_directory(prep_temp_dir)
 
     simulation_reporter = LangevinDynamicsReporter(1)
-    langevin_move = LangevinDynamicsMove(nr_of_steps=10, reporter=simulation_reporter)
+
+    # this will fail because we have not initialized the velocity
+    with pytest.raises(ValueError):
+        langevin_move = LangevinDynamicsMove(
+            nr_of_steps=10, reinitialize_velocities=False, reporter=simulation_reporter
+        )
+        move_set = MoveSchedule([("LangevinMove", langevin_move)])
+
+        # Initalize the sampler
+        sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+
+        # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+        sampler.run(n_iterations=2)  # how many times to repeat
+
+    # the following will reinitialize the velocities for each iteration
+    langevin_move = LangevinDynamicsMove(
+        nr_of_steps=10, reinitialize_velocities=True, reporter=simulation_reporter
+    )
+
+    move_set = MoveSchedule([("LangevinMove", langevin_move)])
+
+    # Initalize the sampler
+    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+
+    # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+    sampler.run(n_iterations=2)  # how many times to repeat
+
+    # the following will use the initialize velocities function
+    from chiron.utils import initialize_velocities
+
+    sampler_state.velocities = initialize_velocities(
+        thermodynamic_state.temperature, ho.topology, sampler_state._current_PRNG_key
+    )
+
+    langevin_move = LangevinDynamicsMove(
+        nr_of_steps=10, reinitialize_velocities=False, reporter=simulation_reporter
+    )
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
 

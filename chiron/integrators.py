@@ -26,6 +26,7 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        reinitialize_velocities: bool = False,
         report_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
         save_traj_in_memory: bool = False,
@@ -46,6 +47,9 @@ class LangevinIntegrator:
         save_traj_in_memory: bool
             Flag indicating whether to save the trajectory in memory.
             Default is False. NOTE: Only for debugging purposes.
+        reinitialize_velocities: bool
+            Whether to reinitialize the velocities each time the run function is called.
+            Default is False.
         """
         from loguru import logger as log
 
@@ -66,17 +70,7 @@ class LangevinIntegrator:
         self.velocities = None
         self.save_traj_in_memory = save_traj_in_memory
         self.traj = []
-
-    def set_velocities(self, vel: unit.Quantity) -> None:
-        """
-        Set the initial velocities for the Langevin Integrator.
-
-        Parameters
-        ----------
-        vel : unit.Quantity
-            Velocities to be set for the integrator.
-        """
-        self.velocities = vel
+        self.reinitialize_velocities = reinitialize_velocities
 
     def run(
         self,
@@ -85,7 +79,6 @@ class LangevinIntegrator:
         n_steps: int = 5_000,
         nbr_list: Optional[PairsBase] = None,
         progress_bar=False,
-        initialize_velocities: bool = False,
     ):
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
@@ -142,19 +135,20 @@ class LangevinIntegrator:
         b = jnp.sqrt(1 - jnp.exp(-2 * collision_rate_unitless * stepsize_unitless))
 
         # Initialize velocities
-        if initialize_velocities:
-            # we should probably move this to a separate function for unit testing purposes
+        if self.reinitialize_velocities:
             # v0 = sigma_v * random.normal(key, x0.shape)
             from .utils import initialize_velocities
 
-            v0 = initialize_velocities(
+            sampler_state.velocities = initialize_velocities(
                 temperature, potential.topology, key
-            ).value_in_unit_system(unit.md_unit_system)
+            )
 
         else:
-            if self.velocities is None:
+            if sampler_state._velocities is None:
                 raise ValueError("Velocities must be set before running the integrator")
-            v0 = self.velocities.value_in_unit_system(unit.md_unit_system)
+
+        # extract the velocities from the sampler state
+        v0 = sampler_state.velocities
 
         x = x0
         v = v0
@@ -201,7 +195,7 @@ class LangevinIntegrator:
         updated_sampler_state = copy.deepcopy(sampler_state)
 
         updated_sampler_state.x0 = x
-        updated_sampler_state._velocities = v
+        updated_sampler_state.velocities = v
         updated_sampler_state.current_PRNG_key = key
 
         return updated_sampler_state

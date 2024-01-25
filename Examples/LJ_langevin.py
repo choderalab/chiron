@@ -36,7 +36,6 @@ velocities = initialize_velocities(
     300 * unit.kelvin, lj_fluid.topology, PRNG.get_random_key()
 )
 
-print(velocities)
 
 # define the thermodynamic state
 thermodynamic_state = ThermodynamicState(
@@ -74,7 +73,9 @@ reporter = LangevinDynamicsReporter(
 from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
-integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
+integrator = LangevinIntegrator(
+    reporter=reporter, report_frequency=100, reinitialize_velocities=True
+)
 print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
 updated_sampler_state = integrator.run(
@@ -83,7 +84,6 @@ updated_sampler_state = integrator.run(
     n_steps=5000,
     nbr_list=nbr_list,
     progress_bar=True,
-    initialize_velocities=True,
 )
 
 import h5py

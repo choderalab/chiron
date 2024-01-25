@@ -3,6 +3,7 @@ from openmm import unit
 from typing import Tuple, List, Optional
 import jax.numpy as jnp
 from chiron.reporters import LangevinDynamicsReporter, _SimulationReporter
+from .neighbors import PairsBase
 
 from abc import ABC, abstractmethod
 
@@ -13,6 +14,7 @@ class MCMCMove:
         nr_of_moves: int,
         reporter: Optional[_SimulationReporter] = None,
         report_frequency: Optional[int] = 100,
+        reinitialize_velocities: bool = False,
     ):
         """
         Initialize a move within the molecular system.
@@ -25,6 +27,9 @@ class MCMCMove:
             Reporter object for saving the simulation data.
             Default is None.
         report_frequency : int, optional
+            Frequency of saving the simulation data in the reporter.
+            Default is 100.
+
         """
 
         self.nr_of_moves = nr_of_moves
@@ -73,6 +78,7 @@ class LangevinDynamicsMove(MCMCMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        reinitialize_velocities: bool = False,
         reporter: Optional[LangevinDynamicsReporter] = None,
         report_frequency: int = 100,
         nr_of_steps=1_000,
@@ -87,6 +93,9 @@ class LangevinDynamicsMove(MCMCMove):
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
+        reinitialize_velocities : bool, optional
+            Whether to reinitialize the velocities each time the run function is called.
+            Default is False.
         reporter : LangevinDynamicsReporter, optional
             Reporter object for saving the simulation data.
             Default is None.
@@ -115,6 +124,7 @@ class LangevinDynamicsMove(MCMCMove):
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
+            reinitialize_velocities=reinitialize_velocities,
             report_frequency=report_frequency,
             reporter=reporter,
             save_traj_in_memory=save_traj_in_memory,
@@ -125,7 +135,6 @@ class LangevinDynamicsMove(MCMCMove):
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         nbr_list: Optional[PairsBase] = None,
-        initialize_velocities: bool = False,
     ):
         """
         Run the integrator to perform molecular dynamics simulation.
@@ -138,8 +147,7 @@ class LangevinDynamicsMove(MCMCMove):
             The thermodynamic state to run the integrator on.
         nbr_list : PairsBase, optional
             The neighbor list to use for the simulation.
-        initialize_velocities : bool, optional
-            Flag indicating whether to initialize the velocities.
+
         """
 
         assert isinstance(
@@ -209,10 +217,12 @@ class MCMove(MCMCMove):
             Neighbor list for the system.
 
 
+
         """
         calculate_current_potential = True
+
         for i in range(self.nr_of_moves):
-            self._step(
+            sampler_state, thermodynamic_state = self._step(
                 sampler_state,
                 thermodynamic_state,
                 nbr_list,
@@ -244,11 +254,9 @@ class MCMove(MCMCMove):
             proposed_sampler_state,
             log_proposal_ratio,
             proposed_thermodynamic_state,
-        ) = self._propose(current_sampler_state, current_thermodynamic_state)
-
-        # calculate the reduced potential for the proposed state
-        proposed_reduced_pot = proposed_thermodynamic_state.get_reduced_potential(
-            proposed_sampler_state
+            proposed_reduced_pot,
+        ) = self._propose(
+            current_sampler_state, current_thermodynamic_state, current_reduced_pot
         )
 
         # accept or reject the proposed state
@@ -258,6 +266,9 @@ class MCMove(MCMCMove):
             log_proposal_ratio,
             method=self.method,
         )
+        # a function that will update the statistics for the move
+
+        self._update_statistics(decision)
 
         if decision:
             # save the reduced potential of the accepted state so
@@ -267,15 +278,10 @@ class MCMove(MCMCMove):
             # replace the current state with the proposed state
             # not sure this needs to be a separate function but for simplicity in outlining the code it is fine
             # or should this return the new sampler_state and thermodynamic_state?
-            self._replace_states(
-                current_sampler_state,
-                proposed_sampler_state,
-                current_thermodynamic_state,
-                proposed_thermodynamic_state,
-            )
 
-        # a function that will update the statistics for the move
-        self._update_statistics(decision)
+            return proposed_sampler_state, proposed_thermodynamic_state
+        else:
+            return current_sampler_state, current_thermodynamic_state
 
     @abstractmethod
     def _propose(self, current_sampler_state, current_thermodynamic_state):
@@ -319,7 +325,7 @@ class MCMove(MCMCMove):
         current_reduced_pot,
         proposed_reduced_pot,
         log_proposal_ratio,
-        method=method,
+        method,
     ):
         """
         Accept or reject the proposed state with a given methodology.
@@ -419,7 +425,7 @@ class MCMCSampler:
         self.sampler_state = deepcopy(sampler_state)
         self.thermodynamic_state = deepcopy(thermodynamic_state)
 
-    def run(self, n_iterations: int = 1):
+    def run(self, n_iterations: int = 1, nbr_list: Optional[PairsBase] = None):
         """
         Run the sampler for a specified number of iterations.
 
@@ -436,7 +442,9 @@ class MCMCSampler:
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                move.run(self.sampler_state, self.thermodynamic_state)
+                self.sampler_state, self.thermodynamic_state = move.update(
+                    self.sampler_state, self.thermodynamic_state, nbr_list
+                )
 
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
@@ -445,9 +453,6 @@ class MCMCSampler:
                 move.reporter.flush_buffer()
                 # TODO: flush reporter
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
-
-
-from .neighbors import PairsBase
 
 
 class MetropolizedMove(MCMove):
