@@ -228,7 +228,7 @@ class ThermodynamicState:
         from .utils import get_nr_of_particles
 
         self.nr_of_particles = get_nr_of_particles(self.potential.topology)
-        self._check_completness()
+        self._check_completeness()
 
     def check_variables(self) -> None:
         """
@@ -242,7 +242,7 @@ class ThermodynamicState:
         set_variables = [var for var in variables if getattr(self, var) is not None]
         return set_variables
 
-    def _check_completness(self):
+    def _check_completeness(self):
         # check which variables are set
         set_variables = self.check_variables()
         from loguru import logger as log
@@ -299,6 +299,11 @@ class ThermodynamicState:
         ) / unit.AVOGADRO_CONSTANT_NA
         # log.debug(f"reduced potential: {reduced_potential}")
         if self.pressure is not None:
+            self.volume = (
+                sampler_state.box_vectors[0][0]
+                * sampler_state.box_vectors[1][1]
+                * sampler_state.box_vectors[2][2]
+            ) * unit.nanometer**3
             reduced_potential += self.pressure * self.volume
 
         return self.beta * reduced_potential

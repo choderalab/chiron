@@ -20,10 +20,15 @@ lj_potential = LJPotential(
 )
 
 from chiron.states import SamplerState, ThermodynamicState
+from chiron.utils import PRNG
+
+PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+    x0=lj_fluid.positions,
+    current_PRNG_key=PRNG.get_random_key(),
+    box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
 
 # define the thermodynamic state
@@ -53,15 +58,18 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = _SimulationReporter("test_mc_lj.h5", lj_fluid.topology, 1)
+reporter = _SimulationReporter("test_mc_lj.h5", 1)
 
-from chiron.mcmc import MetropolisDisplacementMove
+from chiron.mcmc import MetropolisDispMove
 
-mc_move = MetropolisDisplacementMove(
-    seed=1234,
-    displacement_sigma=0.01 * unit.nanometer,
+mc_move = MetropolisDispMove(
+    displacement_sigma=0.001 * unit.nanometer,
     nr_of_moves=1000,
     reporter=reporter,
+    report_frequency=1,
 )
 
-mc_move.run(sampler_state, thermodynamic_state, nbr_list, True)
+mc_move.update(sampler_state, thermodynamic_state, nbr_list)
+
+stats = mc_move.statistics
+print(stats["n_accepted"] / stats["n_proposed"])

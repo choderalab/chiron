@@ -14,7 +14,6 @@ class MCMCMove:
         nr_of_moves: int,
         reporter: Optional[_SimulationReporter] = None,
         report_frequency: Optional[int] = 100,
-        reinitialize_velocities: bool = False,
     ):
         """
         Initialize a move within the molecular system.
@@ -157,7 +156,7 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state, ThermodynamicState
         ), f"Thermodynamic state must be ThermodynamicState, not {type(thermodynamic_state)}"
 
-        updated_sampler_state = self.integrator.run(
+        sampler_state = self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
@@ -169,7 +168,7 @@ class LangevinDynamicsMove(MCMCMove):
             self.integrator.traj = []
 
         # The thermodynamic_state will not change for the langevin move
-        return updated_sampler_state, thermodynamic_state
+        # return updated_sampler_state, thermodynamic_state
 
 
 class MCMove(MCMCMove):
@@ -195,8 +194,14 @@ class MCMove(MCMCMove):
             Methodology to use for accepting or rejecting the proposed state.
             Default is "metropolis".
         """
-        super().__init__(nr_of_moves, reporter=reporter)
-        self.method = "metropolis"  # I think we should pass a class/function instead of a string, like space.
+        super().__init__(
+            nr_of_moves,
+            reporter=reporter,
+            report_frequency=report_frequency,
+        )
+        self.method = method  # I think we should pass a class/function instead of a string, like space.
+
+        self.reset_statistics()
 
     def update(
         self,
@@ -233,12 +238,16 @@ class MCMove(MCMCMove):
 
     def _step(
         self,
+        current_sampler_state,
+        current_thermodynamic_state,
+        nbr_list,
+        calculate_current_potential=True,
     ):
         # if this is the first time we are calling this,
         # we will need to recalculate the reduced potential for the current state
         if calculate_current_potential:
             current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
-                current_sampler_state
+                current_sampler_state, nbr_list
             )
             # save the current_reduced_pot so we don't have to recalculate
             # it on the next iteration if the move is rejected
@@ -256,17 +265,22 @@ class MCMove(MCMCMove):
             proposed_thermodynamic_state,
             proposed_reduced_pot,
         ) = self._propose(
-            current_sampler_state, current_thermodynamic_state, current_reduced_pot
+            current_sampler_state,
+            current_thermodynamic_state,
+            current_reduced_pot,
+            nbr_list,
         )
 
         # accept or reject the proposed state
         decision = self._accept_or_reject(
-            current_reduced_pot,
-            proposed_reduced_pot,
             log_proposal_ratio,
+            proposed_sampler_state.new_PRNG_key,
             method=self.method,
         )
         # a function that will update the statistics for the move
+
+        if jnp.isnan(proposed_reduced_pot):
+            decision = False
 
         self._update_statistics(decision)
 
@@ -281,10 +295,38 @@ class MCMove(MCMCMove):
 
             return proposed_sampler_state, proposed_thermodynamic_state
         else:
+            current_sampler_state._current_PRNG_key = (
+                proposed_sampler_state._current_PRNG_key
+            )
             return current_sampler_state, current_thermodynamic_state
 
+    def _update_statistics(self, decision):
+        """
+        Update the statistics for the move.
+        """
+        if decision:
+            self.n_accepted += 1
+        self.n_proposed += 1
+
+    @property
+    def statistics(self):
+        """The acceptance statistics as a dictionary."""
+        return dict(n_accepted=self.n_accepted, n_proposed=self.n_proposed)
+
+    @statistics.setter
+    def statistics(self, value):
+        self.n_accepted = value["n_accepted"]
+        self.n_proposed = value["n_proposed"]
+
+    def reset_statistics(self):
+        """Reset the acceptance statistics."""
+        self.n_accepted = 0
+        self.n_proposed = 0
+
     @abstractmethod
-    def _propose(self, current_sampler_state, current_thermodynamic_state):
+    def _propose(
+        self, current_sampler_state, current_thermodynamic_state, current_reduced_pot
+    ):
         """
         Propose a new state and calculate the log proposal ratio.
 
@@ -295,6 +337,9 @@ class MCMove(MCMCMove):
         current_sampler_state : SamplerState, required
             Current sampler state.
         current_thermodynamic_state : ThermodynamicState, required
+            Current thermodynamic state.
+        current_reduced_pot : float, required
+            Current reduced potential.
 
         Returns
         -------
@@ -304,37 +349,111 @@ class MCMove(MCMCMove):
             Log proposal ratio.
         proposed_thermodynamic_state : ThermodynamicState
             Proposed thermodynamic state.
+        proposed_reduced_pot : float
+            Proposed reduced potential.
 
         """
         pass
 
-    def _replace_states(
-        self,
-        current_sampler_state,
-        proposed_sampler_state,
-        current_thermodynamic_state,
-        proposed_thermodynamic_state,
-    ):
-        """
-        Replace the current state with the proposed state.
-        """
-        # define the code to copy the proposed state to the current state
-
     def _accept_or_reject(
         self,
-        current_reduced_pot,
-        proposed_reduced_pot,
         log_proposal_ratio,
+        key,
         method,
     ):
         """
         Accept or reject the proposed state with a given methodology.
         """
         # define the acceptance probability
+        if method == "metropolis":
+            import jax.random as jrandom
+
+            compare_to = jrandom.uniform(key)
+            if log_proposal_ratio <= 0.0 or compare_to < jnp.exp(-log_proposal_ratio):
+                return True
+            else:
+                return False
+
+
+class MetropolisDispMove(MCMove):
+    def __init__(
+        self,
+        displacement_sigma=1.0 * unit.nanometer,
+        nr_of_moves: int = 100,
+        atom_subset: Optional[List[int]] = None,
+        report_frequency: int = 1,
+        reporter: Optional[LangevinDynamicsReporter] = None,
+    ):
+        """
+        Initialize the Displacement Move class.
+
+        Parameters
+        ----------
+        displacement_sigma : float or unit.Quantity, optional
+            The standard deviation of the displacement for each move. Default is 1.0 nm.
+        nr_of_moves : int, optional
+            The number of moves to perform. Default is 100.
+        atom_subset : list of int, optional
+            A subset of atom indices to consider for the moves. Default is None.
+        reporter : SimulationReporter, optional
+            The reporter to write the data to. Default is None.
+        Returns
+        -------
+        None
+        """
+        super().__init__(
+            nr_of_moves=nr_of_moves,
+            reporter=reporter,
+            report_frequency=report_frequency,
+            method="metropolis",
+        )
+        self.displacement_sigma = displacement_sigma
+        self.atom_subset = atom_subset
+
+    def _propose(
+        self,
+        current_sampler_state,
+        current_thermodynamic_state,
+        current_reduced_pot,
+        nbr_list,
+    ):
+        """
+        Implement the logic specific to displacement changes.
+        """
+
+        key = current_sampler_state.new_PRNG_key
+
+        nr_of_atoms = current_sampler_state.n_particles
+        unitless_displacement_sigma = self.displacement_sigma.value_in_unit_system(
+            unit.md_unit_system
+        )
+        import jax.random as jrandom
+
+        scaled_displacement_vector = (
+            jrandom.normal(key, shape=(nr_of_atoms, 3)) * unitless_displacement_sigma
+        )
+        updated_position = current_sampler_state.x0 + scaled_displacement_vector
+        import copy
+
+        proposed_sampler_state = copy.deepcopy(current_sampler_state)
+        proposed_sampler_state.x0 = updated_position
+
+        proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
+            proposed_sampler_state, nbr_list
+        )
+        delta_U = proposed_reduced_pot - current_reduced_pot
+
+        # we do not change the thermodynamic state so we can return 'current_thermodnamic_state'
+        return (
+            proposed_sampler_state,
+            delta_U,
+            current_thermodynamic_state,
+            proposed_reduced_pot,
+        )
 
 
 class RotamerMove(MCMove):
-    def _step(self):
+    def _propose(self):
         """
         Implement the logic specific to rotamer changes.
         """
@@ -342,7 +461,7 @@ class RotamerMove(MCMove):
 
 
 class ProtonationStateMove(MCMove):
-    def _step(self):
+    def _propose(self):
         """
         Implement the logic specific to protonation state changes.
         """
@@ -350,7 +469,7 @@ class ProtonationStateMove(MCMove):
 
 
 class TautomericStateMove(MCMove):
-    def _step(self):
+    def _propose(self):
         """
         Implement the logic specific to tautomeric state changes.
         """
