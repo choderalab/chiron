@@ -50,7 +50,7 @@ from chiron.neighbors import PairList
 # build the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import _SimulationReporter
+from chiron.reporters import MCReporter
 
 # initialize a reporter to save the simulation data
 filename = "test_lj.h5"
@@ -58,11 +58,11 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = _SimulationReporter("test_mc_lj.h5", 1)
+reporter = MCReporter("test_mc_lj.h5", 1)
 
-from chiron.mcmc import MetropolisDispMove
+from chiron.mcmc import MetropolisDisplacementMove
 
-mc_move = MetropolisDispMove(
+mc_move = MetropolisDisplacementMove(
     displacement_sigma=0.001 * unit.nanometer,
     nr_of_moves=1000,
     reporter=reporter,

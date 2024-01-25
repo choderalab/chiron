@@ -375,7 +375,7 @@ class MCMove(MCMCMove):
                 return False
 
 
-class MetropolisDispMove(MCMove):
+class MetropolisDisplacementMove(MCMove):
     def __init__(
         self,
         displacement_sigma=1.0 * unit.nanometer,
@@ -432,18 +432,140 @@ class MetropolisDispMove(MCMove):
         scaled_displacement_vector = (
             jrandom.normal(key, shape=(nr_of_atoms, 3)) * unitless_displacement_sigma
         )
-        updated_position = current_sampler_state.x0 + scaled_displacement_vector
         import copy
 
         proposed_sampler_state = copy.deepcopy(current_sampler_state)
-        proposed_sampler_state.x0 = updated_position
+
+        proposed_sampler_state.x0 = (
+            current_sampler_state.x0 + scaled_displacement_vector
+        )
+
+        # after proposing a move we need to wrap particles and see if we need to rebuild
+        # the neighborlist
+        if nbr_list is not None:
+            proposed_sampler_state.x0 = nbr_list.space.wrap(proposed_sampler_state.x0)
+
+            if nbr_list.check(proposed_sampler_state.x0):
+                nbr_list.build(
+                    proposed_sampler_state.x0, proposed_sampler_state.box_vectors
+                )
 
         proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
             proposed_sampler_state, nbr_list
         )
+
         delta_U = proposed_reduced_pot - current_reduced_pot
 
-        # we do not change the thermodynamic state so we can return 'current_thermodnamic_state'
+        # we do not change the thermodynamic state; thus we can return 'current_thermodynamic_state'
+        return (
+            proposed_sampler_state,
+            delta_U,
+            current_thermodynamic_state,
+            proposed_reduced_pot,
+        )
+
+
+class MonteCarloBarostatMove(MCMove):
+    def __init__(
+        self,
+        volume_max_scale=0.01,
+        nr_of_moves: int = 100,
+        atom_subset: Optional[List[int]] = None,
+        report_frequency: int = 1,
+        reporter: Optional[LangevinDynamicsReporter] = None,
+    ):
+        """
+        Initialize the Monte Carlo Barostat Move class.
+
+        Parameters
+        ----------
+        displacement_sigma : float or unit.Quantity, optional
+            The standard deviation of the displacement for each move. Default is 1.0 nm.
+        nr_of_moves : int, optional
+            The number of moves to perform. Default is 100.
+        atom_subset : list of int, optional
+            A subset of atom indices to consider for the moves. Default is None.
+        reporter : SimulationReporter, optional
+            The reporter to write the data to. Default is None.
+        Returns
+        -------
+        None
+        """
+        super().__init__(
+            nr_of_moves=nr_of_moves,
+            reporter=reporter,
+            report_frequency=report_frequency,
+            method="metropolis",
+        )
+        self.volume_max_scale = volume_max_scale
+        self.atom_subset = atom_subset
+
+    def _propose(
+        self,
+        current_sampler_state,
+        current_thermodynamic_state,
+        current_reduced_pot,
+        nbr_list,
+    ):
+        """
+        Implement the logic specific to displacement changes.
+        """
+        from loguru import logger as log
+
+        key = current_sampler_state.new_PRNG_key
+
+        import jax.random as jrandom
+
+        nr_of_atoms = current_sampler_state.n_particles
+
+        initial_volume = (
+            current_sampler_state.box_vectors[0][0]
+            * current_sampler_state.box_vectors[1][1]
+            * current_sampler_state.box_vectors[2][2]
+        )
+
+        # Calculate the maximum amount the volume can change by
+        delta_volume_max = self.volume_max_scale * initial_volume
+
+        # Calculate the volume change by generating a random number between -1 and 1
+        # and multiplying by the maximum allowed volume change, delta_volume_max
+        delta_volume = jrandom.uniform(key, minval=-1, maxval=1) * delta_volume_max
+
+        log.debug(f"Delta volume is {delta_volume}.")
+
+        # calculate the new volume
+        proposed_volume = initial_volume + delta_volume
+        log.debug(f"New volume is {proposed_volume}.")
+
+        # calculate the length scale factor for particle positions and box vectors
+        length_scaling_factor = jnp.power(proposed_volume / initial_volume, 1.0 / 3.0)
+
+        log.debug(f"Length scaling factor is {length_scaling_factor}.")
+        import copy
+
+        proposed_sampler_state = copy.deepcopy(current_sampler_state)
+        proposed_sampler_state.x0 = current_sampler_state.x0 * length_scaling_factor
+        proposed_sampler_state.box_vectors = (
+            current_sampler_state.box_vectors * length_scaling_factor
+        )
+
+        if nbr_list is not None:
+            # after scaling the box vectors we should rebuild the neighborlist
+            nbr_list.build(
+                proposed_sampler_state.x0, proposed_sampler_state.box_vectors
+            )
+
+        proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
+            proposed_sampler_state, nbr_list
+        )
+
+        delta_U = (
+            proposed_reduced_pot
+            - current_reduced_pot
+            - nr_of_atoms * jnp.log(proposed_volume / initial_volume)
+        )
+
+        # we do not change the thermodynamic state so we can return 'current_thermodynamic_state'
         return (
             proposed_sampler_state,
             delta_U,
@@ -561,9 +683,7 @@ class MCMCSampler:
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                self.sampler_state, self.thermodynamic_state = move.update(
-                    self.sampler_state, self.thermodynamic_state, nbr_list
-                )
+                move.update(self.sampler_state, self.thermodynamic_state, nbr_list)
 
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
@@ -692,7 +812,7 @@ class MetropolizedMove(MCMove):
             delta_energy <= 0.0 or compare_to < jnp.exp(-delta_energy)
         ):
             self.n_accepted += 1
-            log.debug(f"Check suceeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
+            log.debug(f"Check succeeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
             log.debug(
                 f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
             )
@@ -739,7 +859,7 @@ class MetropolizedMove(MCMove):
         )
 
 
-class MetropolisDisplacementMove(MetropolizedMove):
+class MetropolisDispMove(MetropolizedMove):
     """A metropolized move that randomly displace a subset of atoms.
 
     Parameters
@@ -771,7 +891,7 @@ class MetropolisDisplacementMove(MetropolizedMove):
         displacement_sigma=1.0 * unit.nanometer,
         nr_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
-        reporter: Optional[LangevinDynamicsReporter] = None,
+        reporter: Optional[MCReporter] = None,
     ):
         """
         Initialize the MCMC class.

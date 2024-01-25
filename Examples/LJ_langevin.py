@@ -90,6 +90,7 @@ import h5py
 
 # read the data from the reporter
 with h5py.File("test_lj.h5", "r") as f:
+    print(f.keys())
     energies = f["potential_energy"][:]
     steps = f["step"][:]
 
