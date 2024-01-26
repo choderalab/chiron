@@ -314,6 +314,7 @@ class MCMove(MCMCMove):
             )
             return current_sampler_state, current_thermodynamic_state
 
+    def _updated_
     def _update_statistics(self, decision):
         """
         Update the statistics for the move.
@@ -424,6 +425,10 @@ class MetropolisDisplacementMove(MCMove):
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
 
+    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
+        potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
+        self.reporter.report({"step": step, "potential_energy": potential})
+
     def _propose(
         self,
         current_sampler_state,
@@ -450,9 +455,14 @@ class MetropolisDisplacementMove(MCMove):
 
         proposed_sampler_state = copy.deepcopy(current_sampler_state)
 
-        proposed_sampler_state.x0 = (
-            current_sampler_state.x0 + scaled_displacement_vector
-        )
+        if self.atom_subset is not None:
+            proposed_sampler_state.x0 = (
+                current_sampler_state.x0 + scaled_displacement_vector * self.atom_subset
+            )
+        else:
+            proposed_sampler_state.x0 = (
+                current_sampler_state.x0 + scaled_displacement_vector
+            )
 
         # after proposing a move we need to wrap particles and see if we need to rebuild
         # the neighborlist
