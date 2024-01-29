@@ -177,6 +177,8 @@ class MCMove(MCMCMove):
         nr_of_moves: int,
         reporter: Optional[_SimulationReporter],
         report_frequency: int = 1,
+        update_stepsize: bool = False,
+        update_stepsize_frequency: int = 100,
         method: str = "metropolis",
     ) -> None:
         """
@@ -190,6 +192,11 @@ class MCMove(MCMCMove):
             Reporter object for saving the simulation step data.
         report_frequency
             Frequency of saving the simulation data.
+        update_stepsize
+            Whether to update the "stepsize" of the move. Stepsize is a generic term for the key move parameters.
+            For example, for a simple displacement move this would be the displacement_sigma.
+        update_stepsize_frequency
+            Frequency of updating the stepsize of the move.
         method
             Methodology to use for accepting or rejecting the proposed state.
             Default is "metropolis".
@@ -202,6 +209,8 @@ class MCMove(MCMCMove):
         self.method = method  # I think we should pass a class/function instead of a string, like space.
 
         self.reset_statistics()
+        self.update_stepsize = update_stepsize
+        self.update_stepsize_frequency = update_stepsize_frequency
 
     def update(
         self,
@@ -222,7 +231,6 @@ class MCMove(MCMCMove):
             Neighbor list for the system.
 
 
-
         """
         calculate_current_potential = True
 
@@ -240,6 +248,10 @@ class MCMove(MCMCMove):
                     if i % self.report_frequency == 0:
                         self._report(i, sampler_state, thermodynamic_state, nbr_list)
 
+            if self.update_stepsize:
+                if i % self.update_stepsize_frequency == 0:
+                    self._update_stepsize()
+
     @abstractmethod
     def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
         """
@@ -247,6 +259,17 @@ class MCMove(MCMCMove):
 
         Since different moves will be modifying different quantities,
         this needs to be defined for each move.
+        """
+        pass
+
+    @abstractmethod
+    def _update_stepsize(self):
+        """
+        Update the "stepsize" for a move to reach a target acceptance probability range.
+        This will be specific to the type of move, e.g., a displacement_sigma for a displacement move
+        or a maximum volume change factor for a Monte Carlo barostat move.
+
+        Since different moves will be modifying different quantities, this needs to be defined for each move.
         """
         pass
 
@@ -259,6 +282,7 @@ class MCMove(MCMCMove):
     ):
         # if this is the first time we are calling this,
         # we will need to recalculate the reduced potential for the current state
+        # this is toggled by the calculate_current_potential flag
         if calculate_current_potential:
             current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
                 current_sampler_state, nbr_list
@@ -275,9 +299,9 @@ class MCMove(MCMCMove):
         # for systems that e.g., make changes to particle identity.
         (
             proposed_sampler_state,
-            log_proposal_ratio,
             proposed_thermodynamic_state,
             proposed_reduced_pot,
+            log_proposal_ratio,
         ) = self._propose(
             current_sampler_state,
             current_thermodynamic_state,
@@ -309,12 +333,14 @@ class MCMove(MCMCMove):
 
             return proposed_sampler_state, proposed_thermodynamic_state
         else:
+            # if we reject the move, we need to update the current_PRNG key to ensure that
+            # we are using a different random number for the next iteration
+            # this is needed because the _step function returns a SamplerState instead of updating it in place
             current_sampler_state._current_PRNG_key = (
                 proposed_sampler_state._current_PRNG_key
             )
             return current_sampler_state, current_thermodynamic_state
 
-    def _updated_
     def _update_statistics(self, decision):
         """
         Update the statistics for the move.
@@ -345,7 +371,10 @@ class MCMove(MCMCMove):
         """
         Propose a new state and calculate the log proposal ratio.
 
-        This will need to be defined for each move
+        This will accept the relevant quantities for the current state, returning the proposed state quantities
+        and the log proposal ratio.
+
+        This will need to be defined for each new move.
 
         Parameters
         ----------
@@ -360,12 +389,12 @@ class MCMove(MCMCMove):
         -------
         proposed_sampler_state : SamplerState
             Proposed sampler state.
-        log_proposal_ratio : float
-            Log proposal ratio.
         proposed_thermodynamic_state : ThermodynamicState
             Proposed thermodynamic state.
         proposed_reduced_pot : float
             Proposed reduced potential.
+        log_proposal_ratio : float
+            Log proposal ratio.
 
         """
         pass
@@ -398,6 +427,8 @@ class MetropolisDisplacementMove(MCMove):
         atom_subset: Optional[List[int]] = None,
         report_frequency: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
+        update_stepsize: bool = True,
+        update_stepsize_frequency: int = 100,
     ):
         """
         Initialize the Displacement Move class.
@@ -412,6 +443,10 @@ class MetropolisDisplacementMove(MCMove):
             A subset of atom indices to consider for the moves. Default is None.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
+        update_stepsize : bool, optional
+            Whether to update the stepsize of the move. Default is True.
+        update_stepsize_frequency : int, optional
+            Frequency of updating the stepsize of the move. Default is 100.
         Returns
         -------
         None
@@ -420,6 +455,8 @@ class MetropolisDisplacementMove(MCMove):
             nr_of_moves=nr_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
+            update_stepsize=update_stepsize,
+            update_stepsize_frequency=update_stepsize_frequency,
             method="metropolis",
         )
         self.displacement_sigma = displacement_sigma
@@ -428,6 +465,16 @@ class MetropolisDisplacementMove(MCMove):
     def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
         potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
         self.reporter.report({"step": step, "potential_energy": potential})
+
+    def _update_stepsize(self):
+        """
+        Update the displacement_sigma to reach a target acceptance probability of 0.5.
+        """
+
+        if self.n_accepted / self.n_proposed > 0.5:
+            self.displacement_sigma *= 1.1
+        else:
+            self.displacement_sigma /= 1.1
 
     def _propose(
         self,
@@ -443,6 +490,7 @@ class MetropolisDisplacementMove(MCMove):
         key = current_sampler_state.new_PRNG_key
 
         nr_of_atoms = current_sampler_state.n_particles
+
         unitless_displacement_sigma = self.displacement_sigma.value_in_unit_system(
             unit.md_unit_system
         )
@@ -478,14 +526,15 @@ class MetropolisDisplacementMove(MCMove):
             proposed_sampler_state, nbr_list
         )
 
-        delta_U = proposed_reduced_pot - current_reduced_pot
+        log_proposal_ratio = proposed_reduced_pot - current_reduced_pot
 
-        # we do not change the thermodynamic state; thus we can return 'current_thermodynamic_state'
+        # since do not change the thermodynamic state we can return
+        # 'current_thermodynamic_state' rather than making a copy
         return (
             proposed_sampler_state,
-            delta_U,
             current_thermodynamic_state,
             proposed_reduced_pot,
+            log_proposal_ratio,
         )
 
 
@@ -497,6 +546,8 @@ class MonteCarloBarostatMove(MCMove):
         atom_subset: Optional[List[int]] = None,
         report_frequency: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
+        update_stepsize: bool = True,
+        update_stepsize_frequency: int = 100,
     ):
         """
         Initialize the Monte Carlo Barostat Move class.
@@ -511,6 +562,10 @@ class MonteCarloBarostatMove(MCMove):
             A subset of atom indices to consider for the moves. Default is None.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
+        update_stepsize : bool, optional
+            Whether to update the stepsize of the move. Default is True.
+        update_stepsize_frequency : int, optional
+            Frequency of updating the stepsize of the move. Default is 100.
         Returns
         -------
         None
@@ -519,10 +574,11 @@ class MonteCarloBarostatMove(MCMove):
             nr_of_moves=nr_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
+            update_stepsize=update_stepsize,
+            update_stepsize_frequency=update_stepsize_frequency,
             method="metropolis",
         )
         self.volume_max_scale = volume_max_scale
-        self.atom_subset = atom_subset
 
     def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
         potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
@@ -534,6 +590,17 @@ class MonteCarloBarostatMove(MCMove):
         self.reporter.report(
             {"step": step, "potential_energy": potential, "volume": volume}
         )
+
+    def _update_stepsize(self):
+        """
+        Update the volume_max_scale parameter to ensure our acceptance probability is within the range of 0.25 to 0.75.
+        The maximum volume_max_scale will be capped at 0.3.
+        """
+        acceptance_ratio = self.n_accepted / self.n_proposed
+        if acceptance_ratio < 0.25:
+            self.volume_max_scale /= 1.1
+        elif acceptance_ratio > 0.75:
+            self.volume_max_scale = min(self.volume_max_scale * 1.1, 0.3)
 
     def _propose(
         self,
@@ -594,7 +661,8 @@ class MonteCarloBarostatMove(MCMove):
             proposed_sampler_state, nbr_list
         )
 
-        delta_U = (
+        #
+        log_proposal_ratio = (
             proposed_reduced_pot
             - current_reduced_pot
             - nr_of_atoms * jnp.log(proposed_volume / initial_volume)
@@ -603,9 +671,9 @@ class MonteCarloBarostatMove(MCMove):
         # we do not change the thermodynamic state so we can return 'current_thermodynamic_state'
         return (
             proposed_sampler_state,
-            delta_U,
             current_thermodynamic_state,
             proposed_reduced_pot,
+            log_proposal_ratio,
         )
 
 
