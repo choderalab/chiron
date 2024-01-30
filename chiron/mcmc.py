@@ -34,6 +34,10 @@ class MCMCMove:
         self.nr_of_moves = nr_of_moves
         self.reporter = reporter
         self.report_frequency = report_frequency
+
+        # we need to keep track of which iteration we are on
+        self.iteration = 0
+
         from loguru import logger as log
 
         if self.reporter is not None:
@@ -167,8 +171,10 @@ class LangevinDynamicsMove(MCMCMove):
             self.traj.append(self.integrator.traj)
             self.integrator.traj = []
 
+        self.iteration += 1
+
         # The thermodynamic_state will not change for the langevin move
-        # return updated_sampler_state, thermodynamic_state
+        return sampler_state, thermodynamic_state
 
 
 class MCMove(MCMCMove):
@@ -230,7 +236,12 @@ class MCMove(MCMCMove):
         nbr_list : PairBase, optional
             Neighbor list for the system.
 
-
+        Returns
+        -------
+        sampler_state : SamplerState
+            The updated sampler state.
+        thermodynamic_state : ThermodynamicState
+            The updated thermodynamic state.
         """
         calculate_current_potential = True
 
@@ -243,22 +254,65 @@ class MCMove(MCMCMove):
             )
             # after the first step, we don't need to recalculate the current potential, it will be stored
             calculate_current_potential = False
+
+            elapsed_step = i + self.iteration * self.nr_of_moves
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
-                    if i % self.report_frequency == 0:
-                        self._report(i, sampler_state, thermodynamic_state, nbr_list)
+                    # I think it makes sense to i + self.nr_of_moves*self.iteration as our current "step"
+                    # otherwise, instances where self.report_frequency > self.nr_of_moves would only report on the
+                    # first step which might actually be more frequent than we specify
 
+                    if elapsed_step % self.report_frequency == 0:
+                        self._report(
+                            i,
+                            self.iteration,
+                            self.n_accepted / self.n_proposed,
+                            sampler_state,
+                            thermodynamic_state,
+                            nbr_list,
+                        )
             if self.update_stepsize:
-                if i % self.update_stepsize_frequency == 0:
+                # if we only used i,  we might never actually update the parameters if we have a move that is called infrequently
+                if (
+                    elapsed_step % self.update_stepsize_frequency == 0
+                    and elapsed_step > 0
+                ):
                     self._update_stepsize()
 
+        self.iteration += 1
+
+        return sampler_state, thermodynamic_state
+
     @abstractmethod
-    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
+    def _report(
+        self,
+        step: int,
+        iteration: int,
+        acceptance_probability: float,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
+    ):
         """
         Report the current state of the MC move.
 
         Since different moves will be modifying different quantities,
         this needs to be defined for each move.
+
+        Parameters
+        ----------
+        step : int
+            The current step of the simulation move.
+        iteration : int
+            The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        acceptance_probability : float
+            The acceptance probability of the move.
+        sampler_state : SamplerState
+            The sampler state of the system.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system.
+        nbr_list : Optional[PairBase]=None
+            The neighbor list or pair list for evaluating interactions in the system, default None
         """
         pass
 
@@ -339,6 +393,12 @@ class MCMove(MCMCMove):
             current_sampler_state._current_PRNG_key = (
                 proposed_sampler_state._current_PRNG_key
             )
+            if nbr_list is not None:
+                if nbr_list.check(current_sampler_state.x0):
+                    nbr_list.build(
+                        current_sampler_state.x0, current_sampler_state.box_vectors
+                    )
+
             return current_sampler_state, current_thermodynamic_state
 
     def _update_statistics(self, decision):
@@ -413,7 +473,7 @@ class MCMove(MCMCMove):
             import jax.random as jrandom
 
             compare_to = jrandom.uniform(key)
-            if log_proposal_ratio <= 0.0 or compare_to < jnp.exp(-log_proposal_ratio):
+            if -log_proposal_ratio <= 0.0 or compare_to < jnp.exp(log_proposal_ratio):
                 return True
             else:
                 return False
@@ -462,18 +522,57 @@ class MetropolisDisplacementMove(MCMove):
         self.displacement_sigma = displacement_sigma
         self.atom_subset = atom_subset
 
-    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
-        potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
-        self.reporter.report({"step": step, "potential_energy": potential})
+    def _report(
+        self,
+        step,
+        iteration,
+        acceptance_probability,
+        sampler_state,
+        thermodynamic_state,
+        nbr_list,
+    ):
+        """
+        Report the current state of the MC displacement move.
+
+        Parameters
+        ----------
+        step : int
+            The current step of the simulation move.
+        iteration : int
+            The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        acceptance_probability : float
+            The acceptance probability of the move.
+        sampler_state : SamplerState
+            The sampler state of the system.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system.
+        nbr_list : Optional[PairBase]=None
+            The neighbor list or pair list for evaluating interactions in the system, default None
+
+        """
+        potential = thermodynamic_state.potential.compute_energy(
+            sampler_state.x0, nbr_list
+        )
+        self.reporter.report(
+            {
+                "step": step,
+                "iteration": iteration,
+                "potential_energy": potential,
+                "displacement_sigma": self.displacement_sigma.value_in_unit_system(
+                    unit.md_unit_system
+                ),
+                "acceptance_probability": acceptance_probability,
+            }
+        )
 
     def _update_stepsize(self):
         """
         Update the displacement_sigma to reach a target acceptance probability of 0.5.
         """
-
-        if self.n_accepted / self.n_proposed > 0.5:
+        acceptance_ratio = self.n_accepted / self.n_proposed
+        if acceptance_ratio > 0.6:
             self.displacement_sigma *= 1.1
-        else:
+        elif acceptance_ratio < 0.4:
             self.displacement_sigma /= 1.1
 
     def _propose(
@@ -505,11 +604,12 @@ class MetropolisDisplacementMove(MCMove):
 
         if self.atom_subset is not None:
             proposed_sampler_state.x0 = (
-                current_sampler_state.x0 + scaled_displacement_vector * self.atom_subset
+                proposed_sampler_state.x0
+                + scaled_displacement_vector * self.atom_subset
             )
         else:
             proposed_sampler_state.x0 = (
-                current_sampler_state.x0 + scaled_displacement_vector
+                proposed_sampler_state.x0 + scaled_displacement_vector
             )
 
         # after proposing a move we need to wrap particles and see if we need to rebuild
@@ -526,7 +626,7 @@ class MetropolisDisplacementMove(MCMove):
             proposed_sampler_state, nbr_list
         )
 
-        log_proposal_ratio = proposed_reduced_pot - current_reduced_pot
+        log_proposal_ratio = -proposed_reduced_pot + current_reduced_pot
 
         # since do not change the thermodynamic state we can return
         # 'current_thermodynamic_state' rather than making a copy
@@ -580,15 +680,49 @@ class MonteCarloBarostatMove(MCMove):
         )
         self.volume_max_scale = volume_max_scale
 
-    def _report(self, step, sampler_state, thermodynamic_state, nbr_list):
-        potential = thermodynamic_state.get_reduced_potential(sampler_state, nbr_list)
+    def _report(
+        self,
+        step,
+        iteration,
+        acceptance_probability,
+        sampler_state,
+        thermodynamic_state,
+        nbr_list,
+    ):
+        """
+
+        Parameters
+        ----------
+        step : int
+            The current step of the simulation move.
+        iteration : int
+            The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        acceptance_probability : float
+            The acceptance probability of the move.
+        sampler_state : SamplerState
+            The sampler state of the system.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system.
+        nbr_list : Optional[PairBase]=None
+            The neighbor list or pair list for evaluating interactions in the system, default None
+        """
+        potential = thermodynamic_state.potential.compute_energy(
+            sampler_state.x0, nbr_list
+        )
         volume = (
             sampler_state.box_vectors[0][0]
             * sampler_state.box_vectors[1][1]
             * sampler_state.box_vectors[2][2]
         )
         self.reporter.report(
-            {"step": step, "potential_energy": potential, "volume": volume}
+            {
+                "step": step,
+                "iteration": iteration,
+                "potential_energy": potential,
+                "volume": volume,
+                "max_volume_scale": self.volume_max_scale,
+                "acceptance_probability": acceptance_probability,
+            }
         )
 
     def _update_stepsize(self):
@@ -632,21 +766,17 @@ class MonteCarloBarostatMove(MCMove):
         # Calculate the volume change by generating a random number between -1 and 1
         # and multiplying by the maximum allowed volume change, delta_volume_max
         delta_volume = jrandom.uniform(key, minval=-1, maxval=1) * delta_volume_max
-
-        log.debug(f"Delta volume is {delta_volume}.")
-
         # calculate the new volume
         proposed_volume = initial_volume + delta_volume
-        log.debug(f"New volume is {proposed_volume}.")
 
         # calculate the length scale factor for particle positions and box vectors
         length_scaling_factor = jnp.power(proposed_volume / initial_volume, 1.0 / 3.0)
 
-        log.debug(f"Length scaling factor is {length_scaling_factor}.")
         import copy
 
         proposed_sampler_state = copy.deepcopy(current_sampler_state)
         proposed_sampler_state.x0 = current_sampler_state.x0 * length_scaling_factor
+
         proposed_sampler_state.box_vectors = (
             current_sampler_state.box_vectors * length_scaling_factor
         )
@@ -661,11 +791,11 @@ class MonteCarloBarostatMove(MCMove):
             proposed_sampler_state, nbr_list
         )
 
-        #
+        #  χ = exp ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
         log_proposal_ratio = (
-            proposed_reduced_pot
-            - current_reduced_pot
-            - nr_of_atoms * jnp.log(proposed_volume / initial_volume)
+            -proposed_reduced_pot
+            + current_reduced_pot
+            + nr_of_atoms * jnp.log(proposed_volume / initial_volume)
         )
 
         # we do not change the thermodynamic state so we can return 'current_thermodynamic_state'
@@ -786,7 +916,9 @@ class MCMCSampler:
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                move.update(self.sampler_state, self.thermodynamic_state, nbr_list)
+                self.sampler_state, self.thermodynamic_state = move.update(
+                    self.sampler_state, self.thermodynamic_state, nbr_list
+                )
 
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
@@ -795,294 +927,3 @@ class MCMCSampler:
                 move.reporter.flush_buffer()
                 # TODO: flush reporter
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
-
-
-class MetropolizedMove(MCMove):
-    """A base class for metropolized moves.
-
-    Only the proposal needs to be specified by subclasses through the method
-    _propose_positions().
-
-    Parameters
-    ----------
-    atom_subset : slice or list of int, optional
-        If specified, the move is applied only to those atoms specified by these
-        indices. If None, the move is applied to all atoms (default is None).
-
-    Attributes
-    ----------
-    n_accepted : int
-        The number of proposals accepted.
-    n_proposed : int
-        The total number of attempted moves.
-    atom_subset
-
-    Examples
-    --------
-    TBC
-    """
-
-    def __init__(
-        self,
-        atom_subset: Optional[List[int]] = None,
-        nr_of_moves: int = 100,
-        reporter: Optional[_SimulationReporter] = None,
-        report_frequency: int = 1,
-    ):
-        self.n_accepted = 0
-        self.n_proposed = 0
-        self.atom_subset = atom_subset
-        super().__init__(nr_of_moves=nr_of_moves, reporter=reporter)
-        from loguru import logger as log
-
-        self.report_frequency = report_frequency
-        log.debug(f"Atom subset is {atom_subset}.")
-
-    @property
-    def statistics(self):
-        """The acceptance statistics as a dictionary."""
-        return dict(n_accepted=self.n_accepted, n_proposed=self.n_proposed)
-
-    @statistics.setter
-    def statistics(self, value):
-        self.n_accepted = value["n_accepted"]
-        self.n_proposed = value["n_proposed"]
-
-    def apply(
-        self,
-        thermodynamic_state: ThermodynamicState,
-        sampler_state: SamplerState,
-        nbr_list=Optional[PairsBase],
-    ):
-        """Apply a metropolized move to the sampler state.
-
-        Total number of acceptances and proposed move are updated.
-
-        Parameters
-        ----------
-        thermodynamic_state : ThermodynamicState
-           The thermodynamic state to use to apply the move.
-        sampler_state : SamplerState
-           The initial sampler state to apply the move to. This is modified.
-        nbr_list: Neighbor List or Pair List routine,
-            The routine to use to calculate the interacting atoms.
-            Default is None and will use an unoptimized pairlist without PBC
-        """
-        import jax.numpy as jnp
-        from loguru import logger as log
-
-        # Compute initial energy
-        initial_energy = thermodynamic_state.get_reduced_potential(
-            sampler_state, nbr_list
-        )  # NOTE: in kT
-        log.debug(f"Initial energy is {initial_energy} kT.")
-
-        # Store initial positions of the atoms that are moved.
-        x0 = sampler_state.x0
-        atom_subset = self.atom_subset
-        if atom_subset is None:
-            initial_positions = jnp.copy(x0)
-        else:
-            initial_positions = jnp.copy(sampler_state.x0[jnp.array(atom_subset)])
-        log.debug(f"Initial positions are {initial_positions} nm.")
-        # Propose perturbed positions. Modifying the reference changes the sampler state.
-        proposed_positions = self._propose_positions(initial_positions)
-
-        log.debug(f"Proposed positions are {proposed_positions} nm.")
-        # Compute the energy of the proposed positions.
-        if atom_subset is None:
-            sampler_state.x0 = proposed_positions
-        else:
-            sampler_state.x0 = sampler_state.x0.at[jnp.array(atom_subset)].set(
-                proposed_positions
-            )
-        if nbr_list is not None:
-            if nbr_list.check(sampler_state.x0):
-                nbr_list.build(sampler_state.x0, sampler_state.box_vectors)
-
-        proposed_energy = thermodynamic_state.get_reduced_potential(
-            sampler_state, nbr_list
-        )  # NOTE: in kT
-        # Accept or reject with Metropolis criteria.
-        delta_energy = proposed_energy - initial_energy
-        log.debug(f"Delta energy is {delta_energy} kT.")
-        import jax.random as jrandom
-
-        self.key, subkey = jrandom.split(self.key)
-
-        compare_to = jrandom.uniform(subkey)
-        if not jnp.isnan(proposed_energy) and (
-            delta_energy <= 0.0 or compare_to < jnp.exp(-delta_energy)
-        ):
-            self.n_accepted += 1
-            log.debug(f"Check succeeded: {compare_to=}  < {jnp.exp(-delta_energy)}")
-            log.debug(
-                f"Move accepted. Energy change: {delta_energy:.3f} kT. Number of accepted moves: {self.n_accepted}."
-            )
-            if self.n_proposed % self.report_frequency == 0:
-                self.reporter.report(
-                    {
-                        "energy": proposed_energy,  # in kT
-                        "step": self.n_proposed,
-                        "traj": sampler_state.x0,
-                    }
-                )
-        else:
-            # Restore original positions.
-            if atom_subset is None:
-                sampler_state.x0 = initial_positions
-            else:
-                sampler_state.x0 = sampler_state.x0.at[jnp.array([atom_subset])].set(
-                    initial_positions
-                )
-            log.debug(
-                f"Move rejected. Energy change: {delta_energy:.3f} kT. Number of rejected moves: {self.n_proposed - self.n_accepted}."
-            )
-        self.n_proposed += 1
-
-    def _propose_positions(self, positions: jnp.array):
-        """Return new proposed positions.
-
-        These method must be implemented in subclasses.
-
-        Parameters
-        ----------
-        positions : nx3 jnp.ndarray
-            The original positions of the subset of atoms that these move
-            applied to.
-
-        Returns
-        -------
-        proposed_positions : nx3 jnp.ndarray
-            The new proposed positions.
-
-        """
-        raise NotImplementedError(
-            "This MetropolizedMove does not know how to propose new positions."
-        )
-
-
-class MetropolisDispMove(MetropolizedMove):
-    """A metropolized move that randomly displace a subset of atoms.
-
-    Parameters
-    ----------
-    displacement_sigma : openmm.unit.Quantity
-        The standard deviation of the normal distribution used to propose the
-        random displacement (units of length, default is 1.0*nanometer).
-    atom_subset : slice or list of int, optional
-        If specified, the move is applied only to those atoms specified by these
-        indices. If None, the move is applied to all atoms (default is None).
-
-    Attributes
-    ----------
-    n_accepted : int
-        The number of proposals accepted.
-    n_proposed : int
-        The total number of attempted moves.
-    displacement_sigma
-    atom_subset
-
-    See Also
-    --------
-    MetropolizedMove
-
-    """
-
-    def __init__(
-        self,
-        displacement_sigma=1.0 * unit.nanometer,
-        nr_of_moves: int = 100,
-        atom_subset: Optional[List[int]] = None,
-        reporter: Optional[MCReporter] = None,
-    ):
-        """
-        Initialize the MCMC class.
-
-        Parameters
-        ----------
-        seed : int, optional
-            The seed for the random number generator. Default is 1234.
-        displacement_sigma : float or unit.Quantity, optional
-            The standard deviation of the displacement for each move. Default is 1.0 nm.
-        nr_of_moves : int, optional
-            The number of moves to perform. Default is 100.
-        atom_subset : list of int, optional
-            A subset of atom indices to consider for the moves. Default is None.
-        reporter : SimulationReporter, optional
-            The reporter to write the data to. Default is None.
-        Returns
-        -------
-        None
-        """
-        super().__init__(nr_of_moves=nr_of_moves, reporter=reporter)
-        self.displacement_sigma = displacement_sigma
-        self.atom_subset = atom_subset
-        self.key = None
-
-    def displace_positions(
-        self, positions: jnp.array, displacement_sigma=1.0 * unit.nanometer
-    ):
-        """Return the positions after applying a random displacement to them.
-
-        Parameters
-        ----------
-        positions : nx3 jnp.array unit.Quantity
-            The positions to displace.
-        displacement_sigma : openmm.unit.Quantity
-            The standard deviation of the normal distribution used to propose
-            the random displacement (units of length, default is 1.0*nanometer).
-
-        Returns
-        -------
-        rotated_positions : nx3 numpy.ndarray openmm.unit.Quantity
-            The displaced positions.
-
-        """
-        import jax.random as jrandom
-
-        self.key, subkey = jrandom.split(self.key)
-        nr_of_atoms = positions.shape[0]
-        unitless_displacement_sigma = displacement_sigma.value_in_unit_system(
-            unit.md_unit_system
-        )
-        displacement_vector = (
-            jrandom.normal(subkey, shape=(nr_of_atoms, 3)) * 0.1
-        )  # NOTE: convert from Angstrom to nm
-        scaled_displacement_vector = displacement_vector * unitless_displacement_sigma
-        updated_position = positions + scaled_displacement_vector
-
-        return updated_position
-
-    def _propose_positions(self, initial_positions: jnp.array) -> jnp.array:
-        """Implement MetropolizedMove._propose_positions for apply()."""
-        return self.displace_positions(initial_positions, self.displacement_sigma)
-
-    def run(
-        self,
-        sampler_state: SamplerState,
-        thermodynamic_state: ThermodynamicState,
-        nbr_list=None,
-        progress_bar=True,
-    ):
-        from tqdm import tqdm
-        from loguru import logger as log
-        from jax import random
-
-        self.key = sampler_state.new_PRNG_key
-
-        for trials in (
-            tqdm(range(self.nr_of_moves)) if progress_bar else range(self.nr_of_moves)
-        ):
-            self.apply(thermodynamic_state, sampler_state, nbr_list)
-            if trials % 100 == 0:
-                log.debug(f"Acceptance rate: {self.n_accepted / self.n_proposed}")
-                if self.reporter is not None:
-                    self.reporter.report(
-                        {
-                            "Acceptance rate": self.n_accepted / self.n_proposed,
-                            "step": self.n_proposed,
-                        }
-                    )
-
-        log.info(f"Acceptance rate: {self.n_accepted / self.n_proposed}")

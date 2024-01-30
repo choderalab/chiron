@@ -66,25 +66,22 @@ from chiron.mcmc import (
     MCMCSampler,
 )
 
-mc_disp_move = MetropolisDisplacementMove(
-    displacement_sigma=0.1 * unit.nanometer,
-    nr_of_moves=10,
-)
 
 mc_barostat_move = MonteCarloBarostatMove(
     volume_max_scale=0.2,
     nr_of_moves=100,
     reporter=reporter,
+    update_stepsize=True,
+    update_stepsize_frequency=100,
 )
 move_set = MoveSchedule(
     [
-        ("MetropolisDisplacementMove", mc_disp_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )
 
 sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=30, nbr_list=nbr_list)  # how many times to repeat
+sampler.run(n_iterations=50, nbr_list=nbr_list)  # how many times to repeat
 
 import h5py
 

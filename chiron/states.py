@@ -311,6 +311,9 @@ class ThermodynamicState:
                 * sampler_state.box_vectors[1][1]
                 * sampler_state.box_vectors[2][2]
             ) * unit.nanometer**3
+
+            from loguru import logger as log
+
             reduced_potential += self.pressure * self.volume
 
         return self.beta * reduced_potential

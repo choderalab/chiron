@@ -53,23 +53,54 @@ nbr_list.build_from_state(sampler_state)
 from chiron.reporters import MCReporter
 
 # initialize a reporter to save the simulation data
-filename = "test_lj.h5"
+filename = "test_mc_lj.h5"
 import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = MCReporter("test_mc_lj.h5", 1)
+reporter = MCReporter(filename, 1)
 
 from chiron.mcmc import MetropolisDisplacementMove
 
 mc_move = MetropolisDisplacementMove(
-    displacement_sigma=0.001 * unit.nanometer,
-    nr_of_moves=1000,
+    displacement_sigma=0.01 * unit.nanometer,
+    nr_of_moves=5000,
     reporter=reporter,
     report_frequency=1,
+    update_stepsize=True,
+    update_stepsize_frequency=100,
 )
 
 mc_move.update(sampler_state, thermodynamic_state, nbr_list)
 
 stats = mc_move.statistics
 print(stats["n_accepted"] / stats["n_proposed"])
+
+import h5py
+
+with h5py.File(filename, "r") as f:
+    acceptance_probability = f["acceptance_probability"][:]
+    displacement_sigma = f["displacement_sigma"][:]
+    potential_energy = f["potential_energy"][:]
+    step = f["step"][:]
+
+# plot the energy
+import matplotlib.pyplot as plt
+
+plt.subplot(3, 1, 1)
+
+plt.plot(step, displacement_sigma)
+plt.ylabel("displacement_sigma (nm)")
+
+plt.subplot(3, 1, 2)
+
+plt.plot(step, acceptance_probability)
+plt.ylabel("acceptance_probability")
+
+
+plt.subplot(3, 1, 3)
+
+plt.plot(step, potential_energy)
+plt.xlabel("Step")
+plt.ylabel("potential_energy (kj/mol)")
+plt.show()
