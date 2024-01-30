@@ -113,6 +113,7 @@ def initialize_velocities(
     import jax.numpy as jnp
 
     mass = get_list_of_mass(topology)
+
     kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
 
     kbT_unitless = (kB * temperature).value_in_unit_system(unit.md_unit_system)

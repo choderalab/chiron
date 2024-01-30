@@ -520,7 +520,9 @@ class MetropolisDisplacementMove(MCMove):
             method="metropolis",
         )
         self.displacement_sigma = displacement_sigma
+
         self.atom_subset = atom_subset
+        self.atom_subset_mask = None
 
     def _report(
         self,
@@ -585,6 +587,12 @@ class MetropolisDisplacementMove(MCMove):
         """
         Implement the logic specific to displacement changes.
         """
+        if self.atom_subset is not None and self.atom_subset_mask is None:
+            import jax.numpy as jnp
+
+            self.atom_subset_mask = jnp.zeros(current_sampler_state.n_particles)
+            for atom in self.atom_subset:
+                self.atom_subset_mask = self.atom_subset_mask.at[atom].set(1)
 
         key = current_sampler_state.new_PRNG_key
 
@@ -605,7 +613,7 @@ class MetropolisDisplacementMove(MCMove):
         if self.atom_subset is not None:
             proposed_sampler_state.x0 = (
                 proposed_sampler_state.x0
-                + scaled_displacement_vector * self.atom_subset
+                + scaled_displacement_vector * self.atom_subset_mask
             )
         else:
             proposed_sampler_state.x0 = (
