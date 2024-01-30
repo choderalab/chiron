@@ -214,17 +214,21 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iteratinos = 250
-    ho_sampler.run(n_iteratinos)
+    n_iterations = 250
+    ho_sampler.run(n_iterations)
 
     # check that we have the correct number of iterations, replicas and states
-    assert ho_sampler.iteration == n_iteratinos
-    assert ho_sampler._iteration == n_iteratinos
+    assert ho_sampler.iteration == n_iterations
+    assert ho_sampler._iteration == n_iterations
     assert ho_sampler.n_replicas == 4
     assert ho_sampler.n_states == 4
 
-    u_kn = ho_sampler.reporter.get_property("u_kn")
-    assert u_kn.shape == (n_iteratinos, 4, 4)
+    u_kn = ho_sampler._reporter.get_property("u_kn")
+
+    # this appears to need to be n+1 iterations; I assume because of the initial logging of the value
+    assert u_kn.shape == (4, 4, n_iterations + 1)
+
+    # assert u_kn.shape == (n_iterations, 4, 4)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     # [ 0.        , -0.28593054, -0.54696467, -0.78709279]

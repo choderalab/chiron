@@ -75,7 +75,7 @@ class MultiStateSampler:
         self._neighborhoods = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
-        self._reporter = reporter  # NOTE: reporter needs to be putlic, API change ahead
+        self._reporter = reporter  # NOTE: reporter needs to be public, API change ahead
         self._metadata = None
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
         self._online_estimator = None
