@@ -81,6 +81,7 @@ class LangevinDynamicsMove(MCMCMove):
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        initialize_velocities: bool = False,
         reinitialize_velocities: bool = False,
         reporter: Optional[LangevinDynamicsReporter] = None,
         report_frequency: int = 100,
@@ -96,6 +97,9 @@ class LangevinDynamicsMove(MCMCMove):
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
+        initialize_velocities: bool, optional
+            Whether to initialize the velocities the first time the run function is called.
+            Default is False.
         reinitialize_velocities : bool, optional
             Whether to reinitialize the velocities each time the run function is called.
             Default is False.
@@ -127,6 +131,7 @@ class LangevinDynamicsMove(MCMCMove):
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
+            initialize_velocities=initialize_velocities,
             reinitialize_velocities=reinitialize_velocities,
             report_frequency=report_frequency,
             reporter=reporter,

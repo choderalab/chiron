@@ -26,6 +26,7 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
+        initialize_velocities: bool = False,
         reinitialize_velocities: bool = False,
         report_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
@@ -40,6 +41,10 @@ class LangevinIntegrator:
             Time step of integration with units of time. Default is 1.0 * unit.femtoseconds.
         collision_rate : unit.Quantity, optional
             Collision rate for the Langevin dynamics, with units 1/time. Default is 1.0 / unit.picoseconds.
+        initialize_velocities : bool, optional
+            Flag indicating whether to initialize the velocities the first time the run function is called. Default is False.
+        reinitialize_velocities : bool, optional
+            Flag indicating whether to reinitialize the velocities each time the run function is called. Default is False.
         report_frequency : int, optional
             Frequency of saving the simulation data. Default is 100.
         reporter : SimulationReporter, optional
@@ -71,6 +76,7 @@ class LangevinIntegrator:
         self.save_traj_in_memory = save_traj_in_memory
         self.traj = []
         self.reinitialize_velocities = reinitialize_velocities
+        self.initialize_velocities = initialize_velocities
 
     def run(
         self,
@@ -142,7 +148,16 @@ class LangevinIntegrator:
             sampler_state.velocities = initialize_velocities(
                 temperature, potential.topology, key
             )
+            self.initialize_velocities = False
 
+        elif self.initialize_velocities:
+            # v0 = sigma_v * random.normal(key, x0.shape)
+            from .utils import initialize_velocities
+
+            sampler_state.velocities = initialize_velocities(
+                temperature, potential.topology, key
+            )
+            self.initialize_velocities = False
         else:
             if sampler_state._velocities is None:
                 raise ValueError("Velocities must be set before running the integrator")

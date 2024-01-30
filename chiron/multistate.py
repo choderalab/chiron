@@ -75,7 +75,7 @@ class MultiStateSampler:
         self._neighborhoods = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
-        self._reporter = reporter # NOTE: reporter needs to be putlic, API change ahead
+        self._reporter = reporter  # NOTE: reporter needs to be putlic, API change ahead
         self._metadata = None
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
         self._online_estimator = None
@@ -396,7 +396,7 @@ class MultiStateSampler:
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
         mcmc_move = self._mcmc_moves[thermodynamic_state_id]
         # Apply the MCMC move to the replica.
-        mcmc_move.run(sampler_state, thermodynamic_state)
+        mcmc_move.update(sampler_state, thermodynamic_state)
         # Append the new state to the trajectory for analysis.
         self._traj[replica_id].append(sampler_state.x0)
 
