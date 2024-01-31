@@ -76,13 +76,11 @@ mc_move.update(sampler_state, thermodynamic_state, nbr_list)
 stats = mc_move.statistics
 print(stats["n_accepted"] / stats["n_proposed"])
 
-import h5py
 
-with h5py.File(filename, "r") as f:
-    acceptance_probability = f["acceptance_probability"][:]
-    displacement_sigma = f["displacement_sigma"][:]
-    potential_energy = f["potential_energy"][:]
-    step = f["step"][:]
+acceptance_probability = reporter.get_property("acceptance_probability")
+displacement_sigma = reporter.get_property("displacement_sigma")
+potential_energy = reporter.get_property("potential_energy")
+step = reporter.get_property("step")
 
 # plot the energy
 import matplotlib.pyplot as plt

@@ -2,9 +2,8 @@ from openmmtools.testsystems import IdealGas
 from openmm import unit
 
 
-# Use the LennardJonesFluid example from openmmtools to initialize particle positions and topology
+# Use the IdealGas example from openmmtools to initialize particle positions and topology
 # For this example, the topology provides the masses for the particles
-# The default LennardJonesFluid example considers the system to be Argon with 39.9 amu
 
 n_particles = 216
 temperature = 298 * unit.kelvin
@@ -17,7 +16,7 @@ from chiron.potential import IdealGasPotential
 from chiron.utils import PRNG
 import jax.numpy as jnp
 
-#
+# particles are non interacting
 cutoff = 0.0 * unit.nanometer
 ideal_gas_potential = IdealGasPotential(ideal_gas.topology)
 
@@ -44,7 +43,7 @@ from chiron.neighbors import PairList, OrthogonalPeriodicSpace
 
 # define the pair list for an orthogonal periodic space
 # since particles are non-interacting, this will not really do much
-# but will appropriately wrap particles in space
+# but will be used to appropriately wrap particles in space
 nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
 nbr_list.build_from_state(sampler_state)
 
@@ -66,16 +65,27 @@ from chiron.mcmc import (
     MCMCSampler,
 )
 
-
+# initialize the displacement move
 mc_barostat_move = MonteCarloBarostatMove(
     volume_max_scale=0.2,
-    nr_of_moves=100,
+    nr_of_moves=10,
     reporter=reporter,
     update_stepsize=True,
     update_stepsize_frequency=100,
 )
+
+# initialize the barostat move and the move schedule
+metropolis_displacement_move = MetropolisDisplacementMove(
+    displacement_sigma=0.1 * unit.nanometer,
+    nr_of_moves=100,
+    update_stepsize=True,
+    update_stepsize_frequency=100,
+)
+
+# define the move schedule
 move_set = MoveSchedule(
     [
+        ("MetropolisDisplacementMove", metropolis_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )
@@ -83,9 +93,10 @@ move_set = MoveSchedule(
 sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
 sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
 
-
+# get the volume from the reporter
 volume = reporter.get_property("volume")
-step = reporter.get_property("step")
+step = reporter.get_property("elapsed_step")
+
 
 import matplotlib.pyplot as plt
 

@@ -628,6 +628,7 @@ class MetropolisDisplacementMove(MCMove):
             {
                 "step": step,
                 "iteration": iteration,
+                "elapsed_step": elapsed_step,
                 "potential_energy": potential,
                 "displacement_sigma": self.displacement_sigma.value_in_unit_system(
                     unit.md_unit_system
@@ -836,6 +837,7 @@ class MonteCarloBarostatMove(MCMove):
             {
                 "step": step,
                 "iteration": iteration,
+                "elapsed_step": elapsed_step,
                 "potential_energy": potential,
                 "volume": volume,
                 "max_volume_scale": self.volume_max_scale,

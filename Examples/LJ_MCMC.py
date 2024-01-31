@@ -17,6 +17,9 @@ for i in range(n_particles):
 
 import jax.numpy as jnp
 
+# these were generated in Mbuild using fill_box which wraps packmol
+# a minimum spacing of 0.4 nm was used during construction.
+
 positions = jnp.load("Examples/methane_coords.npy") * unit.nanometer
 
 box_vectors = jnp.array(
@@ -139,7 +142,7 @@ langevin_dynamics_move = LangevinDynamicsMove(
 
 move_set = MoveSchedule(
     [
-        # ("LangevinDynamicsMove", langevin_dynamics_move),
+        ("LangevinDynamicsMove", langevin_dynamics_move),
         ("MetropolisDisplacementMove", mc_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
