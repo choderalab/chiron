@@ -94,6 +94,8 @@ with h5py.File("test_lj.h5", "r") as f:
     energies = f["potential_energy"][:]
     steps = f["step"][:]
 
+energies = reporter.get_property("potential_energy")
+steps = reporter.get_property("step")
 
 # plot the energy
 import matplotlib.pyplot as plt

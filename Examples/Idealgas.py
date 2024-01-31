@@ -48,7 +48,7 @@ from chiron.neighbors import PairList, OrthogonalPeriodicSpace
 nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import _SimulationReporter
+from chiron.reporters import MCReporter
 
 # initialize a reporter to save the simulation data
 filename = "test_mc_ideal_gas.h5"
@@ -56,7 +56,7 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = _SimulationReporter(filename, 1)
+reporter = MCReporter(filename, 100)
 
 
 from chiron.mcmc import (
@@ -81,13 +81,16 @@ move_set = MoveSchedule(
 )
 
 sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=50, nbr_list=nbr_list)  # how many times to repeat
+sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
 
-import h5py
 
-with h5py.File(filename, "r") as f:
-    volume = f["volume"][:]
-    steps = f["step"][:]
+volume = reporter.get_property("volume")
+step = reporter.get_property("step")
+
+import matplotlib.pyplot as plt
+
+plt.plot(step, volume)
+plt.show()
 
 # get expectations
 ideal_volume = ideal_gas.get_volume_expectation(thermodynamic_state)

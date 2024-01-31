@@ -283,6 +283,7 @@ class MCMove(MCMCMove):
                         self._report(
                             i,
                             self._move_iteration,
+                            elapsed_step,
                             self.n_accepted / self.n_proposed,
                             sampler_state,
                             thermodynamic_state,
@@ -305,6 +306,7 @@ class MCMove(MCMCMove):
         self,
         step: int,
         iteration: int,
+        elapsed_step: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -322,6 +324,8 @@ class MCMove(MCMCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        elapsed_step : int
+            The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
         sampler_state : SamplerState
@@ -590,6 +594,7 @@ class MetropolisDisplacementMove(MCMove):
         self,
         step: int,
         iteration: int,
+        elapsed_step: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -604,6 +609,8 @@ class MetropolisDisplacementMove(MCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        elapsed_step : int
+            The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
         sampler_state : SamplerState
@@ -791,6 +798,7 @@ class MonteCarloBarostatMove(MCMove):
         self,
         step: int,
         iteration: int,
+        elapsed_step: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -804,6 +812,8 @@ class MonteCarloBarostatMove(MCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
+        elapsed_step : int
+            The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
         sampler_state : SamplerState

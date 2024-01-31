@@ -77,6 +77,7 @@ class LangevinIntegrator:
         self.traj = []
         self.reinitialize_velocities = reinitialize_velocities
         self.initialize_velocities = initialize_velocities
+        self._move_iteration = 0
 
     def run(
         self,
@@ -183,8 +184,8 @@ class LangevinIntegrator:
             # r
             x += (stepsize_unitless * 0.5) * v
 
-            # we can actually skip this for now, and just wrap/check/rebuild
-            # right before we call the force
+            # we can actually skip this wrapping, and just wrap/check/rebuild
+            # right before we call the force again.
 
             # if nbr_list is not None:
             #    x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
@@ -201,9 +202,9 @@ class LangevinIntegrator:
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
-            if step % self.report_frequency == 0:
+            if (step + self._move_iteration * n_steps) % self.report_frequency == 0:
                 if hasattr(self, "reporter") and self.reporter is not None:
-                    self._report(x, potential, nbr_list, step)
+                    self._report(x, potential, nbr_list, step, self._move_iteration)
 
                 if self.save_traj_in_memory:
                     self.traj.append(x)
@@ -252,6 +253,8 @@ class LangevinIntegrator:
         potential: NeuralNetworkPotential,
         nbr_list: PairsBase,
         step: int,
+        iteration: int,
+        elapsed_step: int,
     ):
         """
         Reports the trajectory, energy, step, and box vectors (if available) to the reporter.
@@ -265,7 +268,12 @@ class LangevinIntegrator:
             nbr_list: PairsBase
                 The neighbor list
             step: int
-                The current time step.
+                The current step in the move; this resets each iteration.
+            iteration: int
+                The number iterations the move has been called.
+            elapsed_step: int,
+                The total number of steps that have been taken in the simulation move.
+
 
         Returns:
             None
@@ -274,6 +282,8 @@ class LangevinIntegrator:
             "positions": x,
             "potential_energy": potential.compute_energy(x, nbr_list),
             "step": step,
+            "iteration": iteration,
+            "elapsed_step": elapsed_step,
         }
         if nbr_list is not None:
             d["box_vectors"] = nbr_list.space.box_vectors
