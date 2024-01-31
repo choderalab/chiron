@@ -840,6 +840,7 @@ class MonteCarloBarostatMove(MCMove):
                 "elapsed_step": elapsed_step,
                 "potential_energy": potential,
                 "volume": volume,
+                "box_vectors": sampler_state.box_vectors,
                 "max_volume_scale": self.volume_max_scale,
                 "acceptance_probability": acceptance_probability,
             }

@@ -202,9 +202,12 @@ class LangevinIntegrator:
             # v
             v += (stepsize_unitless * 0.5) * F / mass_unitless
 
-            if (step + self._move_iteration * n_steps) % self.report_frequency == 0:
+            elapsed_step = step + self._move_iteration * n_steps
+            if (elapsed_step) % self.report_frequency == 0:
                 if hasattr(self, "reporter") and self.reporter is not None:
-                    self._report(x, potential, nbr_list, step, self._move_iteration)
+                    self._report(
+                        x, potential, nbr_list, step, self._move_iteration, elapsed_step
+                    )
 
                 if self.save_traj_in_memory:
                     self.traj.append(x)

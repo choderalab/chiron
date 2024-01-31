@@ -329,6 +329,132 @@ def test_thermodynamic_state_inputs():
     ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
 
 
+def test_mc_barostat_parameter_setting():
+    import jax.numpy as jnp
+    from chiron.mcmc import MonteCarloBarostatMove
+
+    barostat_move = MonteCarloBarostatMove(
+        volume_max_scale=0.1,
+        nr_of_moves=1,
+    )
+
+    assert barostat_move.volume_max_scale == 0.1
+    assert barostat_move.nr_of_moves == 1
+
+
+def test_mc_barostat(prep_temp_dir):
+    import jax.numpy as jnp
+
+    from chiron.reporters import MCReporter, BaseReporter
+
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+    simulation_reporter = MCReporter(1)
+
+    from chiron.mcmc import MonteCarloBarostatMove
+
+    barostat_move = MonteCarloBarostatMove(
+        volume_max_scale=0.1,
+        nr_of_moves=10,
+        reporter=simulation_reporter,
+        report_frequency=1,
+    )
+
+    from chiron.potential import IdealGasPotential
+    from openmm import unit
+
+    positions = (
+        jnp.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 0],
+                [1, 0, 1],
+                [0, 1, 1],
+                [1, 1, 1],
+            ]
+        )
+        * unit.nanometer
+    )
+    box_vectors = (
+        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+        * unit.nanometer
+    )
+    volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+
+    from openmm.app import Topology, Element
+
+    topology = Topology()
+    element = Element.getBySymbol("Ar")
+    chain = topology.addChain()
+    residue = topology.addResidue("system", chain)
+    for i in range(positions.shape[0]):
+        topology.addAtom("Ar", element, residue)
+
+    ideal_gas_potential = IdealGasPotential(topology)
+
+    from chiron.states import SamplerState, ThermodynamicState
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    # define the sampler state
+    sampler_state = SamplerState(
+        x0=positions, box_vectors=box_vectors, current_PRNG_key=PRNG.get_random_key()
+    )
+
+    # define the thermodynamic state
+    thermodynamic_state = ThermodynamicState(
+        potential=ideal_gas_potential,
+        temperature=300 * unit.kelvin,
+        pressure=1.0 * unit.atmosphere,
+    )
+
+    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+
+    # since particles are non-interacting and we will not displacece them, the pair list basically
+    # does nothing in this case.
+    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=0 * unit.nanometer)
+
+    sampler_state, thermodynamic_state, nbr_list = barostat_move.update(
+        sampler_state, thermodynamic_state, nbr_list
+    )
+    potential_energies = simulation_reporter.get_property("potential_energy")
+    volumes = simulation_reporter.get_property("volume")
+
+    # ideal gas treatment, so stored energy will only be a
+    # consequence of pressure, volume, and temperature
+    from loguru import logger as log
+
+    log.debug(f"PE {potential_energies * unit.kilojoules_per_mole}")
+    log.debug(thermodynamic_state.pressure)
+    log.debug(thermodynamic_state.beta)
+    log.debug(volumes)
+    log.debug(volumes * unit.nanometer**3)
+
+    # assert that the PE is always zero
+    assert potential_energies[0] == 0
+    assert potential_energies[-1] == 0
+
+    # the reduced potential will only be a consequence of the pressure, volume, and temperature
+
+    assert jnp.isclose(
+        thermodynamic_state.get_reduced_potential(sampler_state),
+        (
+            thermodynamic_state.pressure
+            * thermodynamic_state.beta
+            * (volumes[-1] * unit.nanometer**3)
+        ),
+        1e-3,
+    )
+
+    print(barostat_move.statistics["n_accepted"])
+    assert barostat_move.statistics["n_proposed"] == 10
+    assert barostat_move.statistics["n_accepted"] == 8
+
+
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():
     # define two harmonic oscillators with different spring constants and equilibrium positions
     # sample from the joint distribution of the two HO using local langevin moves
