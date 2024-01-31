@@ -55,7 +55,7 @@ def test_langevin_dynamics(prep_temp_dir, provide_testsystems_and_potentials):
         integrator = LangevinIntegrator(
             reporter=reporter, report_frequency=1, reinitialize_velocities=True
         )
-        integrator.run(
+        updated_sampler_state, updated_nbr_list = integrator.run(
             sampler_state,
             thermodynamic_state,
             n_steps=20,

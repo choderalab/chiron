@@ -36,7 +36,7 @@ class MCMCMove:
         self.report_frequency = report_frequency
 
         # we need to keep track of which iteration we are on
-        self.iteration = 0
+        self._move_iteration = 0
 
         from loguru import logger as log
 
@@ -52,7 +52,7 @@ class MCMCMove:
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         nbr_list: Optional[PairsBase] = None,
-    ):
+    ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
         """
         Update the state of the system.
 
@@ -71,6 +71,8 @@ class MCMCMove:
             The updated sampler state.
         thermodynamic_state : ThermodynamicState
             The updated thermodynamic state.
+        nbr_list: PairsBase
+            The updated neighbor/pair list. If no nbr_list is passed, this will be None.
 
         """
         pass
@@ -79,13 +81,13 @@ class MCMCMove:
 class LangevinDynamicsMove(MCMCMove):
     def __init__(
         self,
-        stepsize=1.0 * unit.femtoseconds,
-        collision_rate=1.0 / unit.picoseconds,
+        stepsize: unit.Quantity = 1.0 * unit.femtoseconds,
+        collision_rate: unit.Quantity = 1.0 / unit.picoseconds,
         initialize_velocities: bool = False,
         reinitialize_velocities: bool = False,
         reporter: Optional[LangevinDynamicsReporter] = None,
         report_frequency: int = 100,
-        nr_of_steps=1_000,
+        nr_of_steps: int = 1_000,
         save_traj_in_memory: bool = False,
     ):
         """
@@ -143,7 +145,7 @@ class LangevinDynamicsMove(MCMCMove):
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         nbr_list: Optional[PairsBase] = None,
-    ):
+    ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
         """
         Run the integrator to perform molecular dynamics simulation.
 
@@ -156,6 +158,14 @@ class LangevinDynamicsMove(MCMCMove):
         nbr_list : PairsBase, optional
             The neighbor list to use for the simulation.
 
+        Returns
+        -------
+        sampler_state : SamplerState
+            The updated sampler state.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state; note this is not modified by the Langevin dynamics algorithm.
+        nbr_list: PairsBase
+            The updated neighbor/pair list. If a nbr_list is not set, this will be None.
         """
 
         assert isinstance(
@@ -165,7 +175,7 @@ class LangevinDynamicsMove(MCMCMove):
             thermodynamic_state, ThermodynamicState
         ), f"Thermodynamic state must be ThermodynamicState, not {type(thermodynamic_state)}"
 
-        sampler_state = self.integrator.run(
+        updated_sampler_state, updated_nbr_list = self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
             n_steps=self.nr_of_moves,
@@ -176,10 +186,10 @@ class LangevinDynamicsMove(MCMCMove):
             self.traj.append(self.integrator.traj)
             self.integrator.traj = []
 
-        self.iteration += 1
+        self._move_iteration += 1
 
         # The thermodynamic_state will not change for the langevin move
-        return sampler_state, thermodynamic_state
+        return updated_sampler_state, thermodynamic_state, updated_nbr_list
 
 
 class MCMove(MCMCMove):
@@ -228,7 +238,7 @@ class MCMove(MCMCMove):
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         nbr_list: Optional[PairsBase] = None,
-    ):
+    ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
         """
         Perform the defined move and update the state.
 
@@ -247,11 +257,13 @@ class MCMove(MCMCMove):
             The updated sampler state.
         thermodynamic_state : ThermodynamicState
             The updated thermodynamic state.
+        nbr_list: PairsBase
+            The updated neighbor/pair list. If a nbr_list is not set, this will be None.
         """
         calculate_current_potential = True
 
         for i in range(self.nr_of_moves):
-            sampler_state, thermodynamic_state = self._step(
+            sampler_state, thermodynamic_state, nbr_list = self._step(
                 sampler_state,
                 thermodynamic_state,
                 nbr_list,
@@ -260,33 +272,33 @@ class MCMove(MCMCMove):
             # after the first step, we don't need to recalculate the current potential, it will be stored
             calculate_current_potential = False
 
-            elapsed_step = i + self.iteration * self.nr_of_moves
+            elapsed_step = i + self._move_iteration * self.nr_of_moves
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
-                    # I think it makes sense to i + self.nr_of_moves*self.iteration as our current "step"
-                    # otherwise, instances where self.report_frequency > self.nr_of_moves would only report on the
-                    # first step which might actually be more frequent than we specify
+                    # I think it makes sense to use i + self.nr_of_moves*self._move_iteration as our current "step"
+                    # otherwise, if we just used i, instances where self.report_frequency > self.nr_of_moves would only report on the
+                    # first step,  which might actually be more frequent than we specify
 
                     if elapsed_step % self.report_frequency == 0:
                         self._report(
                             i,
-                            self.iteration,
+                            self._move_iteration,
                             self.n_accepted / self.n_proposed,
                             sampler_state,
                             thermodynamic_state,
                             nbr_list,
                         )
             if self.update_stepsize:
-                # if we only used i,  we might never actually update the parameters if we have a move that is called infrequently
+                # if we only used i, we might never actually update the parameters if we have a move that is called infrequently
                 if (
                     elapsed_step % self.update_stepsize_frequency == 0
                     and elapsed_step > 0
                 ):
                     self._update_stepsize()
+        # keep track of how many times this function has been called
+        self._move_iteration += 1
 
-        self.iteration += 1
-
-        return sampler_state, thermodynamic_state
+        return sampler_state, thermodynamic_state, nbr_list
 
     @abstractmethod
     def _report(
@@ -329,22 +341,56 @@ class MCMove(MCMCMove):
         or a maximum volume change factor for a Monte Carlo barostat move.
 
         Since different moves will be modifying different quantities, this needs to be defined for each move.
+
+        Note this will modify the "stepsize" in place.
         """
         pass
 
     def _step(
         self,
-        current_sampler_state,
-        current_thermodynamic_state,
-        nbr_list,
-        calculate_current_potential=True,
-    ):
-        # if this is the first time we are calling this,
-        # we will need to recalculate the reduced potential for the current state
+        current_sampler_state: SamplerState,
+        current_thermodynamic_state: ThermodynamicState,
+        current_nbr_list: Optional[PairsBase] = None,
+        calculate_current_potential: bool = True,
+    ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
+        """
+        Performs an individual MC step.
+
+        This will call the _propose  function which will be specific to the type of move.
+
+        Parameters
+        ----------
+        current_sampler_state : SamplerState, required
+            Current sampler state.
+        current_thermodynamic_state : ThermodynamicState, required
+            Current thermodynamic state.
+        current_nbr_list : Optional[PairsBase]
+            Neighbor list associated with the current state.
+        calculate_current_potential : bool, optional
+            Whether to calculate the current reduced potential. Default is True.
+
+        Returns
+        -------
+        sampler_state : SamplerState
+            The updated sampler state; if a move is rejected this will be unchanged.
+            Note, if the proposed move is rejected, the current PRNG key will be updated to ensure
+            that we are using a different random number for the next iteration.
+        thermodynamic_state : ThermodynamicState
+            The updated thermodynamic state; if a move is rejected this will be unchanged.
+            Note, many MC moves will not modify the thermodynamic state regardless of acceptance of the move.
+        nbr_list: PairsBase, optional
+            The updated neighbor/pair list. If a nbr_list is not set, this will be None.
+            If the move is rejected, this will correspond to the neighbor
+
+        """
+
+        # if this is the first time we are calling this function during this iteration
+        # we will need to calculate the reduced potential for the current state
         # this is toggled by the calculate_current_potential flag
+        # otherwise, we can use the one that was saved from the last step, for efficiency
         if calculate_current_potential:
             current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
-                current_sampler_state, nbr_list
+                current_sampler_state, current_nbr_list
             )
             # save the current_reduced_pot so we don't have to recalculate
             # it on the next iteration if the move is rejected
@@ -356,16 +402,20 @@ class MCMove(MCMCMove):
         # this will be specific to the type of move
         # in addition to the sampler_state, this will require/return the thermodynamic state
         # for systems that e.g., make changes to particle identity.
+        # For efficiency, we will also return a copy of the nbr_list associated with the proposed state
+        # because if the move is rejected, we can move back the original state without having to rebuild the nbr_list
+        # if it were modified due to the proposed state.
         (
             proposed_sampler_state,
             proposed_thermodynamic_state,
             proposed_reduced_pot,
             log_proposal_ratio,
+            proposed_nbr_list,
         ) = self._propose(
             current_sampler_state,
             current_thermodynamic_state,
             current_reduced_pot,
-            nbr_list,
+            current_nbr_list,
         )
 
         # accept or reject the proposed state
@@ -390,7 +440,11 @@ class MCMove(MCMCMove):
             # not sure this needs to be a separate function but for simplicity in outlining the code it is fine
             # or should this return the new sampler_state and thermodynamic_state?
 
-            return proposed_sampler_state, proposed_thermodynamic_state
+            return (
+                proposed_sampler_state,
+                proposed_thermodynamic_state,
+                proposed_nbr_list,
+            )
         else:
             # if we reject the move, we need to update the current_PRNG key to ensure that
             # we are using a different random number for the next iteration
@@ -398,13 +452,8 @@ class MCMove(MCMCMove):
             current_sampler_state._current_PRNG_key = (
                 proposed_sampler_state._current_PRNG_key
             )
-            if nbr_list is not None:
-                if nbr_list.check(current_sampler_state.x0):
-                    nbr_list.build(
-                        current_sampler_state.x0, current_sampler_state.box_vectors
-                    )
 
-            return current_sampler_state, current_thermodynamic_state
+            return current_sampler_state, current_thermodynamic_state, current_nbr_list
 
     def _update_statistics(self, decision):
         """
@@ -431,8 +480,12 @@ class MCMove(MCMCMove):
 
     @abstractmethod
     def _propose(
-        self, current_sampler_state, current_thermodynamic_state, current_reduced_pot
-    ):
+        self,
+        current_sampler_state: SamplerState,
+        current_thermodynamic_state: ThermodynamicState,
+        current_reduced_pot: float,
+        current_nbr_list: Optional[PairsBase] = None,
+    ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
         Propose a new state and calculate the log proposal ratio.
 
@@ -449,6 +502,8 @@ class MCMove(MCMCMove):
             Current thermodynamic state.
         current_reduced_pot : float, required
             Current reduced potential.
+        current_nbr_list : PairsBase, required
+            Neighbor list associated with the current state.
 
         Returns
         -------
@@ -460,6 +515,8 @@ class MCMove(MCMCMove):
             Proposed reduced potential.
         log_proposal_ratio : float
             Log proposal ratio.
+        proposed_nbr_list : PairsBase
+            Proposed neighbor list. If not defined, this will be None.
 
         """
         pass
@@ -531,12 +588,12 @@ class MetropolisDisplacementMove(MCMove):
 
     def _report(
         self,
-        step,
-        iteration,
-        acceptance_probability,
-        sampler_state,
-        thermodynamic_state,
-        nbr_list,
+        step: int,
+        iteration: int,
+        acceptance_probability: float,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
     ):
         """
         Report the current state of the MC displacement move.
@@ -584,14 +641,41 @@ class MetropolisDisplacementMove(MCMove):
 
     def _propose(
         self,
-        current_sampler_state,
-        current_thermodynamic_state,
-        current_reduced_pot,
-        nbr_list,
-    ):
+        current_sampler_state: SamplerState,
+        current_thermodynamic_state: ThermodynamicState,
+        current_reduced_pot: float,
+        current_nbr_list: Optional[PairsBase] = None,
+    ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
         Implement the logic specific to displacement changes.
+
+        Parameters
+        ----------
+        current_sampler_state : SamplerState, required
+            Current sampler state.
+        current_thermodynamic_state : ThermodynamicState, required
+            Current thermodynamic state.
+        current_reduced_pot : float, required
+            Current reduced potential.
+        current_nbr_list : Optional[PairsBase]
+            Neighbor list associated with the current state.
+
+        Returns
+        -------
+        proposed_sampler_state : SamplerState
+            Proposed sampler state.
+        proposed_thermodynamic_state : ThermodynamicState
+            Proposed thermodynamic state.
+        proposed_reduced_pot : float
+            Proposed reduced potential.
+        log_proposal_ratio : float
+            Log proposal ratio.
+        proposed_nbr_list : PairsBase
+            Proposed neighbor list. If not defined, this will be None.
         """
+
+        # create a mask for the atom subset: if a value of the mask is 0
+        # the particle won't move; if 1 the particle will be moved
         if self.atom_subset is not None and self.atom_subset_mask is None:
             import jax.numpy as jnp
 
@@ -625,18 +709,30 @@ class MetropolisDisplacementMove(MCMove):
                 proposed_sampler_state.x0 + scaled_displacement_vector
             )
 
-        # after proposing a move we need to wrap particles and see if we need to rebuild
-        # the neighborlist
-        if nbr_list is not None:
-            proposed_sampler_state.x0 = nbr_list.space.wrap(proposed_sampler_state.x0)
+        # after proposing a move we need to wrap particles and see if we need to rebuild the neighborlist
+        if current_nbr_list is not None:
+            proposed_sampler_state.x0 = current_nbr_list.space.wrap(
+                proposed_sampler_state.x0
+            )
 
-            if nbr_list.check(proposed_sampler_state.x0):
-                nbr_list.build(
+            # if we need to rebuild the neighbor the neighborlist
+            # we will make a copy and then build
+            if current_nbr_list.check(proposed_sampler_state.x0):
+                import copy
+
+                proposed_nbr_list = copy.deepcopy(current_nbr_list)
+
+                proposed_nbr_list.build(
                     proposed_sampler_state.x0, proposed_sampler_state.box_vectors
                 )
+            # if we don't need to update the neighborlist, just make a new variable that refers to the original
+            else:
+                proposed_nbr_list = current_nbr_list
+        else:
+            proposed_nbr_list = None
 
         proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
-            proposed_sampler_state, nbr_list
+            proposed_sampler_state, proposed_nbr_list
         )
 
         log_proposal_ratio = -proposed_reduced_pot + current_reduced_pot
@@ -648,6 +744,7 @@ class MetropolisDisplacementMove(MCMove):
             current_thermodynamic_state,
             proposed_reduced_pot,
             log_proposal_ratio,
+            proposed_nbr_list,
         )
 
 
@@ -656,7 +753,6 @@ class MonteCarloBarostatMove(MCMove):
         self,
         volume_max_scale=0.01,
         nr_of_moves: int = 100,
-        atom_subset: Optional[List[int]] = None,
         report_frequency: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
         update_stepsize: bool = True,
@@ -671,8 +767,6 @@ class MonteCarloBarostatMove(MCMove):
             The standard deviation of the displacement for each move. Default is 1.0 nm.
         nr_of_moves : int, optional
             The number of moves to perform. Default is 100.
-        atom_subset : list of int, optional
-            A subset of atom indices to consider for the moves. Default is None.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
         update_stepsize : bool, optional
@@ -695,12 +789,12 @@ class MonteCarloBarostatMove(MCMove):
 
     def _report(
         self,
-        step,
-        iteration,
-        acceptance_probability,
-        sampler_state,
-        thermodynamic_state,
-        nbr_list,
+        step: int,
+        iteration: int,
+        acceptance_probability: float,
+        sampler_state: SamplerState,
+        thermodynamic_state: ThermodynamicState,
+        nbr_list: Optional[PairsBase] = None,
     ):
         """
 
@@ -719,6 +813,7 @@ class MonteCarloBarostatMove(MCMove):
         nbr_list : Optional[PairBase]=None
             The neighbor list or pair list for evaluating interactions in the system, default None
         """
+
         potential = thermodynamic_state.potential.compute_energy(
             sampler_state.x0, nbr_list
         )
@@ -751,13 +846,38 @@ class MonteCarloBarostatMove(MCMove):
 
     def _propose(
         self,
-        current_sampler_state,
-        current_thermodynamic_state,
-        current_reduced_pot,
-        nbr_list,
-    ):
+        current_sampler_state: SamplerState,
+        current_thermodynamic_state: ThermodynamicState,
+        current_reduced_pot: float,
+        current_nbr_list: Optional[PairsBase] = None,
+    ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
         Implement the logic specific to displacement changes.
+
+        Parameters
+        ----------
+        current_sampler_state : SamplerState, required
+            Current sampler state.
+        current_thermodynamic_state : ThermodynamicState, required
+            Current thermodynamic state.
+        current_reduced_pot : float, required
+            Current reduced potential.
+        current_nbr_list : PairsBase, optional
+            Neighbor list associated with the current state.
+
+        Returns
+        -------
+        proposed_sampler_state : SamplerState
+            Proposed sampler state.
+        proposed_thermodynamic_state : ThermodynamicState
+            Proposed thermodynamic state.
+        proposed_reduced_pot : float
+            Proposed reduced potential.
+        log_proposal_ratio : float
+            Log proposal ratio.
+        proposed_nbr_list : PairsBase
+            Proposed neighbor list. If not defined, this will be None.
+
         """
         from loguru import logger as log
 
@@ -794,14 +914,15 @@ class MonteCarloBarostatMove(MCMove):
             current_sampler_state.box_vectors * length_scaling_factor
         )
 
-        if nbr_list is not None:
-            # after scaling the box vectors we should rebuild the neighborlist
-            nbr_list.build(
+        if current_nbr_list is not None:
+            proposed_nbr_list = copy.deepcopy(current_nbr_list)
+            # after scaling the box vectors and coordinates we should always rebuild the neighborlist
+            proposed_nbr_list.build(
                 proposed_sampler_state.x0, proposed_sampler_state.box_vectors
             )
 
         proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
-            proposed_sampler_state, nbr_list
+            proposed_sampler_state, proposed_nbr_list
         )
 
         #  χ = exp ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
@@ -817,6 +938,7 @@ class MonteCarloBarostatMove(MCMove):
             current_thermodynamic_state,
             proposed_reduced_pot,
             log_proposal_ratio,
+            proposed_nbr_list,
         )
 
 
@@ -929,7 +1051,7 @@ class MCMCSampler:
             log.info(f"Iteration {iteration + 1}/{n_iterations}")
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
-                self.sampler_state, self.thermodynamic_state = move.update(
+                self.sampler_state, self.thermodynamic_state, nbr_list = move.update(
                     self.sampler_state, self.thermodynamic_state, nbr_list
                 )
 
@@ -940,3 +1062,5 @@ class MCMCSampler:
                 move.reporter.flush_buffer()
                 # TODO: flush reporter
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
+
+        # I think we should return the sampler/thermo state to be consistent

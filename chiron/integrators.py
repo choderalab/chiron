@@ -5,7 +5,7 @@ from jax import random
 from openmm import unit
 from .states import SamplerState, ThermodynamicState
 from .reporters import LangevinDynamicsReporter
-from typing import Optional
+from typing import Optional, Tuple
 from .potential import NeuralNetworkPotential
 from .neighbors import PairsBase
 
@@ -85,7 +85,7 @@ class LangevinIntegrator:
         n_steps: int = 5_000,
         nbr_list: Optional[PairsBase] = None,
         progress_bar=False,
-    ):
+    ) -> Tuple[SamplerState, PairsBase]:
         """
         Run the integrator to perform Langevin dynamics molecular dynamics simulation.
 
@@ -106,6 +106,8 @@ class LangevinIntegrator:
         -------
         sampler_state : SamplerState
             The final state of the simulation, including positions, velocities, and current PRNG key.
+        nbr_list : PairBase
+            The neighbor list for the final state of the simulation. If the NeighborList object is None, the function returns None.
         """
         from .utils import get_list_of_mass
         from tqdm import tqdm
@@ -181,15 +183,19 @@ class LangevinIntegrator:
             # r
             x += (stepsize_unitless * 0.5) * v
 
-            if nbr_list is not None:
-                x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
+            # we can actually skip this for now, and just wrap/check/rebuild
+            # right before we call the force
+
+            # if nbr_list is not None:
+            #    x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
             # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 
             x += (stepsize_unitless * 0.5) * v
+
             if nbr_list is not None:
-                x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
+                x, nbr_list = self._wrap_and_rebuild_neighborlist(x, nbr_list)
 
             F = potential.compute_force(x, nbr_list)
             # v
@@ -213,7 +219,7 @@ class LangevinIntegrator:
         updated_sampler_state.velocities = v
         updated_sampler_state.current_PRNG_key = key
 
-        return updated_sampler_state
+        return updated_sampler_state, nbr_list
 
     def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
         """
@@ -225,13 +231,20 @@ class LangevinIntegrator:
             The coordinates of the particles.
         nbr_list: PairsBsse
             The neighborlist object.
+
+        Returns
+        -------
+        x: jnp.array
+            The wrapped coordinates.
+        nbr_list: PairsBase
+            The neighborlist object; this may or may not have been rebuilt.
         """
 
         x = nbr_list.space.wrap(x)
         # check if we need to rebuild the neighborlist after moving the particles
         if nbr_list.check(x):
             nbr_list.build(x, self.box_vectors)
-        return x
+        return x, nbr_list
 
     def _report(
         self,

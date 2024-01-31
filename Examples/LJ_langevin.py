@@ -78,10 +78,10 @@ integrator = LangevinIntegrator(
 )
 print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
-updated_sampler_state = integrator.run(
+updated_sampler_state, updated_nbr_list = integrator.run(
     sampler_state,
     thermodynamic_state,
-    n_steps=5000,
+    n_steps=1000,
     nbr_list=nbr_list,
     progress_bar=True,
 )
