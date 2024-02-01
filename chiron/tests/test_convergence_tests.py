@@ -16,8 +16,8 @@ def prep_temp_dir(tmpdir_factory):
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
-@pytest.mark.skip(reason="Tests takes too long")
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+# @pytest.mark.skip(reason="Tests takes too long")
+# @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_convergence_of_MC_estimator(prep_temp_dir):
     from openmm import unit
 
@@ -44,9 +44,17 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(
+        x0=ho.positions, current_PRNG_key=PRNG.get_random_key()
+    )
 
     from chiron.reporters import _SimulationReporter
 
@@ -113,8 +121,8 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     )
 
 
-@pytest.mark.skip(reason="Tests takes too long")
-@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+# @pytest.mark.skip(reason="Tests takes too long")
+# @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     from chiron.integrators import LangevinIntegrator
     from chiron.states import SamplerState, ThermodynamicState
@@ -133,10 +141,14 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     )
 
     print(lj_fluid.system.getDefaultPeriodicBoxVectors())
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
 
     sampler_state = SamplerState(
         x0=lj_fluid.positions,
         box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
+        current_PRNG_key=PRNG.get_random_key(),
     )
     print(sampler_state.x0.shape)
     print(sampler_state.box_vectors)
@@ -162,7 +174,7 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=2000,
+        n_steps=1000,
         nbr_list=nbr_list,
         progress_bar=True,
     )
