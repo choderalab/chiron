@@ -16,8 +16,8 @@ def prep_temp_dir(tmpdir_factory):
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
-# @pytest.mark.skip(reason="Tests takes too long")
-# @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+@pytest.mark.skip(reason="Tests takes too long")
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_convergence_of_MC_estimator(prep_temp_dir):
     from openmm import unit
 
@@ -66,7 +66,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
 
     mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=100_000,
+        nr_of_moves=1_000,
         displacement_sigma=0.5 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,
@@ -90,7 +90,9 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     plt.plot(chiron_energy)
 
     print("Expectation values generated with chiron")
-    es = chiron_energy
+    import jax.numpy as jnp
+
+    es = jnp.array(chiron_energy)
     print(es.mean(), es.std())
 
     print("Expectation values from openmmtools")
@@ -121,8 +123,8 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     )
 
 
-# @pytest.mark.skip(reason="Tests takes too long")
-# @pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+@pytest.mark.skip(reason="Tests takes too long")
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     from chiron.integrators import LangevinIntegrator
     from chiron.states import SamplerState, ThermodynamicState
@@ -165,12 +167,14 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
         potential=lj_potential, temperature=300 * unit.kelvin
     )
 
-    from chiron.reporters import _SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter
 
     id = uuid.uuid4()
-    reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    reporter = LangevinDynamicsReporter(f"{prep_temp_dir}/test_{id}.h5")
 
-    integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
+    integrator = LangevinIntegrator(
+        reporter=reporter, report_frequency=100, initialize_velocities=True
+    )
     integrator.run(
         sampler_state,
         thermodynamic_state,

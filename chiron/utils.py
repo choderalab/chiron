@@ -86,7 +86,7 @@ def get_nr_of_particles(topology: Topology) -> int:
 
 def get_list_of_mass(topology: Topology) -> unit.Quantity:
     """Get the mass of the system from the topology."""
-    from simtk import unit
+    from openmm import unit
 
     mass = []
     for atom in topology.atoms():
