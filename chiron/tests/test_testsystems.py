@@ -14,6 +14,13 @@ def compute_openmm_reference_energy(testsystem, positions):
     return e
 
 
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_testsystems")
+    return tmpdir
+
+
 def test_HO():
     """
     Test the harmonic oscillator system using a Langevin integrator.
