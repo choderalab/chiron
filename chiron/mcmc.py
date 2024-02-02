@@ -938,12 +938,10 @@ class MonteCarloBarostatMove(MCMove):
             proposed_sampler_state, proposed_nbr_list
         )
 
-        #  χ = exp ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
-        log_proposal_ratio = (
-            -proposed_reduced_pot
-            + current_reduced_pot
-            + nr_of_atoms * jnp.log(proposed_volume / initial_volume)
-        )
+        #  ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
+        log_proposal_ratio = -(
+            proposed_reduced_pot - current_reduced_pot
+        ) + nr_of_atoms * jnp.log(proposed_volume / initial_volume)
 
         # we do not change the thermodynamic state so we can return 'current_thermodynamic_state'
         return (

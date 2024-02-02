@@ -149,4 +149,4 @@ move_set = MoveSchedule(
 )
 
 sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=1000, nbr_list=nbr_list)  # how many times to repeat
+sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
