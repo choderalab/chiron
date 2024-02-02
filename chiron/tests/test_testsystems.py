@@ -284,8 +284,8 @@ def test_ideal_gas(prep_temp_dir):
     )
 
     mc_displacement_move = MetropolisDisplacementMove(
-        stepsize=0.1,
-        n_steps=10,
+        displacement_sigma=0.1 * unit.nanometer,
+        nr_of_moves=10,
         reporter=reporter,
         update_stepsize=True,
         update_stepsize_frequency=100,
