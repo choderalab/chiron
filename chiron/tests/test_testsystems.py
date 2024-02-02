@@ -1,3 +1,13 @@
+import pytest
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_testsystems")
+    return tmpdir
+
+
 def compute_openmm_reference_energy(testsystem, positions):
     from openmm import unit
     from openmm.app import Simulation
@@ -12,13 +22,6 @@ def compute_openmm_reference_energy(testsystem, positions):
     e = sim.context.getState(getEnergy=True).getPotentialEnergy()
     print(e)
     return e
-
-
-@pytest.fixture(scope="session")
-def prep_temp_dir(tmpdir_factory):
-    """Create a temporary directory for the test."""
-    tmpdir = tmpdir_factory.mktemp("test_testsystems")
-    return tmpdir
 
 
 def test_HO():
