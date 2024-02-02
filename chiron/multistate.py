@@ -598,17 +598,29 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug(f"Reporting {property}...")
-        match property:
-            case "positions":
-                return self._report_positions()
-            case "states":
-                pass
-            case "u_kn":
-                return self._report_energy_matrix()
-            case "trajectory":
-                return
-            case "mixing_statistics":
-                return
+        if property == "positions":
+            return self._report_positions()
+        elif property == "states":
+            pass
+        elif property == "u_kn":
+            return self._report_energy_matrix()
+        elif property == "trajectory":
+            return
+        elif "mixing_statistics":
+            return
+
+        # match isn't in python 3.9; we can discuss if we want to drop python 3.0 support or just keep the if/else structure
+        # match property:
+        #     case "positions":
+        #         return self._report_positions()
+        #     case "states":
+        #         pass
+        #     case "u_kn":
+        #         return self._report_energy_matrix()
+        #     case "trajectory":
+        #         return
+        #     case "mixing_statistics":
+        #         return
 
     def _report_iteration(self):
         """
