@@ -315,7 +315,7 @@ class ThermodynamicState:
             from loguru import logger as log
 
             reduced_potential += self.pressure * self.volume
-
+        #  add chemical potential
         return self.beta * reduced_potential
 
     def kT_to_kJ_per_mol(self, energy):
