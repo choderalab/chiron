@@ -127,10 +127,12 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(
@@ -186,10 +188,12 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_MetropolisDisplacementMove(
@@ -246,10 +250,12 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_thermodynamic_state_inputs():
