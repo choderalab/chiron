@@ -8,12 +8,14 @@ from openmm import unit
 n_particles = 216
 temperature = 298 * unit.kelvin
 pressure = 1 * unit.atmosphere
-mass = unit.Quantity(39.9, unit.gram / unit.mole)
+
+# mass = unit.Quantity(39.9, unit.gram / unit.mole)
 
 ideal_gas = IdealGas(nparticles=n_particles, temperature=temperature, pressure=pressure)
 
+
 from chiron.potential import IdealGasPotential
-from chiron.utils import PRNG
+from chiron.utils import PRNG, get_list_of_mass
 import jax.numpy as jnp
 
 # particles are non interacting
@@ -107,17 +109,22 @@ plt.show()
 ideal_volume = ideal_gas.get_volume_expectation(thermodynamic_state)
 ideal_volume_std = ideal_gas.get_volume_standard_deviation(thermodynamic_state)
 
-print(ideal_volume, ideal_volume_std)
+print("ideal volume and standard deviation: ", ideal_volume, ideal_volume_std)
 
 
 volume_mean = jnp.mean(jnp.array(volume)) * unit.nanometer**3
 volume_std = jnp.std(jnp.array(volume)) * unit.nanometer**3
 
 
-print(volume_mean, volume_std)
+print("measured volume and standard deviation: ", volume_mean, volume_std)
 
-ideal_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / ideal_volume
-measured_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / volume_mean
+# get the masses of particles from the topology
+masses = get_list_of_mass(ideal_gas.topology)
+
+sum_of_masses = jnp.sum(jnp.array(masses.value_in_unit(unit.amu))) * unit.amu
+
+ideal_density = sum_of_masses / unit.AVOGADRO_CONSTANT_NA / ideal_volume
+measured_density = sum_of_masses / unit.AVOGADRO_CONSTANT_NA / volume_mean
 
 assert jnp.isclose(
     ideal_density.value_in_unit(unit.kilogram / unit.meter**3),
