@@ -132,7 +132,9 @@ assert jnp.isclose(
     atol=1e-1,
 )
 # see if within 5% of ideal volume
-assert abs(ideal_volume - volume_mean) / ideal_volume < 0.05
+assert (
+    abs(ideal_volume - volume_mean) / ideal_volume < 0.05
+), f"Warning: {abs(ideal_volume - volume_mean) / ideal_volume} exceeds the 5% threshold"
 
 # see if within 10% of the ideal standard deviation of the volume
 assert abs(ideal_volume_std - volume_std) / ideal_volume_std < 0.1
