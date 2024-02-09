@@ -87,7 +87,7 @@ class SamplerState:
         self._current_PRNG_key = current_PRNG_key
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
-        self._velocity_unit = unit.nanometer / unit.picosecond
+        self._time_unit = unit.picosecond
 
     @property
     def n_particles(self) -> int:
@@ -132,14 +132,16 @@ class SamplerState:
         if isinstance(velocities, unit.Quantity):
             self._velocities = velocities
         else:
-            self._velocities = unit.Quantity(velocities, self._velocity_unit)
+            self._velocities = unit.Quantity(
+                velocities, self._distance_unit / self._time_unit
+            )
 
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
 
     def velocity_unit(self) -> unit.Unit:
-        return self._velocity_unit
+        return self._distance_unit / self._time_unit
 
     @property
     def new_PRNG_key(self) -> random.PRNGKey:

@@ -78,12 +78,10 @@ class IdealGasPotential(NeuralNetworkPotential):
 
         """
 
-        if not isinstance(topology, Topology):
-            if not isinstance(topology, property):
-                if topology is not None:
-                    raise TypeError(
-                        f"Topology must be a Topology object or None, type(topology) = {type(topology)}"
-                    )
+        if not isinstance(topology, (Topology, property)) and topology is not None:
+            raise TypeError(
+                f"Topology must be a Topology object, a property, or None, got type(topology) = {type(topology)}"
+            )
 
         self.topology = topology
 

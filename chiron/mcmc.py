@@ -256,25 +256,24 @@ class MCMove(MCMCMove):
         nbr_list: PairsBase
             The updated neighbor/pair list. If a nbr_list is not set, this will be None.
         """
-        calculate_current_potential = True
+        calculate_current_reduced_potential = True
 
         for i in range(self.nr_of_moves):
             sampler_state, thermodynamic_state, nbr_list = self._step(
                 sampler_state,
                 thermodynamic_state,
                 nbr_list,
-                calculate_current_potential=calculate_current_potential,
+                calculate_current_reduced_potential=calculate_current_reduced_potential,
             )
-            # after the first step, we don't need to recalculate the current potential, it will be stored
-            calculate_current_potential = False
+            # after the first step, we don't need to recalculate the current reduced_potential, it will be stored
+            calculate_current_reduced_potential = False
 
+            # I think it makes sense to use i + self.nr_of_moves*self._move_iteration as our current "step"
+            # otherwise, if we just used i, instances where self.report_frequency > self.nr_of_moves would only report on the
+            # first step,  which might actually be more frequent than we specify
             elapsed_step = i + self._move_iteration * self.nr_of_moves
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
-                    # I think it makes sense to use i + self.nr_of_moves*self._move_iteration as our current "step"
-                    # otherwise, if we just used i, instances where self.report_frequency > self.nr_of_moves would only report on the
-                    # first step,  which might actually be more frequent than we specify
-
                     if elapsed_step % self.report_frequency == 0:
                         self._report(
                             i,
@@ -351,7 +350,7 @@ class MCMove(MCMCMove):
         current_sampler_state: SamplerState,
         current_thermodynamic_state: ThermodynamicState,
         current_nbr_list: Optional[PairsBase] = None,
-        calculate_current_potential: bool = True,
+        calculate_current_reduced_potential: bool = True,
     ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
         """
         Performs an individual MC step.
@@ -366,7 +365,7 @@ class MCMove(MCMCMove):
             Current thermodynamic state.
         current_nbr_list : Optional[PairsBase]
             Neighbor list associated with the current state.
-        calculate_current_potential : bool, optional
+        calculate_current_reduced_potential : bool, optional
             Whether to calculate the current reduced potential. Default is True.
 
         Returns
@@ -386,9 +385,9 @@ class MCMove(MCMCMove):
 
         # if this is the first time we are calling this function during this iteration
         # we will need to calculate the reduced potential for the current state
-        # this is toggled by the calculate_current_potential flag
+        # this is toggled by the calculate_current_reduced_potential flag
         # otherwise, we can use the one that was saved from the last step, for efficiency
-        if calculate_current_potential:
+        if calculate_current_reduced_potential:
             current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
                 current_sampler_state, current_nbr_list
             )
@@ -418,16 +417,16 @@ class MCMove(MCMCMove):
             current_nbr_list,
         )
 
-        # accept or reject the proposed state
-        decision = self._accept_or_reject(
-            log_proposal_ratio,
-            proposed_sampler_state.new_PRNG_key,
-            method=self.method,
-        )
-        # a function that will update the statistics for the move
-
         if jnp.isnan(proposed_reduced_pot):
             decision = False
+        else:
+            # accept or reject the proposed state
+            decision = self._accept_or_reject(
+                log_proposal_ratio,
+                proposed_sampler_state.new_PRNG_key,
+                method=self.method,
+            )
+        # a function that will update the statistics for the move
 
         self._update_statistics(decision)
 
@@ -933,8 +932,9 @@ class MonteCarloBarostatMove(MCMove):
         proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
             proposed_sampler_state, proposed_nbr_list
         )
-
-        #  ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
+        # NPT acceptance criteria was originally defined in McDonald 1972, https://doi.org/10.1080/00268977200100031
+        # (see equation 9). The acceptance probability is given by:
+        # ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
         log_proposal_ratio = -(
             proposed_reduced_pot - current_reduced_pot
         ) + nr_of_atoms * jnp.log(proposed_volume / initial_volume)
