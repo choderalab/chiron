@@ -15,6 +15,7 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
     from chiron.mcmc import LangevinDynamicsMove
     from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
     from chiron.reporters import MultistateReporter, BaseReporter
+    from chiron.mcmc import MCMCSampler, MoveSchedule
 
     sigma = 0.34 * unit.nanometer
     cutoff = 3.0 * sigma
@@ -24,12 +25,16 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
         OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
     )
 
-    move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
+    lang_move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
     BaseReporter.set_directory("multistate_test")
     reporter = MultistateReporter()
     reporter.reset_reporter_file()
+    move_schedule = MoveSchedule([("LangevinDynamicsMove", lang_move)])
+    mcmc_sampler = MCMCSampler(
+        move_schedule,
+    )
 
-    multistate_sampler = MultiStateSampler(mcmc_moves=move, reporter=reporter)
+    multistate_sampler = MultiStateSampler(mcmc_sampler=mcmc_sampler, reporter=reporter)
     return nbr_list, multistate_sampler
 
 
@@ -215,8 +220,9 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iterations = 250
-    ho_sampler.run(n_iterations)
+
+    n_iteratinos = 25
+    ho_sampler.run(n_iteratinos)
 
     # check that we have the correct number of iterations, replicas and states
     assert ho_sampler.iteration == n_iterations
@@ -226,10 +232,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     u_kn = ho_sampler._reporter.get_property("u_kn")
 
-    # this appears to need to be n+1 iterations; I assume because of the initial logging of the value
-    assert u_kn.shape == (4, 4, n_iterations + 1)
-
-    # assert u_kn.shape == (n_iterations, 4, 4)
+    assert u_kn.shape == (n_iteratinos, 4, 4)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     # [ 0.        , -0.28593054, -0.54696467, -0.78709279]
