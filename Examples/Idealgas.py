@@ -9,8 +9,6 @@ n_particles = 216
 temperature = 298 * unit.kelvin
 pressure = 1 * unit.atmosphere
 
-# mass = unit.Quantity(39.9, unit.gram / unit.mole)
-
 ideal_gas = IdealGas(nparticles=n_particles, temperature=temperature, pressure=pressure)
 
 
