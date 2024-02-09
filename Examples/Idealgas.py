@@ -137,4 +137,6 @@ assert (
 ), f"Warning: {abs(ideal_volume - volume_mean) / ideal_volume} exceeds the 5% threshold"
 
 # see if within 10% of the ideal standard deviation of the volume
-assert abs(ideal_volume_std - volume_std) / ideal_volume_std < 0.1
+assert (
+    abs(ideal_volume_std - volume_std) / ideal_volume_std < 0.1
+), f"Warning: {abs(ideal_volume_std - volume_std) / ideal_volume_std} exceeds the 10% threshold"
