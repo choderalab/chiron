@@ -24,9 +24,7 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
         OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
     )
 
-    move = LangevinDynamicsMove(
-        stepsize=1.0 * unit.femtoseconds, nr_of_steps=100, initialize_velocities=True
-    )
+    move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
     BaseReporter.set_directory("multistate_test")
     reporter = MultistateReporter()
     reporter.reset_reporter_file()

@@ -1,7 +1,12 @@
 from openmm import unit
 from openmm import app
 
+"""
+This example explore a Lennard-Jones system, where a single bead represents a united atom methane molecule, 
+modeled with the UA-TraPPE force field.
 
+
+"""
 n_particles = 1100
 temperature = 140 * unit.kelvin
 pressure = 13.00765 * unit.atmosphere
@@ -20,7 +25,9 @@ import jax.numpy as jnp
 # these were generated in Mbuild using fill_box which wraps packmol
 # a minimum spacing of 0.4 nm was used during construction.
 
-positions = jnp.load("Examples/methane_coords.npy") * unit.nanometer
+from chiron.utils import get_full_path
+
+positions = jnp.load(get_full_path("Examples/methane_coords.npy")) * unit.nanometer
 
 box_vectors = jnp.array(
     [
@@ -136,17 +143,17 @@ langevin_dynamics_move = LangevinDynamicsMove(
     nr_of_steps=100,
     reporter=reporter_langevin,
     report_frequency=10,
-    reinitialize_velocities=True,
+    initialize_velocities=True,
 )
 
 
 move_set = MoveSchedule(
     [
         ("LangevinDynamicsMove", langevin_dynamics_move),
-        ("MetropolisDisplacementMove", mc_displacement_move),
+        # ("MetropolisDisplacementMove", mc_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )
 
 sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
+sampler.run(n_iterations=100, nbr_list=nbr_list)  # how many times to repeat

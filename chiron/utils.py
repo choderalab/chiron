@@ -38,6 +38,25 @@ class PRNG:
         return subkey
 
 
+def get_full_path(relative_path: str) -> str:
+    """Get the fill path of a file that is defined relative to the chiron module root directory.
+
+    Parameters
+    ----------
+    relative_path : str
+        The relative path of the file.
+
+    Returns
+    -------
+    str
+        The full path of the file.
+    """
+    from importlib.resources import files
+
+    _MODULE_ROOT = files("chiron")
+    return f"{_MODULE_ROOT}/../{relative_path}"
+
+
 def get_data_file_path(relative_path: str) -> str:
     """Get the full path to one of the reference files in testsystems.
     In the source distribution, these files are in ``chiron/data/``,

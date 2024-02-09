@@ -1,6 +1,14 @@
 from openmmtools.testsystems import IdealGas
 from openmm import unit
 
+"""
+This example explore an ideal gas system, where the particles are non-interacting. 
+This will use the MonteCarloBarostatMove to sample the volume of the system and 
+MetropolisDisplacementMove to sample the particle positions.
+
+This utilizes the IdealGas example from openmmtools to initialize particle positions and topology.
+
+"""
 
 # Use the IdealGas example from openmmtools to initialize particle positions and topology
 # For this example, the topology provides the masses for the particles

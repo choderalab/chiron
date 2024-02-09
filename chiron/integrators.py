@@ -26,7 +26,6 @@ class LangevinIntegrator:
         self,
         stepsize=1.0 * unit.femtoseconds,
         collision_rate=1.0 / unit.picoseconds,
-        initialize_velocities: bool = False,
         reinitialize_velocities: bool = False,
         report_frequency: int = 100,
         reporter: Optional[LangevinDynamicsReporter] = None,
@@ -41,8 +40,6 @@ class LangevinIntegrator:
             Time step of integration with units of time. Default is 1.0 * unit.femtoseconds.
         collision_rate : unit.Quantity, optional
             Collision rate for the Langevin dynamics, with units 1/time. Default is 1.0 / unit.picoseconds.
-        initialize_velocities : bool, optional
-            Flag indicating whether to initialize the velocities the first time the run function is called. Default is False.
         reinitialize_velocities : bool, optional
             Flag indicating whether to reinitialize the velocities each time the run function is called. Default is False.
         report_frequency : int, optional
@@ -52,9 +49,6 @@ class LangevinIntegrator:
         save_traj_in_memory: bool
             Flag indicating whether to save the trajectory in memory.
             Default is False. NOTE: Only for debugging purposes.
-        reinitialize_velocities: bool
-            Whether to reinitialize the velocities each time the run function is called.
-            Default is False.
         """
         from loguru import logger as log
 
@@ -76,7 +70,6 @@ class LangevinIntegrator:
         self.save_traj_in_memory = save_traj_in_memory
         self.traj = []
         self.reinitialize_velocities = reinitialize_velocities
-        self.initialize_velocities = initialize_velocities
         self._move_iteration = 0
 
     def run(
@@ -151,19 +144,20 @@ class LangevinIntegrator:
             sampler_state.velocities = initialize_velocities(
                 temperature, potential.topology, key
             )
-            self.initialize_velocities = False
 
-        elif self.initialize_velocities:
+        elif sampler_state._velocities is None:
             # v0 = sigma_v * random.normal(key, x0.shape)
             from .utils import initialize_velocities
 
             sampler_state.velocities = initialize_velocities(
                 temperature, potential.topology, key
             )
-            self.initialize_velocities = False
-        else:
-            if sampler_state._velocities is None:
-                raise ValueError("Velocities must be set before running the integrator")
+        elif sampler_state._velocities.shape[0] != sampler_state.x0.shape[0]:
+            from .utils import initialize_velocities
+
+            sampler_state.velocities = initialize_velocities(
+                temperature, potential.topology, key
+            )
 
         # extract the velocities from the sampler state
         v0 = sampler_state.velocities
