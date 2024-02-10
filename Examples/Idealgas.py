@@ -98,8 +98,10 @@ move_set = MoveSchedule(
     ]
 )
 
-sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
+sampler = MCMCSampler(move_set)
+sampler.run(
+    sampler_state, thermodynamic_state, n_iterations=10, nbr_list=nbr_list
+)  # how many times to repeat
 
 # get the volume from the reporter
 volume = reporter.get_property("volume")

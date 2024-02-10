@@ -305,8 +305,10 @@ def test_ideal_gas(prep_temp_dir):
         ]
     )
 
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-    sampler.run(n_iterations=10, nbr_list=nbr_list)  # how many times to repeat
+    sampler = MCMCSampler(move_set)
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=10, nbr_list=nbr_list
+    )  # how many times to repeat
 
     volume = reporter.get_property("volume")
 

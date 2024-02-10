@@ -65,7 +65,8 @@ def test_reporter(prep_temp_dir, ho_multistate_sampler_multiple_ks):
     reporter.reset_reporter_file()
 
     integrator = LangevinIntegrator(
-        reporter=reporter, report_frequency=1, initialize_velocities=True
+        reporter=reporter,
+        report_frequency=1,
     )
     integrator.run(
         sampler_state,

@@ -126,19 +126,6 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     simulation_reporter = LangevinDynamicsReporter(1)
 
-    # this will fail because we have not initialized the velocity
-    with pytest.raises(ValueError):
-        langevin_move = LangevinDynamicsMove(
-            nr_of_steps=10, reinitialize_velocities=False, reporter=simulation_reporter
-        )
-        move_set = MoveSchedule([("LangevinMove", langevin_move)])
-
-        # Initalize the sampler
-        sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-
-        # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-        sampler.run(n_iterations=2)  # how many times to repeat
-
     # the following will reinitialize the velocities for each iteration
     langevin_move = LangevinDynamicsMove(
         nr_of_steps=10, reinitialize_velocities=True, reporter=simulation_reporter
@@ -147,10 +134,12 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
     # the following will use the initialize velocities function
     from chiron.utils import initialize_velocities

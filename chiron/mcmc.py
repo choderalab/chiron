@@ -129,7 +129,6 @@ class LangevinDynamicsMove(MCMCMove):
         self.integrator = LangevinIntegrator(
             stepsize=self.stepsize,
             collision_rate=self.collision_rate,
-            initialize_velocities=initialize_velocities,
             reinitialize_velocities=reinitialize_velocities,
             report_frequency=report_frequency,
             reporter=reporter,
@@ -1036,26 +1035,44 @@ class MCMCSampler:
         log.info("Initializing MCMC sampler")
         self.move = move_set
 
-
     def run(
         self,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
         n_iterations: int = 1,
+        nbr_list: Optional[PairsBase] = None,
     ):
         """
         Run the sampler for a specified number of iterations.
 
         Parameters
         ----------
+        sampler_state : SamplerState
+            The initial state of the sampler.
+        thermodynamic_state : ThermodynamicState
+            The thermodynamic state of the system.
         n_iterations : int, optional
             Number of iterations of the sampler to run.
+            Default is 1.
+        nbr_list : PairsBase, optional
+            The neighbor list to use for the simulation.
+
+        Returns
+        -------
+        sampler_state : SamplerState
+            The updated sampler state.
+        thermodynamic_state : ThermodynamicState
+            The updated thermodynamic state.
+        nbr_list: PairsBase
+            The updated neighbor/pair list. If a nbr_list is not set, this will be None.
+
         """
         from loguru import logger as log
         from copy import deepcopy
 
         sampler_state = deepcopy(sampler_state)
         thermodynamic_state = deepcopy(thermodynamic_state)
+        nbr_list = deepcopy(nbr_list)
 
         log.info("Running MCMC sampler")
         log.info(f"move_schedule = {self.move.move_schedule}")
@@ -1064,7 +1081,9 @@ class MCMCSampler:
             for move_name, move in self.move.move_schedule:
                 log.debug(f"Performing: {move_name}")
 
-                move.run(sampler_state, thermodynamic_state)
+                sampler_state, thermodynamic_state, nbr_list = move.update(
+                    sampler_state, thermodynamic_state, nbr_list
+                )
 
         log.info("Finished running MCMC sampler")
         log.debug("Closing reporter")
@@ -1072,6 +1091,4 @@ class MCMCSampler:
             if move.reporter is not None:
                 move.reporter.flush_buffer()
                 log.debug(f"Closed reporter {move.reporter.log_file_path}")
-        return sampler_state
-
-        # I think we should return the sampler/thermo state to be consistent
+        return sampler_state, thermodynamic_state, nbr_list

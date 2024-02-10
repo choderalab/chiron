@@ -143,7 +143,6 @@ langevin_dynamics_move = LangevinDynamicsMove(
     nr_of_steps=100,
     reporter=reporter_langevin,
     report_frequency=10,
-    initialize_velocities=True,
 )
 
 
@@ -155,5 +154,7 @@ move_set = MoveSchedule(
     ]
 )
 
-sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
-sampler.run(n_iterations=100, nbr_list=nbr_list)  # how many times to repeat
+sampler = MCMCSampler(move_set)
+sampler.run(
+    sampler_state, thermodynamic_state, n_iterations=100, nbr_list=nbr_list
+)  # how many times to repeat
