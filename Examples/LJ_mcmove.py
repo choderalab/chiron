@@ -64,11 +64,11 @@ from chiron.mcmc import MetropolisDisplacementMove
 
 mc_move = MetropolisDisplacementMove(
     displacement_sigma=0.01 * unit.nanometer,
-    nr_of_moves=5000,
+    number_of_moves=5000,
     reporter=reporter,
     report_frequency=1,
-    update_stepsize=True,
-    update_stepsize_frequency=100,
+    autotune=True,
+    autotune_interval=100,
 )
 
 mc_move.update(sampler_state, thermodynamic_state, nbr_list)

@@ -29,12 +29,15 @@ from chiron.utils import get_full_path
 
 positions = jnp.load(get_full_path("Examples/methane_coords.npy")) * unit.nanometer
 
-box_vectors = jnp.array(
-    [
-        [4.275021399280942, 0.0, 0.0],
-        [0.0, 4.275021399280942, 0.0],
-        [0.0, 0.0, 4.275021399280942],
-    ]
+box_vectors = (
+    jnp.array(
+        [
+            [4.275021399280942, 0.0, 0.0],
+            [0.0, 4.275021399280942, 0.0],
+            [0.0, 0.0, 4.275021399280942],
+        ]
+    )
+    * unit.nanometer
 )
 
 from chiron.potential import LJPotential
@@ -65,9 +68,7 @@ PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=positions,
-    current_PRNG_key=PRNG.get_random_key(),
-    box_vectors=box_vectors * unit.nanometer,
+    x0=positions, current_PRNG_key=PRNG.get_random_key(), box_vectors=box_vectors
 )
 
 
@@ -90,52 +91,53 @@ nbr_list.build_from_state(sampler_state)
 #
 # sampler_state.x0 = min_x
 
-from chiron.reporters import MCReporter, LangevinDynamicsReporter
+from chiron.reporters import MCReporter
 
 # initialize a reporter to save the simulation data
-filename_barostat = "test_mc_lj_barostat.h5"
-filename_displacement = "test_mc_lj_disp.h5"
-filename_langevin = "test_mc_lj_langevin.h5"
-
 import os
 
+filename_barostat = "test_mc_lj_barostat.h5"
 if os.path.isfile(filename_barostat):
     os.remove(filename_barostat)
 reporter_barostat = MCReporter(filename_barostat, 1)
+
+from chiron.mcmc import MetropolisDisplacementMove
+
+mc_displacement_move = MetropolisDisplacementMove(
+    displacement_sigma=0.001 * unit.nanometer,
+    number_of_moves=100,
+    reporter=reporter_displacement,
+    report_frequency=10,
+    autotune=True,
+    autotune_interval=100,
+)
+
+filename_displacement = "test_mc_lj_disp.h5"
 
 if os.path.isfile(filename_displacement):
     os.remove(filename_displacement)
 reporter_displacement = MCReporter(filename_displacement, 10)
 
+from chiron.mcmc import MonteCarloBarostatMove
+
+mc_barostat_move = MonteCarloBarostatMove(
+    volume_max_scale=0.1,
+    number_of_moves=10,
+    reporter=reporter_barostat,
+    report_frequency=1,
+    autotune=True,
+    autotune_interval=50,
+)
+
+from chiron.reporters import LangevinDynamicsReporter
+
+filename_langevin = "test_mc_lj_langevin.h5"
+
 if os.path.isfile(filename_langevin):
     os.remove(filename_langevin)
 reporter_langevin = LangevinDynamicsReporter(filename_langevin, 10)
 
-from chiron.mcmc import (
-    MetropolisDisplacementMove,
-    MonteCarloBarostatMove,
-    LangevinDynamicsMove,
-    MoveSchedule,
-    MCMCSampler,
-)
-
-mc_displacement_move = MetropolisDisplacementMove(
-    displacement_sigma=0.001 * unit.nanometer,
-    nr_of_moves=100,
-    reporter=reporter_displacement,
-    report_frequency=10,
-    update_stepsize=True,
-    update_stepsize_frequency=100,
-)
-
-mc_barostat_move = MonteCarloBarostatMove(
-    volume_max_scale=0.1,
-    nr_of_moves=10,
-    reporter=reporter_barostat,
-    report_frequency=1,
-    update_stepsize=True,
-    update_stepsize_frequency=50,
-)
+from chiron.mcmc import LangevinDynamicsMove
 
 langevin_dynamics_move = LangevinDynamicsMove(
     stepsize=1.0 * unit.femtoseconds,
@@ -145,16 +147,17 @@ langevin_dynamics_move = LangevinDynamicsMove(
     report_frequency=10,
 )
 
+from chiron.mcmc import MoveSchedule
 
 move_set = MoveSchedule(
     [
         ("LangevinDynamicsMove", langevin_dynamics_move),
-        # ("MetropolisDisplacementMove", mc_displacement_move),
+        ("MetropolisDisplacementMove", mc_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )
 
+from chiron.mcmc import MCMCSampler
+
 sampler = MCMCSampler(move_set)
-sampler.run(
-    sampler_state, thermodynamic_state, n_iterations=100, nbr_list=nbr_list
-)  # how many times to repeat
+sampler.run(sampler_state, thermodynamic_state, n_iterations=100, nbr_list=nbr_list)

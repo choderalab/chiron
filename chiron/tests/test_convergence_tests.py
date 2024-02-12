@@ -66,7 +66,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
 
     mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=1_000,
+        number_of_moves=1_000,
         displacement_sigma=0.5 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,

@@ -76,18 +76,18 @@ from chiron.mcmc import (
 # initialize the displacement move
 mc_barostat_move = MonteCarloBarostatMove(
     volume_max_scale=0.2,
-    nr_of_moves=10,
+    number_of_moves=10,
     reporter=reporter,
-    update_stepsize=True,
-    update_stepsize_frequency=100,
+    autotune=True,
+    autotune_interval=100,
 )
 
 # initialize the barostat move and the move schedule
 metropolis_displacement_move = MetropolisDisplacementMove(
     displacement_sigma=0.1 * unit.nanometer,
-    nr_of_moves=100,
-    update_stepsize=True,
-    update_stepsize_frequency=100,
+    number_of_moves=100,
+    autotune=True,
+    autotune_interval=100,
 )
 
 # define the move schedule

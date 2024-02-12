@@ -8,7 +8,7 @@ lj_fluid = LennardJonesFluid(reduced_density=0.1, nparticles=1000)
 
 from chiron.potential import LJPotential
 from openmm import unit
-from chiron.utils import PRNG, initialize_velocities
+from chiron.utils import PRNG
 
 
 # initialize the LennardJones potential in chiron
@@ -30,10 +30,6 @@ sampler_state = SamplerState(
     x0=lj_fluid.positions,
     current_PRNG_key=PRNG.get_random_key(),
     box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
-)
-
-velocities = initialize_velocities(
-    300 * unit.kelvin, lj_fluid.topology, PRNG.get_random_key()
 )
 
 
@@ -73,9 +69,7 @@ reporter = LangevinDynamicsReporter(
 from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
-integrator = LangevinIntegrator(
-    reporter=reporter, report_frequency=100, reinitialize_velocities=True
-)
+integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
 print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
 
 updated_sampler_state, updated_nbr_list = integrator.run(

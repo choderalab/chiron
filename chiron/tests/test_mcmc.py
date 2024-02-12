@@ -207,7 +207,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=10,
+        number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,
@@ -269,7 +269,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     simulation_reporter = MCReporter(1)
 
     mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=10,
+        number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=None,
         reporter=simulation_reporter,
@@ -330,11 +330,11 @@ def test_mc_barostat_parameter_setting():
 
     barostat_move = MonteCarloBarostatMove(
         volume_max_scale=0.1,
-        nr_of_moves=1,
+        number_of_moves=1,
     )
 
     assert barostat_move.volume_max_scale == 0.1
-    assert barostat_move.nr_of_moves == 1
+    assert barostat_move.number_of_moves == 1
 
 
 def test_mc_barostat(prep_temp_dir):
@@ -350,7 +350,7 @@ def test_mc_barostat(prep_temp_dir):
 
     barostat_move = MonteCarloBarostatMove(
         volume_max_scale=0.1,
-        nr_of_moves=10,
+        number_of_moves=10,
         reporter=simulation_reporter,
         report_frequency=1,
     )

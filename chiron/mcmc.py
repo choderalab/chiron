@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 class MCMCMove:
     def __init__(
         self,
-        nr_of_moves: int,
+        number_of_moves: int,
         reporter: Optional[_SimulationReporter] = None,
         report_frequency: Optional[int] = 100,
     ):
@@ -20,7 +20,7 @@ class MCMCMove:
 
         Parameters
         ----------
-        nr_of_moves : int
+        number_of_moves : int
             Number of moves to be applied.
         reporter : _SimulationReporter, optional
             Reporter object for saving the simulation data.
@@ -31,7 +31,7 @@ class MCMCMove:
 
         """
 
-        self.nr_of_moves = nr_of_moves
+        self.number_of_moves = number_of_moves
         self.reporter = reporter
         self.report_frequency = report_frequency
 
@@ -115,7 +115,7 @@ class LangevinDynamicsMove(MCMCMove):
             Default is False. NOTE: Only for debugging purposes.
         """
         super().__init__(
-            nr_of_moves=nr_of_steps,
+            number_of_moves=number_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
         )
@@ -173,7 +173,7 @@ class LangevinDynamicsMove(MCMCMove):
         updated_sampler_state, updated_nbr_list = self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
-            n_steps=self.nr_of_moves,
+            n_steps=self.number_of_moves,
             nbr_list=nbr_list,
         )
 
@@ -190,11 +190,11 @@ class LangevinDynamicsMove(MCMCMove):
 class MCMove(MCMCMove):
     def __init__(
         self,
-        nr_of_moves: int,
+        number_of_moves: int,
         reporter: Optional[_SimulationReporter],
         report_frequency: int = 1,
-        update_stepsize: bool = False,
-        update_stepsize_frequency: int = 100,
+        autotune: bool = False,
+        autotune_interval: int = 100,
         method: str = "metropolis",
     ) -> None:
         """
@@ -202,31 +202,31 @@ class MCMove(MCMCMove):
 
         Parameters
         ----------
-        nr_of_moves
+        number_of_moves
             Number of moves to be applied in each call to update.
         reporter
             Reporter object for saving the simulation step data.
         report_frequency
             Frequency of saving the simulation data.
-        update_stepsize
-            Whether to update the "stepsize" of the move. Stepsize is a generic term for the key move parameters.
-            For example, for a simple displacement move this would be the displacement_sigma.
-        update_stepsize_frequency
-            Frequency of updating the stepsize of the move.
+        autotune
+            Whether to automatically tune the parameters of the MC move to achieve a target acceptance ratio.
+            For example, for a simple displacement move this would update the displacement_sigma.
+        autotune_interval
+            Frequency of autotuning the MC move parameters to achieve a target acceptance ratio.
         method
             Methodology to use for accepting or rejecting the proposed state.
             Default is "metropolis".
         """
         super().__init__(
-            nr_of_moves,
+            number_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
         )
         self.method = method  # I think we should pass a class/function instead of a string, like space.
 
         self.reset_statistics()
-        self.update_stepsize = update_stepsize
-        self.update_stepsize_frequency = update_stepsize_frequency
+        self.autotune = autotune
+        self.autotune_interval = autotune_interval
 
     def update(
         self,
@@ -257,7 +257,7 @@ class MCMove(MCMCMove):
         """
         calculate_current_reduced_potential = True
 
-        for i in range(self.nr_of_moves):
+        for i in range(self.number_of_moves):
             sampler_state, thermodynamic_state, nbr_list = self._step(
                 sampler_state,
                 thermodynamic_state,
@@ -267,10 +267,10 @@ class MCMove(MCMCMove):
             # after the first step, we don't need to recalculate the current reduced_potential, it will be stored
             calculate_current_reduced_potential = False
 
-            # I think it makes sense to use i + self.nr_of_moves*self._move_iteration as our current "step"
-            # otherwise, if we just used i, instances where self.report_frequency > self.nr_of_moves would only report on the
+            # I think it makes sense to use i + self.number_of_moves*self._move_iteration as our current "step"
+            # otherwise, if we just used i, instances where self.report_frequency > self.number_of_moves would only report on the
             # first step,  which might actually be more frequent than we specify
-            elapsed_step = i + self._move_iteration * self.nr_of_moves
+            elapsed_step = i + self._move_iteration * self.number_of_moves
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
                     if elapsed_step % self.report_frequency == 0:
@@ -283,13 +283,10 @@ class MCMove(MCMCMove):
                             thermodynamic_state,
                             nbr_list,
                         )
-            if self.update_stepsize:
+            if self.autotune:
                 # if we only used i, we might never actually update the parameters if we have a move that is called infrequently
-                if (
-                    elapsed_step % self.update_stepsize_frequency == 0
-                    and elapsed_step > 0
-                ):
-                    self._update_stepsize()
+                if elapsed_step % self.autotune_interval == 0 and elapsed_step > 0:
+                    self._autotune()
         # keep track of how many times this function has been called
         self._move_iteration += 1
 
@@ -332,15 +329,15 @@ class MCMove(MCMCMove):
         pass
 
     @abstractmethod
-    def _update_stepsize(self):
+    def _autotune(self):
         """
-        Update the "stepsize" for a move to reach a target acceptance probability range.
+        This will autotune the move parameters to reach a target acceptance probability.
         This will be specific to the type of move, e.g., a displacement_sigma for a displacement move
         or a maximum volume change factor for a Monte Carlo barostat move.
 
         Since different moves will be modifying different quantities, this needs to be defined for each move.
 
-        Note this will modify the "stepsize" in place.
+        Note this will modify the class parameters in place.
         """
         pass
 
@@ -543,12 +540,12 @@ class MetropolisDisplacementMove(MCMove):
     def __init__(
         self,
         displacement_sigma=1.0 * unit.nanometer,
-        nr_of_moves: int = 100,
+        number_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
         report_frequency: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
-        update_stepsize: bool = True,
-        update_stepsize_frequency: int = 100,
+        autotune: bool = False,
+        autotune_interval: int = 100,
     ):
         """
         Initialize the Displacement Move class.
@@ -557,26 +554,27 @@ class MetropolisDisplacementMove(MCMove):
         ----------
         displacement_sigma : float or unit.Quantity, optional
             The standard deviation of the displacement for each move. Default is 1.0 nm.
-        nr_of_moves : int, optional
+        number_of_moves : int, optional
             The number of moves to perform. Default is 100.
         atom_subset : list of int, optional
             A subset of atom indices to consider for the moves. Default is None.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
-        update_stepsize : bool, optional
-            Whether to update the stepsize of the move. Default is True.
-        update_stepsize_frequency : int, optional
-            Frequency of updating the stepsize of the move. Default is 100.
+        autotune : bool, optional
+            Whether to autotune the displacement_sigma of the move to achieve an acceptance ratio between 0.4 and 0.6.
+            Default is False.
+        autotune_interval : int, optional
+            Frequency of autotuning displacement_sigma of the move. Default is 100.
         Returns
         -------
         None
         """
         super().__init__(
-            nr_of_moves=nr_of_moves,
+            number_of_moves=number_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
-            update_stepsize=update_stepsize,
-            update_stepsize_frequency=update_stepsize_frequency,
+            autotune=autotune,
+            autotune_interval=autotune_interval,
             method="metropolis",
         )
         self.displacement_sigma = displacement_sigma
@@ -631,9 +629,9 @@ class MetropolisDisplacementMove(MCMove):
             }
         )
 
-    def _update_stepsize(self):
+    def _autotune(self):
         """
-        Update the displacement_sigma to reach a target acceptance probability of 0.5.
+        Update the displacement_sigma to reach a target acceptance probability between 0.4 and 0.6.
         """
         acceptance_ratio = self.n_accepted / self.n_proposed
         if acceptance_ratio > 0.6:
@@ -754,37 +752,38 @@ class MonteCarloBarostatMove(MCMove):
     def __init__(
         self,
         volume_max_scale=0.01,
-        nr_of_moves: int = 100,
+        number_of_moves: int = 100,
         report_frequency: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
-        update_stepsize: bool = True,
-        update_stepsize_frequency: int = 100,
+        autotune: bool = False,
+        autotune_interval: int = 100,
     ):
         """
         Initialize the Monte Carlo Barostat Move class.
 
         Parameters
         ----------
-        displacement_sigma : float or unit.Quantity, optional
-            The standard deviation of the displacement for each move. Default is 1.0 nm.
-        nr_of_moves : int, optional
+        volume_max_scale : float, optional
+            The scaling factor multiplied by volume to set the maximum volume change allowed.
+        number_of_moves : int, optional
             The number of moves to perform. Default is 100.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
-        update_stepsize : bool, optional
-            Whether to update the stepsize of the move. Default is True.
-        update_stepsize_frequency : int, optional
-            Frequency of updating the stepsize of the move. Default is 100.
+        autotune : bool, optional
+            Whether to autotune the volume_max_scale value of the move to achieve a target probability
+            between 0.25 and 0.75. Default is False. volume_max_scale is capped at 0.3
+        autotune_interval : int, optional
+            Frequency of autotuning the volume_max_scale of the move. Default is 100.
         Returns
         -------
         None
         """
         super().__init__(
-            nr_of_moves=nr_of_moves,
+            number_of_moves=number_of_moves,
             reporter=reporter,
             report_frequency=report_frequency,
-            update_stepsize=update_stepsize,
-            update_stepsize_frequency=update_stepsize_frequency,
+            autotune=autotune,
+            autotune_interval=autotune_interval,
             method="metropolis",
         )
         self.volume_max_scale = volume_max_scale
@@ -840,7 +839,7 @@ class MonteCarloBarostatMove(MCMove):
             }
         )
 
-    def _update_stepsize(self):
+    def _autotune(self):
         """
         Update the volume_max_scale parameter to ensure our acceptance probability is within the range of 0.25 to 0.75.
         The maximum volume_max_scale will be capped at 0.3.
