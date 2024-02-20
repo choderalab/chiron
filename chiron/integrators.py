@@ -225,19 +225,19 @@ class LangevinIntegrator:
 
     def _wrap_and_rebuild_neighborlist(self, x: jnp.array, nbr_list: PairsBase):
         """
-        Wrap the coordinates and rebuild the neighborlist if necessary.
+        Wrap the positions and rebuild the neighborlist if necessary.
 
         Parameters
         ----------
         x: jnp.array
-            The coordinates of the particles.
+            The positions of the particles.
         nbr_list: PairsBsse
             The neighborlist object.
 
         Returns
         -------
         x: jnp.array
-            The wrapped coordinates.
+            The wrapped positions.
         nbr_list: PairsBase
             The neighborlist object; this may or may not have been rebuilt.
         """

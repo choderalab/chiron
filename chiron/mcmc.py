@@ -938,7 +938,7 @@ class MonteCarloBarostatMove(MCMove):
 
         if current_nbr_list is not None:
             proposed_nbr_list = copy.deepcopy(current_nbr_list)
-            # after scaling the box vectors and coordinates we should always rebuild the neighborlist
+            # after scaling the box vectors and positions we should always rebuild the neighborlist
             proposed_nbr_list.build(
                 proposed_sampler_state.positions, proposed_sampler_state.box_vectors
             )

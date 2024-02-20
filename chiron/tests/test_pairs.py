@@ -121,13 +121,13 @@ def test_neighborlist_pair():
 
     nbr_list.build_from_state(state)
 
-    assert jnp.all(nbr_list.ref_coordinates == coordinates)
+    assert jnp.all(nbr_list.ref_positions == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
     assert nbr_list.is_built == True
 
     nbr_list.build(state.positions, state.box_vectors)
 
-    assert jnp.all(nbr_list.ref_coordinates == coordinates)
+    assert jnp.all(nbr_list.ref_positions == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
     assert nbr_list.is_built == True
 
