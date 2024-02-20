@@ -349,7 +349,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             The topology object representing the molecular system.
         k : unit.Quantity, optional
             The spring constant of the harmonic potential. Default is 1.0 kcal/mol/Å^2.
-        x0 : unit.Quantity, optional
+        positions : unit.Quantity, optional
             The equilibrium position of the harmonic potential. Default is [0.0,0.0,0.0] Å.
         U0 : unit.Quantity, optional
             The offset potential energy of the harmonic potential. Default is 0.0 kcal/mol.
@@ -366,7 +366,9 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         if not isinstance(k, unit.Quantity):
             raise TypeError(f"k must be a unit.Quantity, type(k) = {type(k)}")
         if not isinstance(x0, unit.Quantity):
-            raise TypeError(f"x0 must be a unit.Quantity, type(x0) = {type(x0)}")
+            raise TypeError(
+                f"positions must be a unit.Quantity, type(positions) = {type(x0)}"
+            )
         if not isinstance(U0, unit.Quantity):
             raise TypeError(f"U0 must be a unit.Quantity, type(U0) = {type(U0)}")
 
@@ -376,9 +378,11 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             )
         if not x0.unit.is_compatible(unit.angstrom):
             raise ValueError(
-                f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}"
+                f"positions must be a unit.Quantity with units of distance, positions.unit = {x0.unit}"
             )
-        assert x0.shape[1] == 3, f"x0 must be a NX3 vector, x0.shape = {x0.shape}"
+        assert (
+            x0.shape[1] == 3
+        ), f"positions must be a NX3 vector, positions.shape = {x0.shape}"
         if not U0.unit.is_compatible(unit.kilocalories_per_mole):
             raise ValueError(
                 f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"
@@ -388,9 +392,11 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
 
         log.debug("Initializing HarmonicOscillatorPotential")
         log.debug(f"k = {k}")
-        log.debug(f"x0 = {x0}")
+        log.debug(f"positions = {x0}")
         log.debug(f"U0 = {U0}")
-        log.debug("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
+        log.debug(
+            "Energy is calculate: U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0"
+        )
         self.k = jnp.array(
             k.value_in_unit_system(unit.md_unit_system)
         )  # spring constant
@@ -403,7 +409,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self.topology = topology
 
     def compute_energy(self, positions: jnp.array, nbr_list=None):
-        # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0
+        # the functional form is given by U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors

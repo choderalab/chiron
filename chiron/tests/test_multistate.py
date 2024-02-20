@@ -25,7 +25,9 @@ def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
         OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
     )
 
-    lang_move = LangevinDynamicsMove(stepsize=1.0 * unit.femtoseconds, nr_of_steps=100)
+    lang_move = LangevinDynamicsMove(
+        timestep=1.0 * unit.femtoseconds, number_of_steps=100
+    )
     BaseReporter.set_directory("multistate_test")
     reporter = MultistateReporter()
     reporter.reset_reporter_file()
@@ -183,16 +185,16 @@ def test_multistate_minimize(ho_multistate_sampler_multiple_minima: MultiStateSa
     ho_multistate_sampler_multiple_minima.minimize()
 
     assert np.allclose(
-        ho_multistate_sampler_multiple_minima.sampler_states[0].x0,
+        ho_multistate_sampler_multiple_minima.sampler_states[0].positions,
         np.array([[0.0, 0.0, 0.0]]),
     )
     assert np.allclose(
-        ho_multistate_sampler_multiple_minima.sampler_states[1].x0,
+        ho_multistate_sampler_multiple_minima.sampler_states[1].positions,
         np.array([[0.05, 0.0, 0.0]]),
         atol=1e-2,
     )
     assert np.allclose(
-        ho_multistate_sampler_multiple_minima.sampler_states[2].x0,
+        ho_multistate_sampler_multiple_minima.sampler_states[2].positions,
         np.array([[0.1, 0.0, 0.0]]),
         atol=1e-2,
     )
@@ -219,7 +221,6 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     import numpy as np
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
-
 
     n_iteratinos = 25
     ho_sampler.run(n_iteratinos)

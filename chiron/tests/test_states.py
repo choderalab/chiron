@@ -31,14 +31,14 @@ def test_initialize_state():
     sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     assert jnp.allclose(
-        sampler_state.x0,
+        sampler_state.positions,
         jnp.array([[0.0, 0.0, 0.0]]),
     )
 
 
 def test_sampler_state_conversion():
     """Test converting a sampler state to jnp arrays.
-    Note, testing the conversion of x0, where internal unit length is nanometers
+    Note, testing the conversion of positions, where internal unit length is nanometers
     and thus output jnp.arrays (with units dropped) should reflect this.
     """
     from chiron.states import SamplerState
@@ -54,7 +54,7 @@ def test_sampler_state_conversion():
     )
 
     assert jnp.allclose(
-        sampler_state.x0,
+        sampler_state.positions,
         jnp.array([[10.0, 10.0, 10.0]]),
     )
 
@@ -64,7 +64,7 @@ def test_sampler_state_conversion():
     )
 
     assert jnp.allclose(
-        sampler_state.x0,
+        sampler_state.positions,
         jnp.array([[1.0, 1.0, 1.0]]),
     )
 
@@ -81,11 +81,11 @@ def test_sampler_state_inputs():
     # test input of positions
     # should have units
     with pytest.raises(TypeError):
-        SamplerState(x0=jnp.array([1, 2, 3]))
+        SamplerState(positions=jnp.array([1, 2, 3]))
     # throw and error because of incompatible units
     with pytest.raises(ValueError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.radians),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.radians),
             current_PRNG_key=PRNG.get_random_key(),
         )
 
@@ -93,14 +93,14 @@ def test_sampler_state_inputs():
     # velocities should have units
     with pytest.raises(TypeError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             velocities=jnp.array([1, 2, 3]),
         )
     # velocities should have units of distance/time
     with pytest.raises(ValueError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             velocities=unit.Quantity(jnp.array([1, 2, 3]), unit.nanometers),
         )
@@ -109,14 +109,14 @@ def test_sampler_state_inputs():
     # box_vectors should have units
     with pytest.raises(TypeError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=jnp.array([1, 2, 3]),
         )
     # box_vectors should have units of distance
     with pytest.raises(ValueError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(
                 jnp.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]), unit.radians
@@ -125,7 +125,7 @@ def test_sampler_state_inputs():
     # check to see that the size of the box vectors are correct
     with pytest.raises(ValueError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(
                 jnp.array([[1, 0, 0], [0, 1, 0]]), unit.nanometers
@@ -140,7 +140,7 @@ def test_sampler_state_inputs():
 
     # check openmm_box conversion:
     state = SamplerState(
-        x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+        positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=openmm_box,
     )
@@ -155,7 +155,7 @@ def test_sampler_state_inputs():
     # openmm box vectors end up as a list with contents; check to make sure we capture an error if we pass a bad list
     with pytest.raises(TypeError):
         SamplerState(
-            x0=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
+            positions=unit.Quantity(jnp.array([[1, 2, 3]]), unit.nanometers),
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=[123],
         )

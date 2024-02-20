@@ -207,13 +207,13 @@ class PairsBase(ABC):
     >>> import jax.numpy as jnp
     >>>
     >>> space = OrthogonalPeriodicSpace() # define the simulation space, in this case an orthogonal periodic space
-    >>> sampler_state = SamplerState(x0=jnp.array([[0.0, 0.0, 0.0], [2, 0.0, 0.0], [0.0, 2, 0.0]]),
+    >>> sampler_state = SamplerState(positions=jnp.array([[0.0, 0.0, 0.0], [2, 0.0, 0.0], [0.0, 2, 0.0]]),
     >>>                              box_vectors=jnp.array([[10, 0.0, 0.0], [0.0, 10, 0.0], [0.0, 0.0, 10]]))
     >>>
     >>> pair_list = PairsBase(space, cutoff=2.5*unit.nanometer) # initialize the pair list
     >>> pair_list.build_from_state(sampler_state) # build the pair list from the sampler state
     >>>
-    >>> coordinates = sampler_state.x0 # get the coordinates from the sampler state, without units attached
+    >>> coordinates = sampler_state.positions # get the coordinates from the sampler state, without units attached
     >>>
     >>> # the calculate function will produce information used to calculate the energy
     >>> n_neighbors, padding_mask, dist, r_ij = pair_list.calculate(coordinates)
@@ -309,7 +309,7 @@ class PairsBase(ABC):
         if not isinstance(sampler_state, SamplerState):
             raise TypeError(f"Expected SamplerState, got {type(sampler_state)} instead")
 
-        coordinates = sampler_state.x0
+        coordinates = sampler_state.positions
         if sampler_state.box_vectors is None:
             raise ValueError(f"SamplerState does not contain box vectors")
         box_vectors = sampler_state.box_vectors
@@ -526,7 +526,7 @@ class NeighborListNsqrd(PairsBase):
         """
 
         # set our reference coordinates
-        # the call to x0 and box_vectors automatically convert these to jnp arrays in the correct unit system
+        # the call to positions and box_vectors automatically convert these to jnp arrays in the correct unit system
         if isinstance(coordinates, unit.Quantity):
             if not coordinates.unit.is_compatible(unit.nanometer):
                 raise ValueError(
@@ -669,7 +669,7 @@ class NeighborListNsqrd(PairsBase):
         r_ij: jnp.array
             Array of displacement vectors between each particle and its neighbors. Shape (n_particles, n_max_neighbors, 3)
         """
-        # coordinates = sampler_state.x0
+        # coordinates = sampler_state.positions
         # note, we assume the box vectors do not change between building and calculating the neighbor list
         # changes to the box vectors require rebuilding the neighbor list
 
@@ -761,7 +761,7 @@ class PairList(PairsBase):
     >>>
     >>> space = OrthogonalPeriodicSpace()
     >>> pair_list = PairList(space, cutoff=2.5)
-    >>> sampler_state = SamplerState(x0=jnp.array([[0.0, 0.0, 0.0], [2, 0.0, 0.0], [0.0, 2, 0.0]]),
+    >>> sampler_state = SamplerState(positions=jnp.array([[0.0, 0.0, 0.0], [2, 0.0, 0.0], [0.0, 2, 0.0]]),
     >>>                                 box_vectors=jnp.array([[10, 0.0, 0.0], [0.0, 10, 0.0], [0.0, 0.0, 10]]))
     >>> pair_list.build_from_state(sampler_state)
     >>>
@@ -769,7 +769,7 @@ class PairList(PairsBase):
     >>> displacement_vectors of shape (n_particles, n_particles-1, 3)
     >>> # mask, is a bool array that is True if the particle is within the cutoff distance, False if it is not
     >>> # n_pairs is of shape (n_particles) and is per row sum of the mask. The mask ensure we also do not double count pairs
-    >>> n_pairs, mask, distances, displacement_vectors = pair_list.calculate(sampler_state.x0)
+    >>> n_pairs, mask, distances, displacement_vectors = pair_list.calculate(sampler_state.positions)
     """
 
     def __init__(

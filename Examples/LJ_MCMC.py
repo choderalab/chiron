@@ -68,7 +68,7 @@ PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=positions, current_PRNG_key=PRNG.get_random_key(), box_vectors=box_vectors
+    positions=positions, current_PRNG_key=PRNG.get_random_key(), box_vectors=box_vectors
 )
 
 
@@ -84,12 +84,12 @@ nbr_list.build_from_state(sampler_state)
 # from chiron.minimze import minimize_energy
 #
 # results = minimize_energy(
-#     sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=100
+#     sampler_state.positions, lj_potential.compute_energy, nbr_list, maxiter=100
 # )
 #
 # min_x = results.params
 #
-# sampler_state.x0 = min_x
+# sampler_state.positions = min_x
 
 from chiron.reporters import MCReporter
 
@@ -101,13 +101,13 @@ if os.path.isfile(filename_barostat):
     os.remove(filename_barostat)
 reporter_barostat = MCReporter(filename_barostat, 1)
 
-from chiron.mcmc import MetropolisDisplacementMove
+from chiron.mcmc import MonteCarloDisplacementMove
 
-mc_displacement_move = MetropolisDisplacementMove(
+mc_displacement_move = MonteCarloDisplacementMove(
     displacement_sigma=0.001 * unit.nanometer,
     number_of_moves=100,
     reporter=reporter_displacement,
-    report_frequency=10,
+    report_interval=10,
     autotune=True,
     autotune_interval=100,
 )
@@ -124,7 +124,7 @@ mc_barostat_move = MonteCarloBarostatMove(
     volume_max_scale=0.1,
     number_of_moves=10,
     reporter=reporter_barostat,
-    report_frequency=1,
+    report_interval=1,
     autotune=True,
     autotune_interval=50,
 )
@@ -140,11 +140,11 @@ reporter_langevin = LangevinDynamicsReporter(filename_langevin, 10)
 from chiron.mcmc import LangevinDynamicsMove
 
 langevin_dynamics_move = LangevinDynamicsMove(
-    stepsize=1.0 * unit.femtoseconds,
+    timestep=1.0 * unit.femtoseconds,
     collision_rate=1.0 / unit.picoseconds,
-    nr_of_steps=100,
+    number_of_steps=100,
     reporter=reporter_langevin,
-    report_frequency=10,
+    report_interval=10,
 )
 
 from chiron.mcmc import MoveSchedule
@@ -152,7 +152,7 @@ from chiron.mcmc import MoveSchedule
 move_set = MoveSchedule(
     [
         ("LangevinDynamicsMove", langevin_dynamics_move),
-        ("MetropolisDisplacementMove", mc_displacement_move),
+        ("MonteCarloDisplacementMove", mc_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )

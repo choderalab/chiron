@@ -53,7 +53,7 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     PRNG.set_seed(1234)
 
     sampler_state = SamplerState(
-        x0=ho.positions, current_PRNG_key=PRNG.get_random_key()
+        positions=ho.positions, current_PRNG_key=PRNG.get_random_key()
     )
 
     from chiron.reporters import _SimulationReporter
@@ -63,16 +63,16 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     simulation_reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
-    mc_displacement_move = MetropolisDisplacementMove(
+    mc_displacement_move = MonteCarloDisplacementMove(
         number_of_moves=1_000,
         displacement_sigma=0.5 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,
     )
 
-    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
@@ -148,11 +148,11 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     PRNG.set_seed(1234)
 
     sampler_state = SamplerState(
-        x0=lj_fluid.positions,
+        positions=lj_fluid.positions,
         box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
         current_PRNG_key=PRNG.get_random_key(),
     )
-    print(sampler_state.x0.shape)
+    print(sampler_state.positions.shape)
     print(sampler_state.box_vectors)
 
     nbr_list = NeighborListNsqrd(
@@ -172,11 +172,11 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     id = uuid.uuid4()
     reporter = LangevinDynamicsReporter(f"{prep_temp_dir}/test_{id}.h5")
 
-    integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
+    integrator = LangevinIntegrator(reporter=reporter, report_interval=100)
     integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=1000,
+        number_of_steps=1000,
         nbr_list=nbr_list,
         progress_bar=True,
     )

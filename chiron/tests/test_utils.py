@@ -66,12 +66,12 @@ def test_reporter(prep_temp_dir, ho_multistate_sampler_multiple_ks):
 
     integrator = LangevinIntegrator(
         reporter=reporter,
-        report_frequency=1,
+        report_interval=1,
     )
     integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=20,
+        number_of_steps=20,
     )
     import numpy as np
 

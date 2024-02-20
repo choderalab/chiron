@@ -27,7 +27,7 @@ from chiron.states import SamplerState, ThermodynamicState
 PRNG.set_seed(1234)
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions,
+    positions=lj_fluid.positions,
     current_PRNG_key=PRNG.get_random_key(),
     box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
@@ -69,13 +69,13 @@ reporter = LangevinDynamicsReporter(
 from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
-integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
-print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
+integrator = LangevinIntegrator(reporter=reporter, report_interval=100)
+print("init_energy: ", lj_potential.compute_energy(sampler_state.positions, nbr_list))
 
 updated_sampler_state, updated_nbr_list = integrator.run(
     sampler_state,
     thermodynamic_state,
-    n_steps=1000,
+    number_of_steps=1000,
     nbr_list=nbr_list,
     progress_bar=True,
 )

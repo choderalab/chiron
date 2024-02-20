@@ -100,7 +100,7 @@ def test_neighborlist_pair():
     PRNG.set_seed(1234)
 
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
@@ -125,7 +125,7 @@ def test_neighborlist_pair():
     assert jnp.all(nbr_list.box_vectors == box_vectors)
     assert nbr_list.is_built == True
 
-    nbr_list.build(state.x0, state.box_vectors)
+    nbr_list.build(state.positions, state.box_vectors)
 
     assert jnp.all(nbr_list.ref_coordinates == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
@@ -213,7 +213,7 @@ def test_inputs():
     PRNG.set_seed(1234)
 
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=None,
     )
@@ -287,7 +287,7 @@ def test_neighborlist_pair_multiple_particles():
     PRNG.set_seed(1234)
 
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
@@ -342,7 +342,7 @@ def test_neighborlist_pair_multiple_particles():
         )
     )
     # test passing coordinates and box vectors directly
-    nbr_list.build(state.x0, state.box_vectors)
+    nbr_list.build(state.positions, state.box_vectors)
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
@@ -362,7 +362,7 @@ def test_pairlist_pair():
     PRNG.set_seed(1234)
 
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
@@ -416,7 +416,7 @@ def test_pair_list_multiple_particles():
     PRNG.set_seed(1234)
 
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )

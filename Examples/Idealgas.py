@@ -4,7 +4,7 @@ from openmm import unit
 """
 This example explore an ideal gas system, where the particles are non-interacting. 
 This will use the MonteCarloBarostatMove to sample the volume of the system and 
-MetropolisDisplacementMove to sample the particle positions.
+MonteCarloDisplacementMove to sample the particle positions.
 
 This utilizes the IdealGas example from openmmtools to initialize particle positions and topology.
 
@@ -42,7 +42,7 @@ PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=ideal_gas.positions,
+    positions=ideal_gas.positions,
     current_PRNG_key=PRNG.get_random_key(),
     box_vectors=ideal_gas.system.getDefaultPeriodicBoxVectors(),
 )
@@ -67,7 +67,7 @@ reporter = MCReporter(filename, 100)
 
 
 from chiron.mcmc import (
-    MetropolisDisplacementMove,
+    MonteCarloDisplacementMove,
     MonteCarloBarostatMove,
     MoveSchedule,
     MCMCSampler,
@@ -83,7 +83,7 @@ mc_barostat_move = MonteCarloBarostatMove(
 )
 
 # initialize the barostat move and the move schedule
-metropolis_displacement_move = MetropolisDisplacementMove(
+metropolis_displacement_move = MonteCarloDisplacementMove(
     displacement_sigma=0.1 * unit.nanometer,
     number_of_moves=100,
     autotune=True,
@@ -93,7 +93,7 @@ metropolis_displacement_move = MetropolisDisplacementMove(
 # define the move schedule
 move_set = MoveSchedule(
     [
-        ("MetropolisDisplacementMove", metropolis_displacement_move),
+        ("MonteCarloDisplacementMove", metropolis_displacement_move),
         ("MonteCarloBarostatMove", mc_barostat_move),
     ]
 )

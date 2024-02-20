@@ -41,7 +41,7 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     PRNG.set_seed(1234)
 
     sampler_state = SamplerState(
-        x0=ho.positions, current_PRNG_key=PRNG.get_random_key()
+        positions=ho.positions, current_PRNG_key=PRNG.get_random_key()
     )
     from chiron.integrators import LangevinIntegrator
 
@@ -53,16 +53,16 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
-        stepsize=2 * unit.femtosecond,
+        timestep=2 * unit.femtosecond,
         reporter=reporter,
-        report_frequency=1,
-        reinitialize_velocities=True,
+        report_interval=1,
+        refresh_velocities=True,
     )
 
     integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=5,
+        number_of_steps=5,
     )
     integrator.reporter.flush_buffer()
     import jax.numpy as jnp
@@ -128,7 +128,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     # the following will reinitialize the velocities for each iteration
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, reinitialize_velocities=True, reporter=simulation_reporter
+        number_of_steps=10, refresh_velocities=True, reporter=simulation_reporter
     )
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
@@ -149,7 +149,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     )
 
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, reinitialize_velocities=False, reporter=simulation_reporter
+        number_of_steps=10, refresh_velocities=False, reporter=simulation_reporter
     )
 
     move_set = MoveSchedule([("LangevinMove", langevin_move)])
@@ -174,7 +174,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillator
@@ -206,14 +206,14 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     BaseReporter.set_directory(wd)
     simulation_reporter = MCReporter(1)
 
-    mc_displacement_move = MetropolisDisplacementMove(
+    mc_displacement_move = MonteCarloDisplacementMove(
         number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,
     )
 
-    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set)
@@ -234,7 +234,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
     """
     from openmm import unit
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
@@ -268,14 +268,14 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
 
     simulation_reporter = MCReporter(1)
 
-    mc_displacement_move = MetropolisDisplacementMove(
+    mc_displacement_move = MonteCarloDisplacementMove(
         number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=None,
         reporter=simulation_reporter,
     )
 
-    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set)
@@ -352,7 +352,7 @@ def test_mc_barostat(prep_temp_dir):
         volume_max_scale=0.1,
         number_of_moves=10,
         reporter=simulation_reporter,
-        report_frequency=1,
+        report_interval=1,
     )
 
     from chiron.potential import IdealGasPotential
@@ -397,7 +397,9 @@ def test_mc_barostat(prep_temp_dir):
 
     # define the sampler state
     sampler_state = SamplerState(
-        x0=positions, box_vectors=box_vectors, current_PRNG_key=PRNG.get_random_key()
+        positions=positions,
+        box_vectors=box_vectors,
+        current_PRNG_key=PRNG.get_random_key(),
     )
 
     # define the thermodynamic state

@@ -196,7 +196,7 @@ def test_LJ_fluid():
 
         PRNG.set_seed(1234)
         state = SamplerState(
-            x0=lj_openmm.positions,
+            positions=lj_openmm.positions,
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=lj_openmm.system.getDefaultPeriodicBoxVectors(),
         )
@@ -210,7 +210,7 @@ def test_LJ_fluid():
             lj_openmm.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff
         )
 
-        e_chiron_energy = lj_chiron.compute_energy(state.x0, nbr_list)
+        e_chiron_energy = lj_chiron.compute_energy(state.positions, nbr_list)
         e_openmm_energy = compute_openmm_reference_energy(
             lj_openmm, lj_openmm.positions
         )
@@ -253,7 +253,7 @@ def test_ideal_gas(prep_temp_dir):
 
     # define the sampler state
     sampler_state = SamplerState(
-        x0=ideal_gas.positions,
+        positions=ideal_gas.positions,
         current_PRNG_key=PRNG.get_random_key(),
         box_vectors=ideal_gas.system.getDefaultPeriodicBoxVectors(),
     )
@@ -277,13 +277,13 @@ def test_ideal_gas(prep_temp_dir):
     reporter = MCReporter(filename, 1)
 
     from chiron.mcmc import (
-        MetropolisDisplacementMove,
+        MonteCarloDisplacementMove,
         MonteCarloBarostatMove,
         MoveSchedule,
         MCMCSampler,
     )
 
-    mc_displacement_move = MetropolisDisplacementMove(
+    mc_displacement_move = MonteCarloDisplacementMove(
         displacement_sigma=0.1 * unit.nanometer,
         number_of_moves=10,
         reporter=reporter,
@@ -300,7 +300,7 @@ def test_ideal_gas(prep_temp_dir):
     )
     move_set = MoveSchedule(
         [
-            ("MetropolisDisplacementMove", mc_displacement_move),
+            ("MonteCarloDisplacementMove", mc_displacement_move),
             ("MonteCarloBarostatMove", mc_barostat_move),
         ]
     )

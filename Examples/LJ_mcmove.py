@@ -26,7 +26,7 @@ PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions,
+    positions=lj_fluid.positions,
     current_PRNG_key=PRNG.get_random_key(),
     box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
@@ -60,13 +60,13 @@ if os.path.isfile(filename):
     os.remove(filename)
 reporter = MCReporter(filename, 1)
 
-from chiron.mcmc import MetropolisDisplacementMove
+from chiron.mcmc import MonteCarloDisplacementMove
 
-mc_move = MetropolisDisplacementMove(
+mc_move = MonteCarloDisplacementMove(
     displacement_sigma=0.01 * unit.nanometer,
     number_of_moves=5000,
     reporter=reporter,
-    report_frequency=1,
+    report_interval=1,
     autotune=True,
     autotune_interval=100,
 )

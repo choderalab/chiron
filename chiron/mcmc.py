@@ -13,7 +13,7 @@ class MCMCMove:
         self,
         number_of_moves: int,
         reporter: Optional[_SimulationReporter] = None,
-        report_frequency: Optional[int] = 100,
+        report_interval: Optional[int] = 100,
     ):
         """
         Initialize a move within the molecular system.
@@ -25,15 +25,15 @@ class MCMCMove:
         reporter : _SimulationReporter, optional
             Reporter object for saving the simulation data.
             Default is None.
-        report_frequency : int, optional
-            Frequency of saving the simulation data in the reporter.
+        report_interval : int, optional
+            Interval for saving the simulation data in the reporter.
             Default is 100.
 
         """
 
         self.number_of_moves = number_of_moves
         self.reporter = reporter
-        self.report_frequency = report_frequency
+        self.report_interval = report_interval
 
         # we need to keep track of which iteration we are on
         self._move_iteration = 0
@@ -44,7 +44,7 @@ class MCMCMove:
             log.info(
                 f"Using reporter {self.reporter} saving to {self.reporter.workdir}"
             )
-            assert self.report_frequency is not None
+            assert self.report_interval is not None
 
     @abstractmethod
     def update(
@@ -81,12 +81,12 @@ class MCMCMove:
 class LangevinDynamicsMove(MCMCMove):
     def __init__(
         self,
-        stepsize: unit.Quantity = 1.0 * unit.femtoseconds,
+        timestep: unit.Quantity = 1.0 * unit.femtoseconds,
         collision_rate: unit.Quantity = 1.0 / unit.picoseconds,
-        reinitialize_velocities: bool = False,
+        refresh_velocities: bool = False,
         reporter: Optional[LangevinDynamicsReporter] = None,
-        report_frequency: int = 100,
-        nr_of_steps: int = 1_000,
+        report_interval: int = 100,
+        number_of_steps: int = 1_000,
         save_traj_in_memory: bool = False,
     ):
         """
@@ -94,20 +94,20 @@ class LangevinDynamicsMove(MCMCMove):
 
         Parameters
         ----------
-        stepsize : unit.Quantity
+        timestep : unit.Quantity
             Time step size for the integration.
         collision_rate : unit.Quantity
             Collision rate for the Langevin dynamics.
-        reinitialize_velocities : bool, optional
+        refresh_velocities : bool, optional
             Whether to reinitialize the velocities each time the run function is called.
             Default is False.
         reporter : LangevinDynamicsReporter, optional
             Reporter object for saving the simulation data.
             Default is None.
-        report_frequency : int
-            Frequency of saving the simulation data.
+        report_interval : int
+            Interval for saving the simulation data.
             Default is 100.
-        nr_of_steps : int, optional
+        number_of_steps : int, optional
             Number of steps to run the integrator for.
             Default is 1_000.
         save_traj_in_memory: bool
@@ -115,22 +115,22 @@ class LangevinDynamicsMove(MCMCMove):
             Default is False. NOTE: Only for debugging purposes.
         """
         super().__init__(
-            number_of_moves=number_of_moves,
+            number_of_moves=number_of_steps,
             reporter=reporter,
-            report_frequency=report_frequency,
+            report_interval=report_interval,
         )
 
-        self.stepsize = stepsize
+        self.timestep = timestep
         self.collision_rate = collision_rate
         self.save_traj_in_memory = save_traj_in_memory
         self.traj = []
         from chiron.integrators import LangevinIntegrator
 
         self.integrator = LangevinIntegrator(
-            stepsize=self.stepsize,
+            timestep=self.timestep,
             collision_rate=self.collision_rate,
-            reinitialize_velocities=reinitialize_velocities,
-            report_frequency=report_frequency,
+            refresh_velocities=refresh_velocities,
+            report_interval=report_interval,
             reporter=reporter,
             save_traj_in_memory=save_traj_in_memory,
         )
@@ -173,7 +173,7 @@ class LangevinDynamicsMove(MCMCMove):
         updated_sampler_state, updated_nbr_list = self.integrator.run(
             thermodynamic_state=thermodynamic_state,
             sampler_state=sampler_state,
-            n_steps=self.number_of_moves,
+            number_of_steps=self.number_of_moves,
             nbr_list=nbr_list,
         )
 
@@ -192,10 +192,10 @@ class MCMove(MCMCMove):
         self,
         number_of_moves: int,
         reporter: Optional[_SimulationReporter],
-        report_frequency: int = 1,
+        report_interval: int = 1,
         autotune: bool = False,
         autotune_interval: int = 100,
-        method: str = "metropolis",
+        acceptance_method: str = "Metropolis-Hastings",
     ) -> None:
         """
         Initialize the move.
@@ -203,26 +203,26 @@ class MCMove(MCMCMove):
         Parameters
         ----------
         number_of_moves
-            Number of moves to be applied in each call to update.
+            Number of moves to be attempted in each call to update.
         reporter
             Reporter object for saving the simulation step data.
-        report_frequency
-            Frequency of saving the simulation data.
+        report_interval
+            Interval for saving the simulation data.
         autotune
             Whether to automatically tune the parameters of the MC move to achieve a target acceptance ratio.
             For example, for a simple displacement move this would update the displacement_sigma.
         autotune_interval
             Frequency of autotuning the MC move parameters to achieve a target acceptance ratio.
-        method
+        acceptance_method
             Methodology to use for accepting or rejecting the proposed state.
-            Default is "metropolis".
+            Default is "Metropolis-Hastings".
         """
         super().__init__(
-            number_of_moves,
+            number_of_moves=number_of_moves,
             reporter=reporter,
-            report_frequency=report_frequency,
+            report_interval=report_interval,
         )
-        self.method = method  # I think we should pass a class/function instead of a string, like space.
+        self.acceptance_method = acceptance_method  # I think we should pass a class/function instead of a string, like space.
 
         self.reset_statistics()
         self.autotune = autotune
@@ -268,12 +268,12 @@ class MCMove(MCMCMove):
             calculate_current_reduced_potential = False
 
             # I think it makes sense to use i + self.number_of_moves*self._move_iteration as our current "step"
-            # otherwise, if we just used i, instances where self.report_frequency > self.number_of_moves would only report on the
+            # otherwise, if we just used i, instances where self.report_interval > self.number_of_moves would only report on the
             # first step,  which might actually be more frequent than we specify
             elapsed_step = i + self._move_iteration * self.number_of_moves
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
-                    if elapsed_step % self.report_frequency == 0:
+                    if elapsed_step % self.report_interval == 0:
                         self._report(
                             i,
                             self._move_iteration,
@@ -420,7 +420,7 @@ class MCMove(MCMCMove):
             decision = self._accept_or_reject(
                 log_proposal_ratio,
                 proposed_sampler_state.new_PRNG_key,
-                method=self.method,
+                acceptance_method=self.acceptance_method,
             )
         # a function that will update the statistics for the move
 
@@ -520,13 +520,13 @@ class MCMove(MCMCMove):
         self,
         log_proposal_ratio,
         key,
-        method,
+        acceptance_method,
     ):
         """
         Accept or reject the proposed state with a given methodology.
         """
         # define the acceptance probability
-        if method == "metropolis":
+        if acceptance_method == "Metropolis-Hastings":
             import jax.random as jrandom
 
             compare_to = jrandom.uniform(key)
@@ -536,16 +536,17 @@ class MCMove(MCMCMove):
                 return False
 
 
-class MetropolisDisplacementMove(MCMove):
+class MonteCarloDisplacementMove(MCMove):
     def __init__(
         self,
         displacement_sigma=1.0 * unit.nanometer,
         number_of_moves: int = 100,
         atom_subset: Optional[List[int]] = None,
-        report_frequency: int = 1,
-        reporter: Optional[LangevinDynamicsReporter] = None,
+        report_interval: int = 1,
+        reporter: Optional[MCReporter] = None,
         autotune: bool = False,
         autotune_interval: int = 100,
+        acceptance_method="Metropolis-Hastings",
     ):
         """
         Initialize the Displacement Move class.
@@ -555,9 +556,13 @@ class MetropolisDisplacementMove(MCMove):
         displacement_sigma : float or unit.Quantity, optional
             The standard deviation of the displacement for each move. Default is 1.0 nm.
         number_of_moves : int, optional
-            The number of moves to perform. Default is 100.
+            The number of move attempts to perform. Default is 100.
+            For a given move, all particles will  be randomly displaced at once (unless atom_subset is),
+            rather than moving each particle one at a time.
         atom_subset : list of int, optional
-            A subset of atom indices to consider for the moves. Default is None.
+            A list of particle indices that represent a subset of all particles.
+            If defined, only those particles in the list will have their positions random displaced.
+            Default is None.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
         autotune : bool, optional
@@ -565,6 +570,10 @@ class MetropolisDisplacementMove(MCMove):
             Default is False.
         autotune_interval : int, optional
             Frequency of autotuning displacement_sigma of the move. Default is 100.
+        acceptance_method : str, optional
+            Methodology to use for accepting or rejecting the proposed state.
+            Default is "Metropolis-Hastings".
+
         Returns
         -------
         None
@@ -572,10 +581,10 @@ class MetropolisDisplacementMove(MCMove):
         super().__init__(
             number_of_moves=number_of_moves,
             reporter=reporter,
-            report_frequency=report_frequency,
+            report_interval=report_interval,
             autotune=autotune,
             autotune_interval=autotune_interval,
-            method="metropolis",
+            acceptance_method=acceptance_method,
         )
         self.displacement_sigma = displacement_sigma
 
@@ -614,7 +623,7 @@ class MetropolisDisplacementMove(MCMove):
 
         """
         potential = thermodynamic_state.potential.compute_energy(
-            sampler_state.x0, nbr_list
+            sampler_state.positions, nbr_list
         )
         self.reporter.report(
             {
@@ -700,30 +709,30 @@ class MetropolisDisplacementMove(MCMove):
         proposed_sampler_state = copy.deepcopy(current_sampler_state)
 
         if self.atom_subset is not None:
-            proposed_sampler_state.x0 = (
-                proposed_sampler_state.x0
+            proposed_sampler_state.positions = (
+                proposed_sampler_state.positions
                 + scaled_displacement_vector * self.atom_subset_mask
             )
         else:
-            proposed_sampler_state.x0 = (
-                proposed_sampler_state.x0 + scaled_displacement_vector
+            proposed_sampler_state.positions = (
+                proposed_sampler_state.positions + scaled_displacement_vector
             )
 
         # after proposing a move we need to wrap particles and see if we need to rebuild the neighborlist
         if current_nbr_list is not None:
-            proposed_sampler_state.x0 = current_nbr_list.space.wrap(
-                proposed_sampler_state.x0
+            proposed_sampler_state.positions = current_nbr_list.space.wrap(
+                proposed_sampler_state.positions
             )
 
             # if we need to rebuild the neighbor the neighborlist
             # we will make a copy and then build
-            if current_nbr_list.check(proposed_sampler_state.x0):
+            if current_nbr_list.check(proposed_sampler_state.positions):
                 import copy
 
                 proposed_nbr_list = copy.deepcopy(current_nbr_list)
 
                 proposed_nbr_list.build(
-                    proposed_sampler_state.x0, proposed_sampler_state.box_vectors
+                    proposed_sampler_state.positions, proposed_sampler_state.box_vectors
                 )
             # if we don't need to update the neighborlist, just make a new variable that refers to the original
             else:
@@ -753,10 +762,11 @@ class MonteCarloBarostatMove(MCMove):
         self,
         volume_max_scale=0.01,
         number_of_moves: int = 100,
-        report_frequency: int = 1,
+        report_interval: int = 1,
         reporter: Optional[LangevinDynamicsReporter] = None,
         autotune: bool = False,
         autotune_interval: int = 100,
+        acceptance_method="Metropolis-Hastings",
     ):
         """
         Initialize the Monte Carlo Barostat Move class.
@@ -766,7 +776,7 @@ class MonteCarloBarostatMove(MCMove):
         volume_max_scale : float, optional
             The scaling factor multiplied by volume to set the maximum volume change allowed.
         number_of_moves : int, optional
-            The number of moves to perform. Default is 100.
+            The number of volume update moves attempts to perform. Default is 100.
         reporter : SimulationReporter, optional
             The reporter to write the data to. Default is None.
         autotune : bool, optional
@@ -774,6 +784,10 @@ class MonteCarloBarostatMove(MCMove):
             between 0.25 and 0.75. Default is False. volume_max_scale is capped at 0.3
         autotune_interval : int, optional
             Frequency of autotuning the volume_max_scale of the move. Default is 100.
+        acceptance_method : str, optional
+            Methodology to use for accepting or rejecting the proposed state.
+            Default is "Metropolis-Hastings".
+
         Returns
         -------
         None
@@ -781,10 +795,10 @@ class MonteCarloBarostatMove(MCMove):
         super().__init__(
             number_of_moves=number_of_moves,
             reporter=reporter,
-            report_frequency=report_frequency,
+            report_interval=report_interval,
             autotune=autotune,
             autotune_interval=autotune_interval,
-            method="metropolis",
+            acceptance_method=acceptance_method,
         )
         self.volume_max_scale = volume_max_scale
 
@@ -819,7 +833,7 @@ class MonteCarloBarostatMove(MCMove):
         """
 
         potential = thermodynamic_state.potential.compute_energy(
-            sampler_state.x0, nbr_list
+            sampler_state.positions, nbr_list
         )
         volume = (
             sampler_state.box_vectors[0][0]
@@ -914,7 +928,9 @@ class MonteCarloBarostatMove(MCMove):
         import copy
 
         proposed_sampler_state = copy.deepcopy(current_sampler_state)
-        proposed_sampler_state.x0 = current_sampler_state.x0 * length_scaling_factor
+        proposed_sampler_state.positions = (
+            current_sampler_state.positions * length_scaling_factor
+        )
 
         proposed_sampler_state.box_vectors = (
             current_sampler_state.box_vectors * length_scaling_factor
@@ -924,7 +940,7 @@ class MonteCarloBarostatMove(MCMove):
             proposed_nbr_list = copy.deepcopy(current_nbr_list)
             # after scaling the box vectors and coordinates we should always rebuild the neighborlist
             proposed_nbr_list.build(
-                proposed_sampler_state.x0, proposed_sampler_state.box_vectors
+                proposed_sampler_state.positions, proposed_sampler_state.box_vectors
             )
 
         proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(

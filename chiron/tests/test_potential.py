@@ -178,7 +178,7 @@ def test_lennard_jones():
         positions = jnp.array([[0, 0, 0], [i * 0.25 * 2 ** (1 / 6), 0, 0]])
 
         state = SamplerState(
-            x0=unit.Quantity(positions, unit.nanometer),
+            positions=unit.Quantity(positions, unit.nanometer),
             current_PRNG_key=PRNG.get_random_key(),
             box_vectors=unit.Quantity(box_vectors, unit.nanometer),
         )
