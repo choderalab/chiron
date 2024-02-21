@@ -721,7 +721,8 @@ class MonteCarloDisplacementMove(MCMove):
         # after proposing a move we need to wrap particles and see if we need to rebuild the neighborlist
         if current_nbr_list is not None:
             proposed_sampler_state.positions = current_nbr_list.space.wrap(
-                proposed_sampler_state.positions
+                proposed_sampler_state.positions,
+                proposed_sampler_state.box_vectors,
             )
 
             # if we need to rebuild the neighbor the neighborlist

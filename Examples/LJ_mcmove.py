@@ -44,7 +44,7 @@ skin = 0.5 * unit.nanometer
 nbr_list = NeighborListNsqrd(
     OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
 )
-from chiron.neighbors import PairList
+from chiron.neighbors import PairListNsqrd
 
 
 # build the neighbor list from the sampler state

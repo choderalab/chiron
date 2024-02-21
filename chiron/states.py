@@ -282,7 +282,7 @@ class ThermodynamicState:
         ----------
         sampler_state : SamplerState
             The sampler state for which to compute the reduced potential.
-        nbr_list : NeighborList or PairList, optional
+        nbr_list : NeighborList or PairListNsqrd, optional
             The neighbor list or pair list routine to use for calculating the reduced potential.
 
         Returns
@@ -343,7 +343,7 @@ def calculate_reduced_potential_at_states(
         The sampler state for which to compute the reduced potential.
     thermodynamic_states : list of ThermodynamicState
         The thermodynamic states for which to compute the reduced potential.
-    nbr_list : NeighborList or PairList, optional
+    nbr_list : NeighborList or PairListNsqrd, optional
     Returns
     -------
     list of float

@@ -3,7 +3,7 @@ def test_minimization():
     import jax.numpy as jnp
 
     from chiron.states import SamplerState
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
     from openmm import unit
 
     # initialize testystem
@@ -25,7 +25,7 @@ def test_minimization():
         box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
     )
     # use parilist
-    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
     nbr_list.build_from_state(sampler_state)
 
     # compute intial energy with and without pairlist
@@ -88,7 +88,7 @@ def test_minimize_two_particles():
     import jax.numpy as jnp
 
     from chiron.states import SamplerState
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
     from openmm import unit
     from chiron.potential import LJPotential
 
@@ -111,7 +111,7 @@ def test_minimize_two_particles():
         * unit.nanometer,
     )
 
-    pair_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    pair_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
     pair_list.build_from_state(sampler_state)
 
     e_start = lj_potential.compute_energy(coordinates, pair_list)

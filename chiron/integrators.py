@@ -242,7 +242,7 @@ class LangevinIntegrator:
             The neighborlist object; this may or may not have been rebuilt.
         """
 
-        x = nbr_list.space.wrap(x)
+        x = nbr_list.space.wrap(x, self.box_vectors)
         # check if we need to rebuild the neighborlist after moving the particles
         if nbr_list.check(x):
             nbr_list.build(x, self.box_vectors)

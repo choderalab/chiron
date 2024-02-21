@@ -409,11 +409,11 @@ def test_mc_barostat(prep_temp_dir):
         pressure=1.0 * unit.atmosphere,
     )
 
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
 
     # since particles are non-interacting and we will not displacece them, the pair list basically
     # does nothing in this case.
-    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=0 * unit.nanometer)
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=0 * unit.nanometer)
 
     sampler_state, thermodynamic_state, nbr_list = barostat_move.update(
         sampler_state, thermodynamic_state, nbr_list

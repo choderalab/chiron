@@ -264,7 +264,7 @@ class LJPotential(NeuralNetworkPotential):
                 raise ValueError("Neighborlist must be built before use")
 
             # ensure that the cutoff in the neighbor list is the same as the cutoff in the potential
-            if nbr_list.cutoff != self.cutoff:
+            if nbr_list.cutoff.value_in_unit_system(unit.md_unit_system) != self.cutoff:
                 raise ValueError(
                     f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
                 )

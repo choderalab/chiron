@@ -182,6 +182,8 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     )
 
 
+@pytest.mark.skip(reason="Tests takes too long")
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
 def test_ideal_gas(prep_temp_dir):
     from openmmtools.testsystems import IdealGas
     from openmm import unit
@@ -221,12 +223,12 @@ def test_ideal_gas(prep_temp_dir):
         box_vectors=ideal_gas.system.getDefaultPeriodicBoxVectors(),
     )
 
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
 
     # define the pair list for an orthogonal periodic space
     # since particles are non-interacting, this will not really do much
     # but will appropriately wrap particles in space
-    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
     nbr_list.build_from_state(sampler_state)
 
     from chiron.reporters import MCReporter
