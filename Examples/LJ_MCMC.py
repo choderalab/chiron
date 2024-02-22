@@ -96,10 +96,12 @@ from chiron.reporters import MCReporter
 # initialize a reporter to save the simulation data
 import os
 
-filename_barostat = "test_mc_lj_barostat.h5"
-if os.path.isfile(filename_barostat):
-    os.remove(filename_barostat)
-reporter_barostat = MCReporter(filename_barostat, 1)
+
+filename_displacement = "test_mc_lj_disp.h5"
+
+if os.path.isfile(filename_displacement):
+    os.remove(filename_displacement)
+reporter_displacement = MCReporter(filename_displacement, 10)
 
 from chiron.mcmc import MonteCarloDisplacementMove
 
@@ -112,11 +114,11 @@ mc_displacement_move = MonteCarloDisplacementMove(
     autotune_interval=100,
 )
 
-filename_displacement = "test_mc_lj_disp.h5"
+filename_barostat = "test_mc_lj_barostat.h5"
+if os.path.isfile(filename_barostat):
+    os.remove(filename_barostat)
+reporter_barostat = MCReporter(filename_barostat, 1)
 
-if os.path.isfile(filename_displacement):
-    os.remove(filename_displacement)
-reporter_displacement = MCReporter(filename_displacement, 10)
 
 from chiron.mcmc import MonteCarloBarostatMove
 

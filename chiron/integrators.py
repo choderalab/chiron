@@ -287,6 +287,6 @@ class LangevinIntegrator:
             "elapsed_step": elapsed_step,
         }
         if nbr_list is not None:
-            d["box_vectors"] = nbr_list.space.box_vectors
+            d["box_vectors"] = nbr_list.box_vectors
 
         self.reporter.report(d)
