@@ -255,17 +255,14 @@ class MCMove(MCMCMove):
         nbr_list: PairsBase
             The updated neighbor/pair list. If a nbr_list is not set, this will be None.
         """
-        calculate_current_reduced_potential = True
 
+        self._current_reduced_potential = None
         for i in range(self.number_of_moves):
             sampler_state, thermodynamic_state, nbr_list = self._step(
                 sampler_state,
                 thermodynamic_state,
                 nbr_list,
-                calculate_current_reduced_potential=calculate_current_reduced_potential,
             )
-            # after the first step, we don't need to recalculate the current reduced_potential, it will be stored
-            calculate_current_reduced_potential = False
 
             # I think it makes sense to use i + self.number_of_moves*self._move_iteration as our current "step"
             # otherwise, if we just used i, instances where self.report_interval > self.number_of_moves would only report on the
@@ -346,7 +343,6 @@ class MCMove(MCMCMove):
         current_sampler_state: SamplerState,
         current_thermodynamic_state: ThermodynamicState,
         current_nbr_list: Optional[PairsBase] = None,
-        calculate_current_reduced_potential: bool = True,
     ) -> Tuple[SamplerState, ThermodynamicState, Optional[PairsBase]]:
         """
         Performs an individual MC step.
@@ -361,8 +357,6 @@ class MCMove(MCMCMove):
             Current thermodynamic state.
         current_nbr_list : Optional[PairsBase]
             Neighbor list associated with the current state.
-        calculate_current_reduced_potential : bool, optional
-            Whether to calculate the current reduced potential. Default is True.
 
         Returns
         -------
@@ -383,15 +377,17 @@ class MCMove(MCMCMove):
         # we will need to calculate the reduced potential for the current state
         # this is toggled by the calculate_current_reduced_potential flag
         # otherwise, we can use the one that was saved from the last step, for efficiency
-        if calculate_current_reduced_potential:
-            current_reduced_pot = current_thermodynamic_state.get_reduced_potential(
-                current_sampler_state, current_nbr_list
+        if self._current_reduced_potential is None:
+            current_reduced_potential = (
+                current_thermodynamic_state.get_reduced_potential(
+                    current_sampler_state, current_nbr_list
+                )
             )
-            # save the current_reduced_pot so we don't have to recalculate
+            # save the current_reduced_potential so we don't have to recalculate
             # it on the next iteration if the move is rejected
-            self._current_reduced_pot = current_reduced_pot
+            self._current_reduced_potential = current_reduced_potential
         else:
-            current_reduced_pot = self._current_reduced_pot
+            current_reduced_potential = self._current_reduced_potential
 
         # propose a new state and calculate the log proposal ratio
         # this will be specific to the type of move
@@ -403,17 +399,17 @@ class MCMove(MCMCMove):
         (
             proposed_sampler_state,
             proposed_thermodynamic_state,
-            proposed_reduced_pot,
+            proposed_reduced_potential,
             log_proposal_ratio,
             proposed_nbr_list,
         ) = self._propose(
             current_sampler_state,
             current_thermodynamic_state,
-            current_reduced_pot,
+            current_reduced_potential,
             current_nbr_list,
         )
 
-        if jnp.isnan(proposed_reduced_pot):
+        if jnp.isnan(proposed_reduced_potential):
             decision = False
         else:
             # accept or reject the proposed state
@@ -429,7 +425,7 @@ class MCMove(MCMCMove):
         if decision:
             # save the reduced potential of the accepted state so
             # we don't have to recalculate it the next iteration
-            self._current_reduced_pot = proposed_reduced_pot
+            self._current_reduced_potential = proposed_reduced_potential
 
             # replace the current state with the proposed state
             # not sure this needs to be a separate function but for simplicity in outlining the code it is fine
@@ -478,7 +474,7 @@ class MCMove(MCMCMove):
         self,
         current_sampler_state: SamplerState,
         current_thermodynamic_state: ThermodynamicState,
-        current_reduced_pot: float,
+        current_reduced_potential: float,
         current_nbr_list: Optional[PairsBase] = None,
     ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
@@ -495,7 +491,7 @@ class MCMove(MCMCMove):
             Current sampler state.
         current_thermodynamic_state : ThermodynamicState, required
             Current thermodynamic state.
-        current_reduced_pot : float, required
+        current_reduced_potential : float, required
             Current reduced potential.
         current_nbr_list : PairsBase, required
             Neighbor list associated with the current state.
@@ -506,7 +502,7 @@ class MCMove(MCMCMove):
             Proposed sampler state.
         proposed_thermodynamic_state : ThermodynamicState
             Proposed thermodynamic state.
-        proposed_reduced_pot : float
+        proposed_reduced_potential : float
             Proposed reduced potential.
         log_proposal_ratio : float
             Log proposal ratio.
@@ -652,7 +648,7 @@ class MonteCarloDisplacementMove(MCMove):
         self,
         current_sampler_state: SamplerState,
         current_thermodynamic_state: ThermodynamicState,
-        current_reduced_pot: float,
+        current_reduced_potential: float,
         current_nbr_list: Optional[PairsBase] = None,
     ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
@@ -664,7 +660,7 @@ class MonteCarloDisplacementMove(MCMove):
             Current sampler state.
         current_thermodynamic_state : ThermodynamicState, required
             Current thermodynamic state.
-        current_reduced_pot : float, required
+        current_reduced_potential : float, required
             Current reduced potential.
         current_nbr_list : Optional[PairsBase]
             Neighbor list associated with the current state.
@@ -675,7 +671,7 @@ class MonteCarloDisplacementMove(MCMove):
             Proposed sampler state.
         proposed_thermodynamic_state : ThermodynamicState
             Proposed thermodynamic state.
-        proposed_reduced_pot : float
+        proposed_reduced_potential : float
             Proposed reduced potential.
         log_proposal_ratio : float
             Log proposal ratio.
@@ -741,18 +737,18 @@ class MonteCarloDisplacementMove(MCMove):
         else:
             proposed_nbr_list = None
 
-        proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
+        proposed_reduced_potential = current_thermodynamic_state.get_reduced_potential(
             proposed_sampler_state, proposed_nbr_list
         )
 
-        log_proposal_ratio = -proposed_reduced_pot + current_reduced_pot
+        log_proposal_ratio = -proposed_reduced_potential + current_reduced_potential
 
         # since do not change the thermodynamic state we can return
         # 'current_thermodynamic_state' rather than making a copy
         return (
             proposed_sampler_state,
             current_thermodynamic_state,
-            proposed_reduced_pot,
+            proposed_reduced_potential,
             log_proposal_ratio,
             proposed_nbr_list,
         )
@@ -869,7 +865,7 @@ class MonteCarloBarostatMove(MCMove):
         self,
         current_sampler_state: SamplerState,
         current_thermodynamic_state: ThermodynamicState,
-        current_reduced_pot: float,
+        current_reduced_potential: float,
         current_nbr_list: Optional[PairsBase] = None,
     ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
@@ -881,7 +877,7 @@ class MonteCarloBarostatMove(MCMove):
             Current sampler state.
         current_thermodynamic_state : ThermodynamicState, required
             Current thermodynamic state.
-        current_reduced_pot : float, required
+        current_reduced_potential : float, required
             Current reduced potential.
         current_nbr_list : PairsBase, optional
             Neighbor list associated with the current state.
@@ -892,7 +888,7 @@ class MonteCarloBarostatMove(MCMove):
             Proposed sampler state.
         proposed_thermodynamic_state : ThermodynamicState
             Proposed thermodynamic state.
-        proposed_reduced_pot : float
+        proposed_reduced_potential : float
             Proposed reduced potential.
         log_proposal_ratio : float
             Log proposal ratio.
@@ -944,21 +940,21 @@ class MonteCarloBarostatMove(MCMove):
                 proposed_sampler_state.positions, proposed_sampler_state.box_vectors
             )
 
-        proposed_reduced_pot = current_thermodynamic_state.get_reduced_potential(
+        proposed_reduced_potential = current_thermodynamic_state.get_reduced_potential(
             proposed_sampler_state, proposed_nbr_list
         )
         # NPT acceptance criteria was originally defined in McDonald 1972, https://doi.org/10.1080/00268977200100031
         # (see equation 9). The acceptance probability is given by:
         # ⎡−β (ΔU + PΔV ) + N ln(V new /V old )⎤
         log_proposal_ratio = -(
-            proposed_reduced_pot - current_reduced_pot
+            proposed_reduced_potential - current_reduced_potential
         ) + nr_of_atoms * jnp.log(proposed_volume / initial_volume)
 
         # we do not change the thermodynamic state so we can return 'current_thermodynamic_state'
         return (
             proposed_sampler_state,
             current_thermodynamic_state,
-            proposed_reduced_pot,
+            proposed_reduced_potential,
             log_proposal_ratio,
             proposed_nbr_list,
         )

@@ -144,7 +144,7 @@ from chiron.mcmc import LangevinDynamicsMove
 langevin_dynamics_move = LangevinDynamicsMove(
     timestep=1.0 * unit.femtoseconds,
     collision_rate=1.0 / unit.picoseconds,
-    number_of_steps=100,
+    number_of_steps=1000,
     reporter=reporter_langevin,
     report_interval=10,
 )
