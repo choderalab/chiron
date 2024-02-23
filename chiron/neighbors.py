@@ -199,8 +199,20 @@ class PairsBase(ABC):
     def __init__(
         self,
         space: Space,
-        cutoff: unit.Quantity = unit.Quantity(1.2, unit.nanometer),
+        cutoff: Optional[unit.Quantity] = unit.Quantity(1.2, unit.nanometer),
     ):
+        """
+        Initialize the PairsBase class
+
+        Parameters
+        ----------
+        space: Space
+            Class that defines how to calculate the displacement between two points and apply the boundary conditions
+            This should not be changed after initialization.
+        cutoff: unit.Quantity, default = 1.2 unit.nanometer
+            Cutoff distance for the neighborlist
+
+        """
         if not isinstance(space, Space):
             raise TypeError(f"space must be of type Space, found {type(space)}")
         if not cutoff.unit.is_compatible(unit.angstrom):
@@ -351,38 +363,39 @@ class PairsBase(ABC):
 
 class NeighborListNsqrd(PairsBase):
     """
-        Neighbor list implementation used to determine which particles are interacting (i.e., within the cutoff).
+        A JAX based neighbor list implementation used to determine which pairs of particles are interacting
+        (i.e., those particles that fall within the specified cutoff).
 
-        This `calculate` function of this class returns the particle pair ids, displacement vectors, and distances
-        between pairs within the specified cutoff range, subject to the boundary conditions defined by the simulation
-        Space class passed to the constructor.
-
-        The neighbor list (i.e., list of particles within cutoff+skin of a given particle)
-        is generated using an N^2 calculation rather than using a spatial partitioning scheme (e.g., cell-list).
-
+        The neighbor list (i.e., list of particles within a distance of  cutoff+skin of a given particle) is generated
+        within the `build` function using an O(N^2) calculation rather than using a spatial partitioning scheme
+        (e.g., cell-list).  The `calculate` function that uses the neighbor list to determine which particle pairs are
+        interacting and determine the distances and displacement vectors between interacting pairs of particles for
+        use in the calculation of the interaction energies/forces.  The routines are subject to the boundary conditions
+        specified by the Space class.
 
         Notes:
-        This does not include self-interactions and only includes unique pairs (i.e., no double-counting).
+        This neighbor list not include self-interactions and only includes unique pairs (i.e., no double-counting).
         This is sometimes referred to as a "half" neighbor list. E.g. consider the pair of neighboring particles (A, B):
         in the "half" neighbor list approach, B is in the neighbor list of A, but A is not in the neighbor list of B
         as that pair is already accounted for.
     .
-        The output of the `calculate` function is padded to a fixed size, n_max_neighbors, to allow for efficient
-        jitted computations in JAX. As such, values need to be masked using the `padding_mask` array returned by the
-        `calculate` function.  The padding mask is simple an array of 1s and 0s, where 1 indicates a valid neighbor and
-        0 indicates padding. The code will automatically increase n_max_neighbors by 10 if the number of neighbors
-        exceeds the current value.
+        The output of the `calculate` function is padded to a fixed size, `n_max_neighbors` (default=100),
+        to allow for efficient jitted computations in JAX. As such, values need to be masked using the `padding_mask`
+        array returned by the `calculate` function.  The padding mask is an array of 1s and 0s, where 1 indicates an
+        interacting  neighbor and 0 indicates the pair is either non-interacting or simply a padded value.
+        The `build` function will iteratively increase `n_max_neighbors` by 10 until we can store all neighbors.
 
-        The check function, which indicates if the neighbor list should be rebuilt, will return True if:
+        The `check` function, which indicates if the neighbor list should be rebuilt, will return True if:
         - the number of particles changes
-        - any of the particles have moved more than half the skin distance from their positions at the time of last
-        building the neighbor list.
+        - any of the particles have moved more than half the skin distance from their reference positions (i.e., the
+        positions of particles when the neighbor list was last built).
 
 
         Parameters
         ----------
         space: Space
-            Class that defines how to calculate the displacement between two points and apply the boundary conditions
+            Class that defines how to calculate the displacement between two points and apply the boundary conditions.
+            This should not be changed after initialization.
         cutoff: unit.Quantity, default = 1.2 unit.nanometer
             Cutoff distance for the neighborlist
         skin: unit.Quantity, default = 0.4 unit.nanometer
@@ -436,8 +449,8 @@ class NeighborListNsqrd(PairsBase):
         self.n_max_neighbors = n_max_neighbors
         self.space = space
 
-        # set a a simple variable to know if this has at least been built once as opposed to just initialized
-        # this does not imply that the neighborlist is up to date
+        # this variable will ensure that `calculate` will fail if we try to call it before building
+        # note: self.is_built=True does not imply that the neighborlist is up-to-date
         self.is_built = False
 
     @property
@@ -453,6 +466,8 @@ class NeighborListNsqrd(PairsBase):
         self._cutoff = cutoff
 
         # if we change the cutoff or skin we need to rebuild
+        # we will set the variable to ensure that attempts to call the calculate function will fail if
+        # we have not rebuilt the neighbor list
         self.is_built = False
 
     @property
@@ -468,15 +483,18 @@ class NeighborListNsqrd(PairsBase):
         self._skin = skin
 
         # if we change the cutoff or skin we need to rebuild
+        # we will set the variable to ensure that attempts to call the calculate function will fail if
+        # we have not rebuilt the neighbor list
         self.is_built = False
 
-    # Note, we need to use the partial decorator in order to jit the method of a class
-    # so that it knows to ignore the `self` argument.  However, this treats it as static.
-    # This means that any changes to the internal class values within the class will not be updated in this function.
-    # Hence it is important that we pass the values as arguments to the function so we are getting updated values
-    # and not reference anything via self.variable_name.
-    # Alternatively we could create a custom pytree instead of declaring the class static in this function,
-    # but I don't think that is necessary if we just pass the values as arguments.
+    # Note, we need to use the partial decorator and declare self as static in order to JIT a function within a class.
+    # This approach treats internal variables of the class as static within this function; e.g., if set self.cutoff = 2,
+    # called the function, then changed it to 3, the value of self.cutoff in this function would still be 2.
+    # Thus, we need to pass any variables that may change as arguments, rather than referencing self.variable_name.
+    # While we could create a custom pytree instead of declaring the class as static (allowing us to reference class
+    # variables directly within the JITTED function), any changes to those internal variables, say self.cutoff,
+    # would mean a change to the hash of any JITTEd function that depends on the variable, requiring JAX to recompile
+    # the function, which is a slow operation. As such, it is also more efficient to just pass variables as arguments.
 
     @partial(jax.jit, static_argnums=(0,))
     def _pairs_mask(self, particle_ids: jnp.array):
@@ -511,7 +529,7 @@ class NeighborListNsqrd(PairsBase):
 
         return temp_mask
 
-    # note: since n_max_neighbors dictates the output size, we need to define it as a static argument
+    # note: since n_max_neighbors dictates the output size, we will define it as a static argument
     # to allow us to jit this function
     @partial(jax.jit, static_argnums=(0, 5))
     def _build_neighborlist(
@@ -552,9 +570,13 @@ class NeighborListNsqrd(PairsBase):
             Number of neighbors for the particle
         """
 
-        # calculate the displacement between particle i and all other particles
-        # we could pass this as a function instead of referencing self.space, but I ran into issues
-        # doing that with vmap, and I haven't been able to figure out how to resolve that yet  -- CRI
+        # Calculate the displacement between particle i and all other particles
+        # NOTE: It would be safer to pass the displacement calculate as a callable function, instead of referencing
+        # self.space.  If someone changes the boundary conditions (i.e., changes space in the class),
+        # self.space.displacement will not change since the self is marked as status.
+        # However, I ran into issues passing a function through vmap, and I haven't been able to figure out how to
+        # resolve it yet.  I do not want to remove vmap, as that would  require substantially changing the flow of
+        # the code. For now, I've  noted in the docstring that space should not change after initialization -- CRI
         r_ij, dist = self.space.displacement(particle_i, positions, box_vectors)
 
         # neighbor_mask will be an array of length n_particles (i.e., length of positions)
@@ -728,6 +750,7 @@ class NeighborListNsqrd(PairsBase):
         particles1 = jnp.repeat(particle1, neighbors.shape[0])
 
         # calculate the displacement between particle i and all  neighbors
+        # See note above: if self.space changes, it will not show up here because self is static.
         r_ij, dist = self.space.displacement(
             positions[particles1], positions[neighbors], box_vectors
         )
@@ -814,7 +837,7 @@ class NeighborListNsqrd(PairsBase):
             True if the particle is outside the skin distance, False if it is not.
         """
         # calculate the displacement of a particle from the initial positions
-
+        # again, note that if self.space changes, it will not show up here because self is static.
         r_ij, displacement = self.space.displacement(
             positions[particle], ref_positions[particle], box_vectors
         )
@@ -863,14 +886,22 @@ class NeighborListNsqrd(PairsBase):
 
 class PairListNsqrd(PairsBase):
     """
-    Pair list implementation to determine which particles are interacting, subject to the simulation
-    Space class. This performs an N^2 calculation to determine the distances between particles which will be
-    inefficient for all but very small system sizes.  This routine can be defined either with or without a cutoff.
+    A class that implements a simple pair list using JAX that determine which pairs of particles are interacting.
+    This class can be defined with cutoff (i.e., only returning information  about pairs separated by distances
+    less than the cutoff) or without a cutoff (i.e., information about all possible pairs are returned).
+    Note, in both cases, distances are calculated using the boundary conditions defined by the simulation Space class
+    and only unique pairs are returned (i.e., no double counting and no self-interactions).
 
-    The `calculate` function of this class returns the particle pair ids, displacement vectors, and distances.
-    For efficiency of the jitted functions, the `calculate` function array sizes are fixed. For example, distance
-    has shape (n_particles, n_particles-1); note self-interactions are removed, hence n_particles-1).
-    The masking vector contains values of 1 for interacting particles and 0 otherwise.
+    This performs an O(N^2) calculation each time the `calculate` function is called and thus will be inefficient
+    for all but very small system sizes.
+
+    The calculate function will return various pieces of information about the interacting pairs
+    (e.g., number of neighbors, neighbor ids, distances, displacement vectors) that can be used to calculate the
+    interaction potential/force.  For efficiency of the jitted functions, the `calculate` function array
+    sizes are fixed. For example, distance has shape (n_particles, n_particles-1), regardless of the number of particles
+    that are actually neighbors (note: self interactions are removed hence n_particles-1). The `padding_mask` array
+    returned by `calculate` is used to exclude those pairs that are not interacting.  The `padding_mask` contains values
+    of 1 for interacting particles and 0 for non-interacting.
 
     Parameters
     ----------
@@ -879,6 +910,7 @@ class PairListNsqrd(PairsBase):
     cutoff: Optional[unit.Quantity], default = None
         Cutoff distance for the pair list calculation.  If None, the pair list will be calculated without a cutoff,
         applying the boundary conditions as defined in space.
+
     Examples
     --------
     >>> import jax.numpy as jnp
@@ -892,11 +924,11 @@ class PairListNsqrd(PairsBase):
     >>> pair_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=1.2*unit.nanometer)
     >>> pair_list.build_from_state(sampler_state)
     >>>
-    >>> # mask and distances are of shape (n_particles, n_particles-1),
-    >>> # displacement_vectors of shape (n_particles, n_particles-1, 3)
-    >>> # mask, is a bool array that is True if the particle is within the cutoff distance, False if it is not
-    >>> # n_pairs is of shape (n_particles) and is per row sum of the mask. The mask ensure we also do not double count pairs
-    >>> n_pairs, mask, distances, displacement_vectors = pair_list.calculate(sampler_state.positions)
+    >>> # n_pairs is of shape (n_particles) and is per row sum of the padding_mask.
+    >>> # pairs, padding mask and distances are of shape (n_particles, n_particles-1),
+    >>> # displacement_vectors are of shape (n_particles, n_particles-1, 3)
+    >>> # padding_mask, is a bool array that is True if the particle is within the cutoff distance, False if it is not
+    >>> n_pairs, pairs, padding_mask, distances, displacement_vectors = pair_list.calculate(sampler_state.positions)
     """
 
     def __init__(
@@ -904,6 +936,17 @@ class PairListNsqrd(PairsBase):
         space: Space,
         cutoff: Optional[unit.Quantity] = None,
     ):
+        """
+        Initialize the PairListNsqrd class
+
+        Parameters
+        ----------
+        space: Space
+            Class that defines how to calculate the displacement between two points and apply the boundary conditions.
+            This should not change after initialization.
+        cutoff: Optional[unit.Quantity], default = None
+            Cutoff distance for the pair list calculation.  If None, the pair list will be calculated without a cutoff.
+        """
         if not isinstance(space, Space):
             raise TypeError(f"space must be of type Space, found {type(space)}")
 
@@ -913,12 +956,21 @@ class PairListNsqrd(PairsBase):
 
         self.space = space
 
-        # set a a simple variable to know if this has at least been built once as opposed to just initialized
-        # this does not imply that the neighborlist is up to date
+        # the init function does not setup the internal arrays we need to use calculate
+        # this is handled in the `build` function
+        # this variable can be used to check that the pair list has been built before trying to use it
         self.is_built = False
 
     @property
     def cutoff(self):
+        """
+        Cutoff distance for the pair list calculation.  If None, the pair list will be calculated without a cutoff.
+
+        Returns
+        -------
+        cutoff: unit.Quantity
+            Cutoff distance for the pair list calculation.  If None, the pair list will be calculated without a cutoff.
+        """
         return self._cutoff
 
     @cutoff.setter
@@ -928,11 +980,18 @@ class PairListNsqrd(PairsBase):
                 raise ValueError(
                     f"cutoff must be a unit.Quantity with units of distance, cutoff.unit = {cutoff.unit}"
                 )
+        # Note, since this is just a simple pair list, we do not need to rebuild by changing the cutoff
         self._cutoff = cutoff
-        # Since this is just a simple pair list, we do not need to rebuild by changing a cutoff
 
-    # note, we need to use the partial decorator in order to use the jit decorate
-    # so that it knows to ignore the `self` argument
+    # Note, we need to use the partial decorator and declare self as static in order to JIT a function within a class.
+    # As mentioned in a comment above in the NeighborListNsqrd class, this approach treats internal variables of the
+    # class as static within this function; e.g., if set self.cutoff = 2, called the function, then changed it to 3,
+    # the value of self.cutoff in this function would still be 2.  Thus, we need to pass any variables that may change
+    # as arguments, rather than referencing self.variable_name.   While we could create a custom pytree instead of
+    # declaring the class as static (allowing us to reference class variables directly within the JITTED function),
+    # any changes to those internal variables, say self.cutoff, would mean a change to the hash of any JITTEd function
+    # that depends on the variable, requiring JAX to recompile the function, which is a slow operation.
+    # As such, it is also more efficient to just pass variables as arguments.
     @partial(jax.jit, static_argnums=(0,))
     def _pairs_and_mask(self, particle_ids: jnp.array):
         """
@@ -1063,6 +1122,7 @@ class PairListNsqrd(PairsBase):
         particles1 = jnp.repeat(particle1, neighbors.shape[0])
 
         # calculate the displacement between particle i and all  neighbors
+        # See note above: if self.space changes, it will not show up here because self is static.
         r_ij, dist = self.space.displacement(
             positions[particles1], positions[neighbors], box_vectors
         )
@@ -1116,6 +1176,7 @@ class PairListNsqrd(PairsBase):
         particles1 = jnp.repeat(particle1, neighbors.shape[0])
 
         # calculate the displacement between particle i and all  neighbors
+        # See note above: if self.space changes, it will not show up here because self is static.
         r_ij, dist = self.space.displacement(
             positions[particles1], positions[neighbors], box_vectors
         )

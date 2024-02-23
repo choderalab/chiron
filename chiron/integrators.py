@@ -182,12 +182,6 @@ class LangevinIntegrator:
             # r
             x += (timestep_unitless * 0.5) * v
 
-            # we can actually skip this wrapping, and just wrap/check/rebuild
-            # right before we call the force again.
-
-            # if nbr_list is not None:
-            #    x = self._wrap_and_rebuild_neighborlist(x, nbr_list)
-            # o
             random_noise_v = random.normal(subkey, x.shape)
             v = (a * v) + (b * sigma_v * random_noise_v)
 

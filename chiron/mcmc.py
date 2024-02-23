@@ -533,6 +533,23 @@ class MCMove(MCMCMove):
 
 
 class MonteCarloDisplacementMove(MCMove):
+    """
+    A Monte Carlo move that randomly displaces particles in the system.
+
+    For each move, all particles will be randomly displaced at once, where the random displacement is drawn from
+    a normal distribution. The standard deviation of the distribution is defined by the `displacement_sigma` parameter.
+
+    Displacements can be restricted to a subset of particles by defining the `atom_subset` parameter, which is a list of
+    particle indices that will be allowed to move. If `atom_subset` is not defined, all particles will be displaced.
+
+    Note, the displacement moves are applied on a per-particle basis; this does not support collective moves.
+
+    The value of the `displacement_sigma` can be autotuned to achieve a target acceptance ratio between 0.4 and 0.6,
+    by setting the autotune parameter to True. The frequency of autotuning is defined by setting `autotune_interval`.
+
+
+    """
+
     def __init__(
         self,
         displacement_sigma=1.0 * unit.nanometer,
@@ -652,7 +669,7 @@ class MonteCarloDisplacementMove(MCMove):
         current_nbr_list: Optional[PairsBase] = None,
     ) -> Tuple[SamplerState, ThermodynamicState, float, float, Optional[PairsBase]]:
         """
-        Implement the logic specific to displacement changes.
+        Implements the logic specific to displacement moves.
 
         Parameters
         ----------
@@ -755,6 +772,22 @@ class MonteCarloDisplacementMove(MCMove):
 
 
 class MonteCarloBarostatMove(MCMove):
+    """
+    A Monte Carlo move that randomly changes the volume of the system.
+
+    The volume change is drawn from a normal distribution with a mean of 0 and a standard deviation defined
+    by the product of the `volume_max_scale` parameter and the current volume. Particle positions are scaled
+    proportionately with the change in volume. This routine operates on a per-particle basis and does not support
+    collective moves (i.e., it is an "atomic" barostat move where particle center-of-mass positions are scaled;
+    it is not aware of "molecules" which would be scaled by the molecule center-of-mass).
+
+    The `volume_max_scale` parameter can be autotuned to achieve a target acceptance ratio between 0.25 and 0.75,
+    by setting the autotune parameter to True. The frequency of autotuning is defined by setting `autotune_interval`.
+    Note, the maximum value of `volume_max_scale` is capped at 0.3 in the auto-tuning process.
+
+
+    """
+
     def __init__(
         self,
         volume_max_scale=0.01,
