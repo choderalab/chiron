@@ -38,6 +38,9 @@ class MCMCMove:
         # we need to keep track of which iteration we are on
         self._move_iteration = 0
 
+        # we also need to keep track of attempts made (i.e., total elapsed steps), in case the number_of_moves is changed
+        self._number_of_attempts_made = 0
+
         from loguru import logger as log
 
         if self.reporter is not None:
@@ -76,6 +79,13 @@ class MCMCMove:
 
         """
         pass
+
+    @property
+    def number_of_attemps_made(self):
+        """
+        Return the total number of steps that have been attempted in the  move.
+        """
+        return self._number_of_attempts_made
 
 
 class LangevinDynamicsMove(MCMCMove):
@@ -176,6 +186,8 @@ class LangevinDynamicsMove(MCMCMove):
             number_of_steps=self.number_of_moves,
             nbr_list=nbr_list,
         )
+        # update the elapsed steps
+        self._number_of_attempts_made += self.number_of_moves
 
         if self.save_traj_in_memory:
             self.traj.append(self.integrator.traj)
@@ -263,18 +275,19 @@ class MCMove(MCMCMove):
                 thermodynamic_state,
                 nbr_list,
             )
+            self._number_of_attempts_made += 1
 
-            # I think it makes sense to use i + self.number_of_moves*self._move_iteration as our current "step"
-            # otherwise, if we just used i, instances where self.report_interval > self.number_of_moves would only report on the
-            # first step,  which might actually be more frequent than we specify
-            elapsed_step = i + self._move_iteration * self.number_of_moves
+            # We should use self._number_of_attempts_made  as the  "step" otherwise, if we just used i, instances where
+            # self.report_interval > self.number_of_moves would only report on the
+            # first step, which might actually be more frequent than we specify
+
             if hasattr(self, "reporter"):
                 if self.reporter is not None:
-                    if elapsed_step % self.report_interval == 0:
+                    if self._number_of_attempts_made % self.report_interval == 0:
                         self._report(
                             i,
                             self._move_iteration,
-                            elapsed_step,
+                            self._number_of_attempts_made,
                             self.n_accepted / self.n_proposed,
                             sampler_state,
                             thermodynamic_state,
@@ -282,7 +295,10 @@ class MCMove(MCMCMove):
                         )
             if self.autotune:
                 # if we only used i, we might never actually update the parameters if we have a move that is called infrequently
-                if elapsed_step % self.autotune_interval == 0 and elapsed_step > 0:
+                if (
+                    self._number_of_attempts_made % self.autotune_interval == 0
+                    and self._number_of_attempts_made > 0
+                ):
                     self._autotune()
         # keep track of how many times this function has been called
         self._move_iteration += 1
@@ -294,7 +310,7 @@ class MCMove(MCMCMove):
         self,
         step: int,
         iteration: int,
-        elapsed_step: int,
+        number_of_attempts_made: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -312,7 +328,7 @@ class MCMove(MCMCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
-        elapsed_step : int
+        number_of_attempts_made : int
             The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
@@ -608,7 +624,7 @@ class MonteCarloDisplacementMove(MCMove):
         self,
         step: int,
         iteration: int,
-        elapsed_step: int,
+        number_of_attempts_made: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -623,7 +639,7 @@ class MonteCarloDisplacementMove(MCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
-        elapsed_step : int
+        number_of_attempts_made : int
             The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
@@ -642,7 +658,7 @@ class MonteCarloDisplacementMove(MCMove):
             {
                 "step": step,
                 "iteration": iteration,
-                "elapsed_step": elapsed_step,
+                "number_of_attempts_made": number_of_attempts_made,
                 "potential_energy": potential,
                 "displacement_sigma": self.displacement_sigma.value_in_unit_system(
                     unit.md_unit_system
@@ -836,7 +852,7 @@ class MonteCarloBarostatMove(MCMove):
         self,
         step: int,
         iteration: int,
-        elapsed_step: int,
+        number_of_attempts_made: int,
         acceptance_probability: float,
         sampler_state: SamplerState,
         thermodynamic_state: ThermodynamicState,
@@ -850,7 +866,7 @@ class MonteCarloBarostatMove(MCMove):
             The current step of the simulation move.
         iteration : int
             The current iteration of the move sequence (i.e., how many times has this been called thus far).
-        elapsed_step : int
+        number_of_attempts_made : int
             The total number of steps that have been taken in the simulation move. step+ nr_moves*iteration
         acceptance_probability : float
             The acceptance probability of the move.
@@ -874,7 +890,7 @@ class MonteCarloBarostatMove(MCMove):
             {
                 "step": step,
                 "iteration": iteration,
-                "elapsed_step": elapsed_step,
+                "number_of_attempts_made": number_of_attempts_made,
                 "potential_energy": potential,
                 "volume": volume,
                 "box_vectors": sampler_state.box_vectors,
