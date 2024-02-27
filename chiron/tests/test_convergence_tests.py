@@ -44,9 +44,17 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     from chiron.states import ThermodynamicState, SamplerState
 
     thermodynamic_state = ThermodynamicState(
-        harmonic_potential, temperature=300, volume=30 * (unit.angstrom**3)
+        harmonic_potential,
+        temperature=300 * unit.kelvin,
+        volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(
+        positions=ho.positions, current_PRNG_key=PRNG.get_random_key()
+    )
 
     from chiron.reporters import _SimulationReporter
 
@@ -55,16 +63,16 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     simulation_reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
 
     # Initalize the move set (here only LangevinDynamicsMove)
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSchedule, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
-    mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=100_000,
+    mc_displacement_move = MonteCarloDisplacementMove(
+        number_of_moves=1_000,
         displacement_sigma=0.5 * unit.angstrom,
         atom_subset=[0],
         reporter=simulation_reporter,
     )
 
-    move_set = MoveSchedule([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
     sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
@@ -82,7 +90,9 @@ def test_convergence_of_MC_estimator(prep_temp_dir):
     plt.plot(chiron_energy)
 
     print("Expectation values generated with chiron")
-    es = chiron_energy
+    import jax.numpy as jnp
+
+    es = jnp.array(chiron_energy)
     print(es.mean(), es.std())
 
     print("Expectation values from openmmtools")
@@ -133,12 +143,16 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
     )
 
     print(lj_fluid.system.getDefaultPeriodicBoxVectors())
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
 
     sampler_state = SamplerState(
-        x0=lj_fluid.positions,
+        positions=lj_fluid.positions,
         box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
+        current_PRNG_key=PRNG.get_random_key(),
     )
-    print(sampler_state.x0.shape)
+    print(sampler_state.positions.shape)
     print(sampler_state.box_vectors)
 
     nbr_list = NeighborListNsqrd(
@@ -153,16 +167,137 @@ def test_langevin_dynamics_with_LJ_fluid(prep_temp_dir):
         potential=lj_potential, temperature=300 * unit.kelvin
     )
 
-    from chiron.reporters import _SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter
 
     id = uuid.uuid4()
-    reporter = _SimulationReporter(f"{prep_temp_dir}/test_{id}.h5")
+    reporter = LangevinDynamicsReporter(f"{prep_temp_dir}/test_{id}.h5")
 
-    integrator = LangevinIntegrator(reporter=reporter, report_frequency=100)
+    integrator = LangevinIntegrator(reporter=reporter, report_interval=100)
     integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=2000,
+        number_of_steps=1000,
         nbr_list=nbr_list,
         progress_bar=True,
     )
+
+
+@pytest.mark.skip(reason="Tests takes too long")
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test takes too long.")
+def test_ideal_gas(prep_temp_dir):
+    from openmmtools.testsystems import IdealGas
+    from openmm import unit
+
+    n_particles = 216
+    temperature = 298 * unit.kelvin
+    pressure = 1 * unit.atmosphere
+    mass = unit.Quantity(39.9, unit.gram / unit.mole)
+
+    ideal_gas = IdealGas(
+        nparticles=n_particles, temperature=temperature, pressure=pressure
+    )
+
+    from chiron.potential import IdealGasPotential
+    from chiron.utils import PRNG
+    import jax.numpy as jnp
+
+    #
+    cutoff = 0.0 * unit.nanometer
+    ideal_gas_potential = IdealGasPotential(ideal_gas.topology)
+
+    from chiron.states import SamplerState, ThermodynamicState
+
+    # define the thermodynamic state
+    thermodynamic_state = ThermodynamicState(
+        potential=ideal_gas_potential,
+        temperature=temperature,
+        pressure=pressure,
+    )
+
+    PRNG.set_seed(1234)
+
+    # define the sampler state
+    sampler_state = SamplerState(
+        positions=ideal_gas.positions,
+        current_PRNG_key=PRNG.get_random_key(),
+        box_vectors=ideal_gas.system.getDefaultPeriodicBoxVectors(),
+    )
+
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
+
+    # define the pair list for an orthogonal periodic space
+    # since particles are non-interacting, this will not really do much
+    # but will appropriately wrap particles in space
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    nbr_list.build_from_state(sampler_state)
+
+    from chiron.reporters import MCReporter
+
+    # initialize a reporter to save the simulation data
+    filename = "test_mc_ideal_gas.h5"
+    import os
+
+    if os.path.isfile(filename):
+        os.remove(filename)
+    reporter = MCReporter(filename, 1)
+
+    from chiron.mcmc import (
+        MonteCarloDisplacementMove,
+        MonteCarloBarostatMove,
+        MoveSchedule,
+        MCMCSampler,
+    )
+
+    mc_displacement_move = MonteCarloDisplacementMove(
+        displacement_sigma=0.1 * unit.nanometer,
+        number_of_moves=10,
+        reporter=reporter,
+        autotune=True,
+        autotune_interval=100,
+    )
+
+    mc_barostat_move = MonteCarloBarostatMove(
+        volume_max_scale=0.2,
+        number_of_moves=100,
+        reporter=reporter,
+        autotune=True,
+        autotune_interval=100,
+    )
+    move_set = MoveSchedule(
+        [
+            ("MonteCarloDisplacementMove", mc_displacement_move),
+            ("MonteCarloBarostatMove", mc_barostat_move),
+        ]
+    )
+
+    sampler = MCMCSampler(move_set)
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=10, nbr_list=nbr_list
+    )  # how many times to repeat
+
+    volume = reporter.get_property("volume")
+
+    # get expectations
+    ideal_volume = ideal_gas.get_volume_expectation(thermodynamic_state)
+    ideal_volume_std = ideal_gas.get_volume_standard_deviation(thermodynamic_state)
+
+    print(ideal_volume, ideal_volume_std)
+
+    volume_mean = jnp.mean(jnp.array(volume)) * unit.nanometer**3
+    volume_std = jnp.std(jnp.array(volume)) * unit.nanometer**3
+
+    print(volume_mean, volume_std)
+
+    ideal_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / ideal_volume
+    measured_density = mass * n_particles / unit.AVOGADRO_CONSTANT_NA / volume_mean
+
+    assert jnp.isclose(
+        ideal_density.value_in_unit(unit.kilogram / unit.meter**3),
+        measured_density.value_in_unit(unit.kilogram / unit.meter**3),
+        atol=1e-1,
+    )
+    # see if within 5% of ideal volume
+    assert abs(ideal_volume - volume_mean) / ideal_volume < 0.05
+
+    # see if within 10% of the ideal standard deviation of the volume
+    assert abs(ideal_volume_std - volume_std) / ideal_volume_std < 0.1

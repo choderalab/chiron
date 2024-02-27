@@ -20,10 +20,15 @@ lj_potential = LJPotential(
 )
 
 from chiron.states import SamplerState, ThermodynamicState
+from chiron.utils import PRNG
+
+PRNG.set_seed(1234)
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+    positions=lj_fluid.positions,
+    current_PRNG_key=PRNG.get_random_key(),
+    box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
 
 # define the thermodynamic state
@@ -39,29 +44,61 @@ skin = 0.5 * unit.nanometer
 nbr_list = NeighborListNsqrd(
     OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
 )
-from chiron.neighbors import PairList
+from chiron.neighbors import PairListNsqrd
 
 
 # build the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import _SimulationReporter
+from chiron.reporters import MCReporter
 
 # initialize a reporter to save the simulation data
-filename = "test_lj.h5"
+filename = "test_mc_lj.h5"
 import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = _SimulationReporter("test_mc_lj.h5", lj_fluid.topology, 1)
+reporter = MCReporter(filename, 1)
 
-from chiron.mcmc import MetropolisDisplacementMove
+from chiron.mcmc import MonteCarloDisplacementMove
 
-mc_move = MetropolisDisplacementMove(
-    seed=1234,
+mc_move = MonteCarloDisplacementMove(
     displacement_sigma=0.01 * unit.nanometer,
-    nr_of_moves=1000,
+    number_of_moves=5000,
     reporter=reporter,
+    report_interval=1,
+    autotune=True,
+    autotune_interval=100,
 )
 
-mc_move.run(sampler_state, thermodynamic_state, nbr_list, True)
+mc_move.update(sampler_state, thermodynamic_state, nbr_list)
+
+stats = mc_move.statistics
+print(stats["n_accepted"] / stats["n_proposed"])
+
+
+acceptance_probability = reporter.get_property("acceptance_probability")
+displacement_sigma = reporter.get_property("displacement_sigma")
+potential_energy = reporter.get_property("potential_energy")
+step = reporter.get_property("step")
+
+# plot the energy
+import matplotlib.pyplot as plt
+
+plt.subplot(3, 1, 1)
+
+plt.plot(step, displacement_sigma)
+plt.ylabel("displacement_sigma (nm)")
+
+plt.subplot(3, 1, 2)
+
+plt.plot(step, acceptance_probability)
+plt.ylabel("acceptance_probability")
+
+
+plt.subplot(3, 1, 3)
+
+plt.plot(step, potential_energy)
+plt.xlabel("Step")
+plt.ylabel("potential_energy (kj/mol)")
+plt.show()

@@ -11,26 +11,40 @@ class SamplerState:
 
     Parameters
     ----------
-    x0 : unit.Quantity
+    positions : unit.Quantity
         The current positions of the particles in the simulation.
     velocities : unit.Quantity, optional
         The velocities of the particles in the simulation.
     box_vectors : unit.Quantity, optional
         The box vectors defining the simulation's periodic boundary conditions.
 
+    Examples
+    --------
+
+    from chiron.states import SamplerState
+    from chiron.utils import PRNG
+    from openmmtools.testsystems import HarmonicOscillator
+
+    ho = HarmonicOscillator()
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(positions = ho.positions, PRNG.get_random_key())
+
     """
 
     def __init__(
         self,
-        x0: unit.Quantity,
+        positions: unit.Quantity,
         current_PRNG_key: random.PRNGKey,
         velocities: Optional[unit.Quantity] = None,
         box_vectors: Optional[unit.Quantity] = None,
     ) -> None:
         # NOTE: all units are internally in the openMM units system as documented here:
         # http://docs.openmm.org/latest/userguide/theory/01_introduction.html#units
-        if not isinstance(x0, unit.Quantity):
-            raise TypeError(f"x0 must be a unit.Quantity, got {type(x0)} instead.")
+        if not isinstance(positions, unit.Quantity):
+            raise TypeError(
+                f"positions must be a unit.Quantity, got {type(positions)} instead."
+            )
         if velocities is not None and not isinstance(velocities, unit.Quantity):
             raise TypeError(
                 f"velocities must be a unit.Quantity, got {type(velocities)} instead."
@@ -45,8 +59,10 @@ class SamplerState:
                 raise TypeError(
                     f"box_vectors must be a unit.Quantity or openMM box, got {type(box_vectors)} instead."
                 )
-        if not x0.unit.is_compatible(unit.nanometer):
-            raise ValueError(f"x0 must have units of distance, got {x0.unit} instead.")
+        if not positions.unit.is_compatible(unit.nanometer):
+            raise ValueError(
+                f"positions must have units of distance, got {positions.unit} instead."
+            )
         if velocities is not None and not velocities.unit.is_compatible(
             unit.nanometer / unit.picosecond
         ):
@@ -63,26 +79,27 @@ class SamplerState:
             raise ValueError(
                 f"box_vectors must be a 3x3 array, got {box_vectors.shape} instead."
             )
-        if velocities is not None and x0.shape != velocities.shape:
+        if velocities is not None and positions.shape != velocities.shape:
             raise ValueError(
-                f"x0 and velocities must have the same shape, got {x0.shape} and {velocities.shape} instead."
+                f"positions and velocities must have the same shape, got {positions.shape} and {velocities.shape} instead."
             )
         if current_PRNG_key is None:
             raise ValueError(f"random_seed must be set.")
 
-        self._x0 = x0
+        self._positions = positions
         self._velocities = velocities
         self._current_PRNG_key = current_PRNG_key
         self._box_vectors = box_vectors
         self._distance_unit = unit.nanometer
+        self._time_unit = unit.picosecond
 
     @property
     def n_particles(self) -> int:
-        return self._x0.shape[0]
+        return self._positions.shape[0]
 
     @property
-    def x0(self) -> jnp.array:
-        return self._convert_to_jnp(self._x0)
+    def positions(self) -> jnp.array:
+        return self._convert_to_jnp(self._positions)
 
     @property
     def velocities(self) -> jnp.array:
@@ -96,16 +113,39 @@ class SamplerState:
             return None
         return self._convert_to_jnp(self._box_vectors)
 
-    @x0.setter
-    def x0(self, x0: Union[jnp.array, unit.Quantity]) -> None:
+    @positions.setter
+    def positions(self, x0: Union[jnp.array, unit.Quantity]) -> None:
         if isinstance(x0, unit.Quantity):
-            self._x0 = x0
+            self._positions = x0
         else:
-            self._x0 = unit.Quantity(x0, self._distance_unit)
+            self._positions = unit.Quantity(x0, self._distance_unit)
+
+    @box_vectors.setter
+    def box_vectors(self, box_vectors: Union[jnp.array, unit.Quantity]) -> None:
+        if isinstance(box_vectors, unit.Quantity):
+            self._box_vectors = box_vectors
+        else:
+            self._box_vectors = unit.Quantity(box_vectors, self._distance_unit)
+
+    @velocities.setter
+    def velocities(self, velocities: Union[jnp.array, unit.Quantity]) -> None:
+        if velocities.shape != self._positions.shape:
+            raise ValueError(
+                f"velocities must have the same shape as positions, got {velocities.shape} and {self._positions.shape} instead."
+            )
+        if isinstance(velocities, unit.Quantity):
+            self._velocities = velocities
+        else:
+            self._velocities = unit.Quantity(
+                velocities, self._distance_unit / self._time_unit
+            )
 
     @property
     def distance_unit(self) -> unit.Unit:
         return self._distance_unit
+
+    def velocity_unit(self) -> unit.Unit:
+        return self._distance_unit / self._time_unit
 
     @property
     def new_PRNG_key(self) -> random.PRNGKey:
@@ -201,7 +241,7 @@ class ThermodynamicState:
         from .utils import get_nr_of_particles
 
         self.nr_of_particles = get_nr_of_particles(self.potential.topology)
-        self._check_completness()
+        self._check_completeness()
 
     def check_variables(self) -> None:
         """
@@ -215,7 +255,7 @@ class ThermodynamicState:
         set_variables = [var for var in variables if getattr(self, var) is not None]
         return set_variables
 
-    def _check_completness(self):
+    def _check_completeness(self):
         # check which variables are set
         set_variables = self.check_variables()
         from loguru import logger as log
@@ -242,7 +282,7 @@ class ThermodynamicState:
         ----------
         sampler_state : SamplerState
             The sampler state for which to compute the reduced potential.
-        nbr_list : NeighborList or PairList, optional
+        nbr_list : NeighborList or PairListNsqrd, optional
             The neighbor list or pair list routine to use for calculating the reduced potential.
 
         Returns
@@ -263,17 +303,25 @@ class ThermodynamicState:
             self.beta = 1.0 / (
                 unit.BOLTZMANN_CONSTANT_kB * (self.temperature * unit.kelvin)
             )
-        # log.debug(f"sample state: {sampler_state.x0}")
+        # log.debug(f"sample state: {sampler_state.positions}")
         reduced_potential = (
             unit.Quantity(
-                self.potential.compute_energy(sampler_state.x0, nbr_list),
+                self.potential.compute_energy(sampler_state.positions, nbr_list),
                 unit.kilojoule_per_mole,
             )
         ) / unit.AVOGADRO_CONSTANT_NA
         # log.debug(f"reduced potential: {reduced_potential}")
         if self.pressure is not None:
-            reduced_potential += self.pressure * self.volume
+            self.volume = (
+                sampler_state.box_vectors[0][0]
+                * sampler_state.box_vectors[1][1]
+                * sampler_state.box_vectors[2][2]
+            ) * unit.nanometer**3
 
+            from loguru import logger as log
+
+            reduced_potential += self.pressure * self.volume
+        #  add chemical potential
         return self.beta * reduced_potential
 
     def kT_to_kJ_per_mol(self, energy):
@@ -295,7 +343,7 @@ def calculate_reduced_potential_at_states(
         The sampler state for which to compute the reduced potential.
     thermodynamic_states : list of ThermodynamicState
         The thermodynamic states for which to compute the reduced potential.
-    nbr_list : NeighborList or PairList, optional
+    nbr_list : NeighborList or PairListNsqrd, optional
     Returns
     -------
     list of float

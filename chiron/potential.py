@@ -63,6 +63,70 @@ class NeuralNetworkPotential:
         return distance[interacting_mask], displacement_vectors[interacting_mask], pairs
 
 
+class IdealGasPotential(NeuralNetworkPotential):
+    def __init__(
+        self,
+        topology: Topology,
+    ):
+        """
+        Initialize the Ideal Gas potential.
+
+        Parameters
+        ----------
+        topology : Topology
+            The topology of the system
+
+        """
+
+        if not isinstance(topology, (Topology, property)) and topology is not None:
+            raise TypeError(
+                f"Topology must be a Topology object, a property, or None, got type(topology) = {type(topology)}"
+            )
+
+        self.topology = topology
+
+    def compute_energy(self, positions: jnp.array, nbr_list=None, debug_mode=False):
+        """
+        Compute the energy for an ideal gas, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, default=None
+            Instance of a neighbor list or pair list class to use.
+            If None, an unoptimized N^2 pairlist will be used without PBC conditions.
+        Returns
+        -------
+        potential_energy : float
+            The total potential energy of the system.
+
+        """
+        # Compute the pair distances and displacement vectors
+
+        return 0.0
+
+    def compute_force(self, positions: jnp.array, nbr_list=None) -> jnp.array:
+        """
+        Compute the  force for ideal gas particles, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        force : jnp.array
+            The forces on the particles in the system
+
+        """
+
+        return 0.0
+
+
 class LJPotential(NeuralNetworkPotential):
     def __init__(
         self,
@@ -200,7 +264,7 @@ class LJPotential(NeuralNetworkPotential):
                 raise ValueError("Neighborlist must be built before use")
 
             # ensure that the cutoff in the neighbor list is the same as the cutoff in the potential
-            if nbr_list.cutoff != self.cutoff:
+            if nbr_list.cutoff.value_in_unit_system(unit.md_unit_system) != self.cutoff:
                 raise ValueError(
                     f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
                 )
@@ -285,7 +349,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             The topology object representing the molecular system.
         k : unit.Quantity, optional
             The spring constant of the harmonic potential. Default is 1.0 kcal/mol/Å^2.
-        x0 : unit.Quantity, optional
+        positions : unit.Quantity, optional
             The equilibrium position of the harmonic potential. Default is [0.0,0.0,0.0] Å.
         U0 : unit.Quantity, optional
             The offset potential energy of the harmonic potential. Default is 0.0 kcal/mol.
@@ -302,7 +366,9 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         if not isinstance(k, unit.Quantity):
             raise TypeError(f"k must be a unit.Quantity, type(k) = {type(k)}")
         if not isinstance(x0, unit.Quantity):
-            raise TypeError(f"x0 must be a unit.Quantity, type(x0) = {type(x0)}")
+            raise TypeError(
+                f"positions must be a unit.Quantity, type(positions) = {type(x0)}"
+            )
         if not isinstance(U0, unit.Quantity):
             raise TypeError(f"U0 must be a unit.Quantity, type(U0) = {type(U0)}")
 
@@ -312,9 +378,11 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             )
         if not x0.unit.is_compatible(unit.angstrom):
             raise ValueError(
-                f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}"
+                f"positions must be a unit.Quantity with units of distance, positions.unit = {x0.unit}"
             )
-        assert x0.shape[1] == 3, f"x0 must be a NX3 vector, x0.shape = {x0.shape}"
+        assert (
+            x0.shape[1] == 3
+        ), f"positions must be a NX3 vector, positions.shape = {x0.shape}"
         if not U0.unit.is_compatible(unit.kilocalories_per_mole):
             raise ValueError(
                 f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"
@@ -324,9 +392,11 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
 
         log.debug("Initializing HarmonicOscillatorPotential")
         log.debug(f"k = {k}")
-        log.debug(f"x0 = {x0}")
+        log.debug(f"positions = {x0}")
         log.debug(f"U0 = {U0}")
-        log.debug("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
+        log.debug(
+            "Energy is calculate: U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0"
+        )
         self.k = jnp.array(
             k.value_in_unit_system(unit.md_unit_system)
         )  # spring constant
@@ -339,7 +409,7 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self.topology = topology
 
     def compute_energy(self, positions: jnp.array, nbr_list=None):
-        # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0
+        # the functional form is given by U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors

@@ -29,8 +29,8 @@ def provide_testsystems_and_potentials():
     import jax.numpy as jnp
 
     hoa_potential = HarmonicOscillatorPotential(
-        ho.topology,
-        ho.K,
+        hoa.topology,
+        hoa.K,
         x0=unit.Quantity(
             jnp.array(
                 [
@@ -54,5 +54,3 @@ def provide_testsystems_and_potentials():
         (hoa, hoa_potential),
     ]
     return TESTSYSTEM_AND_POTENTIAL
-
-

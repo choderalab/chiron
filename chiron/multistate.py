@@ -75,6 +75,7 @@ class MultiStateSampler:
         self._neighborhoods = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
+
         self._reporter = reporter  # NOTE: reporter needs to be putlic, API change ahead
         self._metadata = None
         self._mcmc_sampler = copy.deepcopy(mcmc_sampler)
@@ -322,14 +323,14 @@ class MultiStateSampler:
 
         # Perform minimization
         minimized_state = minimize_energy(
-            sampler_state.x0,
+            sampler_state.positions,
             thermodynamic_state.potential.compute_energy,
             self.nbr_list,
             maxiter=max_iterations,
         )
 
         # Update the sampler state
-        self._sampler_states[replica_id].x0 = minimized_state.params
+        self._sampler_states[replica_id].positions = minimized_state.params
 
         # Compute and log final energy
         final_energy = thermodynamic_state.get_reduced_potential(sampler_state)
@@ -394,11 +395,17 @@ class MultiStateSampler:
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         sampler_state = self._sampler_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+
         mcmc_sampler = self._mcmc_sampler[thermodynamic_state_id]
         # Propagate using the mcmc sampler
-        self._sampler_states[replica_id] = mcmc_sampler.run(sampler_state, thermodynamic_state)
+        # NOTE this needs to be updated to support neighborlists
+        (
+            self._sampler_states[replica_id],
+            self._thermodynamic_states[thermodynamic_state_id],
+            nbr_list,
+        ) = mcmc_sampler.run(sampler_state, thermodynamic_state)
         # Append the new state to the trajectory for analysis.
-        self._traj[replica_id].append(self._sampler_states[replica_id].x0)
+        self._traj[replica_id].append(self._sampler_states[replica_id].positions)
 
     def _perform_swap_proposals(self):
         """
@@ -577,9 +584,9 @@ class MultiStateSampler:
 
         log.debug("Reporting positions...")
         # numpy array with shape (n_replicas, n_atoms, 3)
-        xyz = np.zeros((self.n_replicas, self._sampler_states[0].x0.shape[0], 3))
+        xyz = np.zeros((self.n_replicas, self._sampler_states[0].positions.shape[0], 3))
         for replica_id in range(self.n_replicas):
-            xyz[replica_id] = self._sampler_states[replica_id].x0
+            xyz[replica_id] = self._sampler_states[replica_id].positions
         return {"positions": xyz}
 
     def _report(self, property: str) -> None:
@@ -598,17 +605,29 @@ class MultiStateSampler:
         from loguru import logger as log
 
         log.debug(f"Reporting {property}...")
-        match property:
-            case "positions":
-                return self._report_positions()
-            case "states":
-                pass
-            case "u_kn":
-                return self._report_energy_matrix()
-            case "trajectory":
-                return
-            case "mixing_statistics":
-                return
+        if property == "positions":
+            return self._report_positions()
+        elif property == "states":
+            pass
+        elif property == "u_kn":
+            return self._report_energy_matrix()
+        elif property == "trajectory":
+            return
+        elif "mixing_statistics":
+            return
+
+        # match isn't in python 3.9; we can discuss if we want to drop python 3.0 support or just keep the if/else structure
+        # match property:
+        #     case "positions":
+        #         return self._report_positions()
+        #     case "states":
+        #         pass
+        #     case "u_kn":
+        #         return self._report_energy_matrix()
+        #     case "trajectory":
+        #         return
+        #     case "mixing_statistics":
+        #         return
 
     def _report_iteration(self):
         """

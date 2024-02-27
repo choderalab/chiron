@@ -367,7 +367,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
             file_handler=self._write_xtc_file_handle,
             positions=positions,
             iteration=self.buffer.get("step"),
-            box_vecotrs=self.buffer.get("box_vectors"),
+            box_vectors=self.buffer.get("box_vectors"),
         )
 
     def read_from_trajectory(self) -> np.ndarray:
@@ -409,7 +409,7 @@ class LangevinDynamicsReporter(_SimulationReporter):
         file_handler: md.formats.XTCTrajectoryFile,
         positions: np.ndarray,
         iteration: np.ndarray,
-        box_vecotrs: Optional[np.ndarray] = None,
+        box_vectors: Optional[np.ndarray] = None,
     ):
         """
         Write position data to an XTC file.
@@ -428,5 +428,5 @@ class LangevinDynamicsReporter(_SimulationReporter):
         file_handler.write(
             positions,
             time=iteration,
-            box=box_vecotrs,
+            box=box_vectors,
         )
