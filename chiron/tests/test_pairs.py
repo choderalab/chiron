@@ -4,7 +4,7 @@ from chiron.neighbors import (
     NeighborListNsqrd,
     PairListNsqrd,
     OrthogonalPeriodicSpace,
-    OrthogonalNonperiodicSpace,
+    OrthogonalNonPeriodicSpace,
 )
 from chiron.states import SamplerState
 
@@ -42,7 +42,7 @@ def test_orthogonal_periodic_displacement():
 
 
 def test_orthogonal_nonperiodic_displacement():
-    space = OrthogonalNonperiodicSpace()
+    space = OrthogonalNonPeriodicSpace()
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
     p1 = jnp.array([[0, 0, 0], [0, 0, 0]])
     p2 = jnp.array([[1, 0, 0], [6, 0, 0]])

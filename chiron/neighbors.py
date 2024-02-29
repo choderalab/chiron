@@ -68,6 +68,9 @@ class OrthogonalPeriodicSpace(Space):
         # calculate uncorrected r_ij
         r_ij = xyz_1 - xyz_2
 
+        if box_vectors is None:
+            raise ValueError("box_vectors must be provided for a periodic system")
+
         box_lengths = jnp.array(
             [box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]]
         )
@@ -97,6 +100,9 @@ class OrthogonalPeriodicSpace(Space):
             Wrapped positions of the system
 
         """
+        if box_vectors is None:
+            raise ValueError("box_vectors must be provided for a periodic system")
+
         box_lengths = jnp.array(
             [box_vectors[0][0], box_vectors[1][1], box_vectors[2][2]]
         )
@@ -106,16 +112,16 @@ class OrthogonalPeriodicSpace(Space):
         return xyz
 
 
-class OrthogonalNonperiodicSpace(Space):
+class OrthogonalNonPeriodicSpace(Space):
     @partial(jax.jit, static_argnums=(0,))
     def displacement(
         self,
         xyz_1: jnp.array,
         xyz_2: jnp.array,
-        box_vectors: jnp.array,
+        box_vectors: Optional[jnp.array] = None,
     ) -> Tuple[jnp.array, jnp.array]:
         """
-        Calculate the periodic distance between two points.
+        Calculate the distance between two points in a non-periodic system.
 
         Parameters
         ----------
@@ -123,8 +129,9 @@ class OrthogonalNonperiodicSpace(Space):
             Positions of the first point
         xyz_2: jnp.array
             Positions of the second point
-        box_vectors: jnp.array
+        box_vectors: Optional[jnp.array]=None
             Box vectors for the system.
+            These are not needed for a non-periodic system, but are included for consistent API usage.
 
         Returns
         -------
@@ -134,7 +141,7 @@ class OrthogonalNonperiodicSpace(Space):
             Distance between the two points
 
         """
-        # calculate uncorrect r_ij
+        # calculate r_ij
         r_ij = xyz_1 - xyz_2
 
         # calculate the scalar distance
@@ -143,17 +150,21 @@ class OrthogonalNonperiodicSpace(Space):
         return r_ij, dist
 
     @partial(jax.jit, static_argnums=(0,))
-    def wrap(self, xyz: jnp.array, box_vectors: jnp.array) -> jnp.array:
+    def wrap(
+        self, xyz: jnp.array, box_vectors: Optional[jnp.array] = None
+    ) -> jnp.array:
         """
-        Wrap the positions of the system.
-        For the Non-periodic system, this does not alter the positions
+        Wrap the positions of the system inside the box.
+        For the non-periodic system, this does not alter the positions.
 
         Parameters
         ----------
         xyz: jnp.array
             Positions of the system
-        box_vectors: jnp.array
-            Box vectors for the system
+        box_vectors: Optional[jnp.array]=None
+            Box vectors for the system.
+            These are not needed for a non-periodic system, but are included for consistent API usage.
+
 
         Returns
         -------
@@ -226,7 +237,7 @@ class PairsBase(ABC):
     def build(
         self,
         positions: Union[jnp.array, unit.Quantity],
-        box_vectors: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity, None],
     ):
         """
         Build list from an array of positions and array of box vectors.
@@ -236,9 +247,10 @@ class PairsBase(ABC):
         positions: jnp.array or unit.Quantity
             Shape[n_particles,3] array of particle positions, either with or without units attached.
             If the array is passed as a unit.Quantity, the units must be distances and will be converted to nanometers.
-        box_vectors: jnp.array or unit.Quantity
+        box_vectors: jnp.array or unit.Quantity or None
             Shape[3,3] array of box vectors for the system, either with or without units attached.
             If the array is passed as a unit.Quantity, the units must be distances and will be converted to nanometers.
+            If None, the system is assumed to be non-periodic and the Space class must reflect this.
 
         Returns
         -------
@@ -250,7 +262,7 @@ class PairsBase(ABC):
     def _validate_build_inputs(
         self,
         positions: Union[jnp.array, unit.Quantity],
-        box_vectors: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity, None],
     ):
         """
         Validate the inputs to the build function.
@@ -292,6 +304,8 @@ class PairsBase(ABC):
                     f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
                 )
             self.box_vectors = box_vectors
+        if box_vectors is None:
+            self.box_vectors = None
 
     def build_from_state(self, sampler_state: SamplerState):
         """
@@ -310,8 +324,8 @@ class PairsBase(ABC):
             raise TypeError(f"Expected SamplerState, got {type(sampler_state)} instead")
 
         positions = sampler_state.positions
-        if sampler_state.box_vectors is None:
-            raise ValueError(f"SamplerState does not contain box vectors")
+        # if sampler_state.box_vectors is None:
+        #    raise ValueError(f"SamplerState does not contain box vectors")
         box_vectors = sampler_state.box_vectors
 
         self.build(positions, box_vectors)
@@ -557,8 +571,9 @@ class NeighborListNsqrd(PairsBase):
             Maximum number of neighbors for each particle.  Used for padding arrays for efficient jax computations
         cutoff_and_skin: float
             Cutoff distance for the neighborlist plus the skin distance, in nanometers.
-        box_vectors: jnp.array
-            Box vectors for the system
+        box_vectors: Union[jnp.array, None]
+            Box vectors for the system.
+            If None, the system is assumed to be non-periodic and the Space class must be compatible with this.
 
         Returns
         -------
@@ -613,7 +628,7 @@ class NeighborListNsqrd(PairsBase):
     def build(
         self,
         positions: Union[jnp.array, unit.Quantity],
-        box_vectors: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity, None],
     ):
         """
         Build the neighbor list from an array of positions and box vectors.
@@ -622,7 +637,7 @@ class NeighborListNsqrd(PairsBase):
         ----------
         positions: jnp.array
             Shape[N,3] array of particle positions
-        box_vectors: jnp.array
+        box_vectors: Union[jnp.array, None]
             Shape[3,3] array of box vectors
 
         Returns
@@ -647,10 +662,11 @@ class NeighborListNsqrd(PairsBase):
                 )
             box_vectors = box_vectors.value_in_unit_system(unit.md_unit_system)
 
-        if box_vectors.shape != (3, 3):
-            raise ValueError(
-                f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
-            )
+        if isinstance(box_vectors, jnp.ndarray):
+            if box_vectors.shape != (3, 3):
+                raise ValueError(
+                    f"box_vectors should be a 3x3 array, shape provided: {box_vectors.shape}"
+                )
 
         self.ref_positions = positions
         self.box_vectors = box_vectors
@@ -714,7 +730,13 @@ class NeighborListNsqrd(PairsBase):
 
     @partial(jax.jit, static_argnums=(0,))
     def _calc_distance_per_particle(
-        self, particle1, neighbors, neighbor_mask, positions, cutoff, box_vectors
+        self,
+        particle1: int,
+        neighbors: jnp.array,
+        neighbor_mask: jnp.array,
+        positions: jnp.array,
+        cutoff: float,
+        box_vectors: Union[jnp.array, None],
     ):
         """
         Jitted function to calculate the distance between a particle and its neighbors
@@ -731,8 +753,9 @@ class NeighborListNsqrd(PairsBase):
             X,Y,Z positions of all particles
         cutoff: float
             Cutoff distance for the neighborlist, in nanometers
-        box_vectors: jnp.array
-            Box vectors for the system
+        box_vectors: Union[jnp.array, None]
+            Box vectors for the system.
+            If None, the system is assumed to be non-periodic and the Space class must be compatible with this.
 
         Returns
         -------
@@ -1046,7 +1069,7 @@ class PairListNsqrd(PairsBase):
     def build(
         self,
         positions: Union[jnp.array, unit.Quantity],
-        box_vectors: Union[jnp.array, unit.Quantity],
+        box_vectors: Union[jnp.array, unit.Quantity, None],
     ):
         """
         Build the list from an array of positions and box vectors.
@@ -1055,8 +1078,9 @@ class PairListNsqrd(PairsBase):
         ----------
         positions: jnp.array
             Shape[n_particles,3] array of particle positions
-        box_vectors: jnp.array
-            Shape[3,3] array of box vectors
+        box_vectors: jnp.array or unit.Quantity, or None
+            Shape[3,3] array of box vectors, with or without units.
+            If None, the system is assumed to be non-periodic and the Space class must be compatible with this.
 
         Returns
         -------
@@ -1098,8 +1122,9 @@ class PairListNsqrd(PairsBase):
                     X,Y,Z positions of all particles, shaped (n_particles, 3)
                 cutoff: float
                     Cutoff distance for the interaction.
-                box_vectors: jnp.array
-                    Box vectors for the system
+                box_vectors: Union[jnp.array, None]
+                    Box vectors for the system.
+                    If None, the system is assumed to be non-periodic and the Space class must be compatible with this.
 
                 Returns
                 -------
@@ -1152,8 +1177,9 @@ class PairListNsqrd(PairsBase):
             Mask to exclude double particles to prevent double counting
         positions: jnp.array
             X,Y,Z positions of all particles, shaped (n_particles, 3)
-        box_vectors: jnp.array
-            Box vectors of the system
+        box_vectors: Union[jnp.array, None]
+            Box vectors of the system.
+            If None, the system is assumed to be non-periodic and the Space class must be compatible with this.
 
         Returns
         -------

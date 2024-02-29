@@ -1,29 +1,27 @@
+import copy
+
 from chiron.multistate import MultiStateSampler
-from chiron.neighbors import NeighborListNsqrd
+from chiron.neighbors import PairListNsqrd
 import pytest
 from typing import Tuple
 
 
-def setup_sampler() -> Tuple[NeighborListNsqrd, MultiStateSampler]:
+def setup_sampler() -> Tuple[PairListNsqrd, MultiStateSampler]:
     """
-    Set up the neighbor list and multistate sampler for the simulation.
+    Set up the pair list and multistate sampler for the simulation.
 
     Returns:
-        Tuple: A tuple containing the neighbor list and multistate sampler objects.
+        Tuple: A tuple containing the pair list and multistate sampler objects.
     """
     from openmm import unit
     from chiron.mcmc import LangevinDynamicsMove
-    from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalNonPeriodicSpace
     from chiron.reporters import MultistateReporter, BaseReporter
     from chiron.mcmc import MCMCSampler, MoveSchedule
 
-    sigma = 0.34 * unit.nanometer
-    cutoff = 3.0 * sigma
-    skin = 0.5 * unit.nanometer
+    cutoff = 1.0 * unit.nanometer
 
-    nbr_list = NeighborListNsqrd(
-        OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
-    )
+    nbr_list = PairListNsqrd(OrthogonalNonPeriodicSpace(), cutoff=cutoff)
 
     lang_move = LangevinDynamicsMove(
         timestep=1.0 * unit.femtoseconds, number_of_steps=100
@@ -76,10 +74,14 @@ def ho_multistate_sampler_multiple_minima() -> MultiStateSampler:
 
     sampler_state = [SamplerState(ho.positions, PRNG.get_random_key()) for _ in x0s]
     nbr_list, multistate_sampler = setup_sampler()
+    import copy
+
+    nbr_lists = [copy.deepcopy(nbr_list) for _ in x0s]
+
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
         sampler_states=sampler_state,
-        nbr_list=nbr_list,
+        nbr_lists=nbr_lists,
     )
 
     return multistate_sampler
@@ -135,11 +137,14 @@ def ho_multistate_sampler_multiple_ks() -> MultiStateSampler:
     )
 
     nbr_list, multistate_sampler = setup_sampler()
+    import copy
+
+    nbr_lists = [copy.deepcopy(nbr_list) for _ in sigmas]
 
     multistate_sampler.create(
         thermodynamic_states=thermodynamic_states,
         sampler_states=sampler_state,
-        nbr_list=nbr_list,
+        nbr_lists=nbr_lists,
     )
     multistate_sampler.analytical_f_i = f_i
     multistate_sampler.delta_f_ij_analytical = f_i - f_i[:, np.newaxis]
