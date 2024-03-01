@@ -408,12 +408,21 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         )  # offset potential energy
         self.topology = topology
 
+    from functools import partial
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _compute_energy(self, positions: jnp.array, x0: jnp.array, k, U0):
+        displacement_vectors = positions - x0
+        # Use the 3D harmonic oscillator potential to compute the potential energy
+        potential_energy = 0.5 * k * jnp.sum(displacement_vectors**2) + U0
+        return potential_energy
+
     def compute_energy(self, positions: jnp.array, nbr_list=None):
         # the functional form is given by U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors
-        displacement_vectors = positions - self.x0
+        # displacement_vectors = positions - self.x0
         # Uue the 3D harmonic oscillator potential to compute the potential energy
-        potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
-        return potential_energy
+        # potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
+        return self._compute_energy(positions, self.x0, self.k, self.U0)

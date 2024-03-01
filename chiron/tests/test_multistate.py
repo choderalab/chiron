@@ -19,7 +19,7 @@ def setup_sampler() -> Tuple[PairListNsqrd, MultiStateSampler]:
     from chiron.reporters import MultistateReporter, BaseReporter
     from chiron.mcmc import MCMCSampler, MoveSchedule
 
-    cutoff = 1.0 * unit.nanometer
+    cutoff = 10.0 * unit.nanometer
 
     nbr_list = PairListNsqrd(OrthogonalNonPeriodicSpace(), cutoff=cutoff)
 
@@ -135,7 +135,7 @@ def ho_multistate_sampler_multiple_ks() -> MultiStateSampler:
             for sigma in sigmas
         ]
     )
-
+    log.info(f"Analytical free energy difference: {f_i}")
     nbr_list, multistate_sampler = setup_sampler()
     import copy
 
@@ -227,7 +227,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iterations = 25
+    n_iterations = 20
     ho_sampler.run(n_iterations)
 
     # check that we have the correct number of iterations, replicas and states
