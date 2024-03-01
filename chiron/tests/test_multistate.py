@@ -205,9 +205,9 @@ def test_multistate_minimize(ho_multistate_sampler_multiple_minima: MultiStateSa
     )
 
 
-@pytest.mark.skip(
-    reason="Multistate code still needs to be modified in the multistage branch"
-)
+# @pytest.mark.skip(
+#     reason="Multistate code still needs to be modified in the multistage branch"
+# )
 def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     """
     Test function for running the multistate sampler.
@@ -227,8 +227,8 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     print(f"Analytical free energy difference: {ho_sampler.delta_f_ij_analytical[0]}")
 
-    n_iteratinos = 25
-    ho_sampler.run(n_iteratinos)
+    n_iterations = 25
+    ho_sampler.run(n_iterations)
 
     # check that we have the correct number of iterations, replicas and states
     assert ho_sampler.iteration == n_iterations
@@ -238,7 +238,11 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
 
     u_kn = ho_sampler._reporter.get_property("u_kn")
 
-    assert u_kn.shape == (n_iteratinos, 4, 4)
+    # the u_kn array  is transposed to be _states, n_replicas, n_iterations
+    # SHOULD THIS BE TRANSPOSED IN THE REPORTER? I feel safer to have it
+    # be transposed when used (if we want it in such a form).
+    # note n_iterations+1 because it logs time = 0 as well
+    assert u_kn.shape == (4, 4, n_iterations + 1)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     # [ 0.        , -0.28593054, -0.54696467, -0.78709279]

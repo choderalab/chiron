@@ -329,10 +329,13 @@ class ThermodynamicState:
         return energy / self.beta
 
 
+from chiron.neighbors import PairsBase
+
+
 def calculate_reduced_potential_at_states(
     sampler_state: SamplerState,
     thermodynamic_states: List[ThermodynamicState],
-    nbr_list=None,
+    nbr_list: Optional[PairsBase] = None,
 ):
     """
     Calculate the reduced potential for a list of thermodynamic states.
@@ -343,7 +346,7 @@ def calculate_reduced_potential_at_states(
         The sampler state for which to compute the reduced potential.
     thermodynamic_states : list of ThermodynamicState
         The thermodynamic states for which to compute the reduced potential.
-    nbr_list : NeighborList or PairListNsqrd, optional
+    nbr_list : NeighborList or PairListNsqrd, or None, optional
     Returns
     -------
     list of float
@@ -355,6 +358,8 @@ def calculate_reduced_potential_at_states(
 
     reduced_potentials = np.zeros(len(thermodynamic_states))
     for state_idx, state in enumerate(thermodynamic_states):
-        reduced_potentials[state_idx] = state.get_reduced_potential(sampler_state)
+        reduced_potentials[state_idx] = state.get_reduced_potential(
+            sampler_state, nbr_list
+        )
     log.debug(f"reduced potentials per sampler sate: {reduced_potentials}")
     return reduced_potentials
