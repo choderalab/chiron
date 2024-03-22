@@ -28,6 +28,10 @@ class MBAREstimator:
         from loguru import logger as log
 
         log.debug(f"{N_k=}")
+        u_kn = np.transpose(
+            u_kn, (2, 1, 0)
+        )  # shape: n_states, n_replicas, n_iterations
+
         self.mbar = MBAR(u_kn=u_kn, N_k=N_k)
 
     @property

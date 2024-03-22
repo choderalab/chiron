@@ -94,7 +94,7 @@ class SamplerState:
         self._time_unit = unit.picosecond
 
     @property
-    def n_particles(self) -> int:
+    def number_of_particles(self) -> int:
         return self._positions.shape[0]
 
     @property

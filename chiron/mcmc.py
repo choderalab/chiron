@@ -717,13 +717,13 @@ class MonteCarloDisplacementMove(MCMove):
         if self.atom_subset is not None and self.atom_subset_mask is None:
             import jax.numpy as jnp
 
-            self.atom_subset_mask = jnp.zeros(current_sampler_state.n_particles)
+            self.atom_subset_mask = jnp.zeros(current_sampler_state.number_of_particles)
             for atom in self.atom_subset:
                 self.atom_subset_mask = self.atom_subset_mask.at[atom].set(1)
 
         key = current_sampler_state.new_PRNG_key
 
-        nr_of_atoms = current_sampler_state.n_particles
+        nr_of_atoms = current_sampler_state.number_of_particles
 
         unitless_displacement_sigma = self.displacement_sigma.value_in_unit_system(
             unit.md_unit_system
@@ -951,7 +951,7 @@ class MonteCarloBarostatMove(MCMove):
 
         import jax.random as jrandom
 
-        nr_of_atoms = current_sampler_state.n_particles
+        nr_of_atoms = current_sampler_state.number_of_particles
 
         initial_volume = (
             current_sampler_state.box_vectors[0][0]

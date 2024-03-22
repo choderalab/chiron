@@ -166,8 +166,8 @@ def test_multistate_class(ho_multistate_sampler_multiple_minima: MultiStateSampl
 
     """
     assert ho_multistate_sampler_multiple_minima._iteration == 0
-    assert ho_multistate_sampler_multiple_minima.n_replicas == 3
-    assert ho_multistate_sampler_multiple_minima.n_states == 3
+    assert ho_multistate_sampler_multiple_minima.number_of_replicas == 3
+    assert ho_multistate_sampler_multiple_minima.number_of_thermodynamic_states == 3
     assert ho_multistate_sampler_multiple_minima._energy_thermodynamic_states.shape == (
         3,
         3,
@@ -233,16 +233,14 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     # check that we have the correct number of iterations, replicas and states
     assert ho_sampler.iteration == n_iterations
     assert ho_sampler._iteration == n_iterations
-    assert ho_sampler.n_replicas == 4
-    assert ho_sampler.n_states == 4
+    assert ho_sampler.number_of_replicas == 4
+    assert ho_sampler.number_of_thermodynamic_states == 4
 
     u_kn = ho_sampler._reporter.get_property("u_kn")
 
-    # the u_kn array  is transposed to be _states, n_replicas, n_iterations
-    # SHOULD THIS BE TRANSPOSED IN THE REPORTER? I feel safer to have it
-    # be transposed when used (if we want it in such a form).
+    # we no longer transpose the array in the reporter; it is transposed before analysis in mbar
     # note n_iterations+1 because it logs time = 0 as well
-    assert u_kn.shape == (4, 4, n_iterations + 1)
+    assert u_kn.shape == (n_iterations + 1, 4, 4)
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     # [ 0.        , -0.28593054, -0.54696467, -0.78709279]

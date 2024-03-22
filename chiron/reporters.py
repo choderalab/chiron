@@ -194,13 +194,13 @@ class _SimulationReporter:
                 log.warning(f"{name} not in HDF5 file")
                 return None
 
-            if name == "u_kn":
-                return np.transpose(
-                    data, (2, 1, 0)
-                )  # shape: n_states, n_replicas, n_iterations
-
-            else:
-                return data
+            # if name == "u_kn":
+            #     return np.transpose(
+            #         data, (2, 1, 0)
+            #     )  # shape: n_states, n_replicas, n_iterations
+            #
+            # else:
+            return data
 
 
 from typing import Optional

@@ -84,7 +84,7 @@ class MultiStateSampler:
         self._offline_estimator = MBAREstimator()
 
     @property
-    def n_states(self) -> int:
+    def number_of_thermodynamic_states(self) -> int:
         """
         Get the number of thermodynamic states in the sampler.
 
@@ -99,7 +99,7 @@ class MultiStateSampler:
             return len(self._thermodynamic_states)
 
     @property
-    def n_replicas(self) -> int:
+    def number_of_replicas(self) -> int:
         """
         Get the number of replicas in the sampler.
 
@@ -279,23 +279,30 @@ class MultiStateSampler:
         )
 
         # Initialize matrices for tracking acceptance and proposal statistics.
-        self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
-        self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
-        self._energy_thermodynamic_states = np.zeros(
-            [self.n_replicas, self.n_states], np.float64
+        self._n_accepted_matrix = np.zeros(
+            [self.number_of_thermodynamic_states, self.number_of_thermodynamic_states],
+            np.int64,
         )
-        self._traj = [[] for _ in range(self.n_replicas)]
+        self._n_proposed_matrix = np.zeros(
+            [self.number_of_thermodynamic_states, self.number_of_thermodynamic_states],
+            np.int64,
+        )
+        self._energy_thermodynamic_states = np.zeros(
+            [self.number_of_replicas, self.number_of_thermodynamic_states], np.float64
+        )
+        self._traj = [[] for _ in range(self.number_of_replicas)]
 
         # Ensure there is an MCMCSampler for each thermodynamic state.
         from chiron.mcmc import MCMCSampler
 
         if isinstance(self._mcmc_sampler, MCMCSampler):
             self._mcmc_sampler = [
-                copy.deepcopy(self._mcmc_sampler) for _ in range(self.n_states)
+                copy.deepcopy(self._mcmc_sampler)
+                for _ in range(self.number_of_thermodynamic_states)
             ]
-        elif len(self._mcmc_sampler) != self.n_states:
+        elif len(self._mcmc_sampler) != self.number_of_thermodynamic_states:
             raise RuntimeError(
-                f"The number of MCMCMoves ({len(self._mcmc_sampler)}) and ThermodynamicStates ({self.n_states}) must be the same."
+                f"The number of MCMCMoves ({len(self._mcmc_sampler)}) and ThermodynamicStates ({self.number_of_thermodynamic_states}) must be the same."
             )
 
         # Reset iteration counter.
@@ -335,7 +342,7 @@ class MultiStateSampler:
         # Compute the initial energy of the system for logging.
         initial_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         log.debug(
-            f"Replica {replica_id + 1}/{self.n_replicas}: initial energy {initial_energy:8.3f}kT"
+            f"Replica {replica_id + 1}/{self.number_of_replicas}: initial energy {initial_energy:8.3f}kT"
         )
 
         # Perform minimization
@@ -362,7 +369,7 @@ class MultiStateSampler:
         # Compute and log final energy
         final_energy = thermodynamic_state.get_reduced_potential(sampler_state)
         log.debug(
-            f"Replica {replica_id + 1}/{self.n_replicas}: final energy {final_energy:8.3f}kT"
+            f"Replica {replica_id + 1}/{self.number_of_replicas}: final energy {final_energy:8.3f}kT"
         )
 
     def minimize(
@@ -393,7 +400,7 @@ class MultiStateSampler:
         from loguru import logger as log
 
         # Check that simulation has been created.
-        if self.n_replicas == 0:
+        if self.number_of_replicas == 0:
             raise RuntimeError(
                 "Cannot minimize replicas. The simulation must be created first."
             )
@@ -401,7 +408,7 @@ class MultiStateSampler:
         log.debug("Minimizing all replicas...")
 
         # Iterate over all replicas and minimize them
-        for replica_id in range(self.n_replicas):
+        for replica_id in range(self.number_of_replicas):
             self._minimize_replica(replica_id, tolerance, max_iterations)
 
     def _propagate_replica(self, replica_id: int):
@@ -499,7 +506,7 @@ class MultiStateSampler:
         log.debug("Propagating all replicas...")
 
         # Iterate over all replicas and propagate each one.
-        for replica_id in range(self.n_replicas):
+        for replica_id in range(self.number_of_replicas):
             self._propagate_replica(replica_id)
 
     def _compute_energies(self) -> None:
@@ -513,10 +520,12 @@ class MultiStateSampler:
 
         log.debug("Computing energy matrix for all replicas...")
         # Initialize the energy matrix and neighborhoods
-        self._energy_thermodynamic_states = np.zeros((self.n_replicas, self.n_states))
+        self._energy_thermodynamic_states = np.zeros(
+            (self.number_of_replicas, self.number_of_thermodynamic_states)
+        )
 
         # Calculate and store energies for each replica.
-        for replica_id in range(self.n_replicas):
+        for replica_id in range(self.number_of_replicas):
             self._energy_thermodynamic_states[
                 replica_id, :
             ] = self._compute_replica_reduced_potential(replica_id)
@@ -614,8 +623,10 @@ class MultiStateSampler:
 
         log.debug("Reporting positions...")
         # numpy array with shape (n_replicas, n_atoms, 3)
-        xyz = np.zeros((self.n_replicas, self._sampler_states[0].positions.shape[0], 3))
-        for replica_id in range(self.n_replicas):
+        xyz = np.zeros(
+            (self.number_of_replicas, self._sampler_states[0].positions.shape[0], 3)
+        )
+        for replica_id in range(self.number_of_replicas):
             xyz[replica_id] = self._sampler_states[replica_id].positions
         return {"positions": xyz}
 
@@ -691,7 +702,7 @@ class MultiStateSampler:
         # Perform offline free energy estimate if requested
         if self._offline_estimator:
             log.debug("Performing offline free energy estimate...")
-            N_k = [self._iteration] * self.n_states
+            N_k = [self._iteration] * self.number_of_thermodynamic_states
             u_kn = self._reporter.get_property("u_kn")
             self._offline_estimator.initialize(
                 u_kn=u_kn,
