@@ -77,7 +77,7 @@ class MultiStateSampler:
         self._n_proposed_matrix = None
         self._nbr_lists = None
 
-        self._reporter = reporter  # NOTE: reporter needs to be putlic, API change ahead
+        self._reporter = reporter  # NOTE: reporter needs to be public, API change ahead
         self._metadata = None
         self._mcmc_sampler = copy.deepcopy(mcmc_sampler)
         self._online_estimator = None
@@ -163,14 +163,19 @@ class MultiStateSampler:
         """
         if self._sampler_states is None:
             return None
-        return self.is_periodic
+        # if we define box vectors the system will be periodic
+        # I think we will need to check the sampler states to ensure that they all do have box vectors defined
+        if self._sampler_states[0].box_vectors is not None:
+            self._is_periodic = True
+
+        return self._is_periodic
 
     @property
     def is_completed(self):
         """Check if we have reached any of the stop target criteria (read-only)"""
         return self._is_completed()
 
-    def _compute_replica_energies(self, replica_id: int) -> np.ndarray:
+    def _compute_replica_reduced_potential(self, replica_id: int) -> np.ndarray:
         """
         Compute the energy of a replica across all thermodynamic states.
 
@@ -514,7 +519,7 @@ class MultiStateSampler:
         for replica_id in range(self.n_replicas):
             self._energy_thermodynamic_states[
                 replica_id, :
-            ] = self._compute_replica_energies(replica_id)
+            ] = self._compute_replica_reduced_potential(replica_id)
 
     def _is_completed(self, iteration_limit: Optional[int] = None) -> bool:
         """

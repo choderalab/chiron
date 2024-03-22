@@ -56,5 +56,4 @@ class MBAREstimator:
         from loguru import logger as log
 
         log.debug(self.mbar.f_k[-1])
-        self.f_k = self.mbar.f_k
         return self.mbar_f_k[-1]

@@ -353,13 +353,14 @@ def calculate_reduced_potential_at_states(
         The reduced potential of the system for each thermodynamic state.
 
     """
-    import numpy as np
+    import jax.numpy as jnp
+    import jax
     from loguru import logger as log
 
-    reduced_potentials = np.zeros(len(thermodynamic_states))
+    reduced_potentials = jnp.zeros(len(thermodynamic_states))
     for state_idx, state in enumerate(thermodynamic_states):
-        reduced_potentials[state_idx] = state.get_reduced_potential(
-            sampler_state, nbr_list
+        reduced_potentials = reduced_potentials.at[state_idx].set(
+            state.get_reduced_potential(sampler_state, nbr_list)
         )
     log.debug(f"reduced potentials per sampler sate: {reduced_potentials}")
     return reduced_potentials
