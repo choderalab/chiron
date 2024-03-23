@@ -2,9 +2,9 @@ import jax.numpy as jnp
 import pytest
 from chiron.neighbors import (
     NeighborListNsqrd,
-    PairList,
+    PairListNsqrd,
     OrthogonalPeriodicSpace,
-    OrthogonalNonperiodicSpace,
+    OrthogonalNonPeriodicSpace,
 )
 from chiron.states import SamplerState
 
@@ -13,78 +13,47 @@ from openmm import unit
 
 def test_orthogonal_periodic_displacement():
     # test that the incorrect box shapes throw an exception
-    with pytest.raises(ValueError):
-        space = OrthogonalPeriodicSpace(jnp.array([10.0, 10.0, 10.0]))
-    # test that incorrect units throw an exception
-    with pytest.raises(ValueError):
-        space = OrthogonalPeriodicSpace(
-            unit.Quantity(
-                jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]),
-                unit.radians,
-            )
-        )
 
-    space = OrthogonalPeriodicSpace(
-        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
-    )
-
-    # test that the box vectors are set correctly
-    assert jnp.all(
-        space.box_vectors
-        == jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
-    )
-
-    # test that the box lengths for an orthogonal box are set correctly
-    assert jnp.all(space._box_lengths == jnp.array([10.0, 10.0, 10.0]))
+    space = OrthogonalPeriodicSpace()
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
 
     # test calculation of the displacement_vector and distance between two points
     p1 = jnp.array([[0, 0, 0], [0, 0, 0]])
     p2 = jnp.array([[1, 0, 0], [6, 0, 0]])
 
-    r_ij, distance = space.displacement(p1, p2)
+    r_ij, distance = space.displacement(p1, p2, box_vectors)
 
     assert jnp.all(r_ij == jnp.array([[-1.0, 0.0, 0.0], [4.0, 0.0, 0.0]]))
 
     assert jnp.all(distance == jnp.array([1, 4]))
 
     # test that the periodic wrapping works as expected
-    wrapped_x = space.wrap(jnp.array([11, 0, 0]))
+    wrapped_x = space.wrap(jnp.array([11, 0, 0]), box_vectors)
     assert jnp.all(wrapped_x == jnp.array([1, 0, 0]))
 
-    wrapped_x = space.wrap(jnp.array([-1, 0, 0]))
+    wrapped_x = space.wrap(jnp.array([-1, 0, 0]), box_vectors)
     assert jnp.all(wrapped_x == jnp.array([9, 0, 0]))
 
-    wrapped_x = space.wrap(jnp.array([5, 0, 0]))
+    wrapped_x = space.wrap(jnp.array([5, 0, 0]), box_vectors)
     assert jnp.all(wrapped_x == jnp.array([5, 0, 0]))
 
-    wrapped_x = space.wrap(jnp.array([5, 12, -1]))
+    wrapped_x = space.wrap(jnp.array([5, 12, -1]), box_vectors)
     assert jnp.all(wrapped_x == jnp.array([5, 2, 9]))
-
-    # test the setter for the box vectors
-    space.box_vectors = jnp.array(
-        [[10.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 30.0]]
-    )
-    assert jnp.all(
-        space._box_vectors
-        == jnp.array([[10.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 30.0]])
-    )
-    assert jnp.all(space._box_lengths == jnp.array([10.0, 20.0, 30.0]))
 
 
 def test_orthogonal_nonperiodic_displacement():
-    space = OrthogonalNonperiodicSpace(
-        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
-    )
+    space = OrthogonalNonPeriodicSpace()
+    box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
     p1 = jnp.array([[0, 0, 0], [0, 0, 0]])
     p2 = jnp.array([[1, 0, 0], [6, 0, 0]])
 
-    r_ij, distance = space.displacement(p1, p2)
+    r_ij, distance = space.displacement(p1, p2, box_vectors)
 
     assert jnp.all(r_ij == jnp.array([[-1.0, 0.0, 0.0], [-6.0, 0.0, 0.0]]))
 
     assert jnp.all(distance == jnp.array([1, 6]))
 
-    wrapped_x = space.wrap(jnp.array([11, -1, 2]))
+    wrapped_x = space.wrap(jnp.array([11, -1, 2]), box_vectors)
     assert jnp.all(wrapped_x == jnp.array([11, -1, 2]))
 
 
@@ -95,34 +64,38 @@ def test_neighborlist_pair():
 
     coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
     space = OrthogonalPeriodicSpace()
-    cutoff = 1.1
-    skin = 0.1
+    cutoff = 1.1 * unit.nanometer
+    skin = 0.1 * unit.nanometer
     nbr_list = NeighborListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
-        skin=unit.Quantity(skin, unit.nanometer),
+        cutoff=cutoff,
+        skin=skin,
         n_max_neighbors=5,
     )
     assert nbr_list.cutoff == cutoff
     assert nbr_list.skin == skin
-    assert nbr_list.cutoff_and_skin == cutoff + skin
     assert nbr_list.n_max_neighbors == 5
 
     nbr_list.build_from_state(state)
 
-    assert jnp.all(nbr_list.ref_coordinates == coordinates)
+    assert jnp.all(nbr_list.ref_positions == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
     assert nbr_list.is_built == True
 
-    nbr_list.build(state.x0, state.box_vectors)
+    nbr_list.build(state.positions, state.box_vectors)
 
-    assert jnp.all(nbr_list.ref_coordinates == coordinates)
+    assert jnp.all(nbr_list.ref_positions == coordinates)
     assert jnp.all(nbr_list.box_vectors == box_vectors)
     assert nbr_list.is_built == True
 
@@ -190,12 +163,12 @@ def test_neighborlist_pair():
 def test_inputs():
     space = OrthogonalPeriodicSpace()
     # every particle should interact with every other particle
-    cutoff = 2.1
-    skin = 0.1
+    cutoff = 2.1 * unit.nanometer
+    skin = 0.1 * unit.nanometer
     nbr_list = NeighborListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
-        skin=unit.Quantity(skin, unit.nanometer),
+        cutoff=cutoff,
+        skin=skin,
         n_max_neighbors=5,
     )
     # check that the state is of the correct type
@@ -203,8 +176,14 @@ def test_inputs():
         nbr_list.build_from_state(123)
 
     coordinates = jnp.array([[1, 2, 3], [0, 0, 0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer), box_vectors=None
+        positions=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
+        box_vectors=None,
     )
 
     # check that boxvectors are defined in the state
@@ -236,24 +215,24 @@ def test_inputs():
     with pytest.raises(TypeError):
         NeighborListNsqrd(
             123,
-            cutoff=unit.Quantity(cutoff, unit.nanometer),
-            skin=unit.Quantity(skin, unit.nanometer),
+            cutoff=cutoff,
+            skin=skin,
             n_max_neighbors=5,
         )
     # check units of cutoff
     with pytest.raises(ValueError):
         NeighborListNsqrd(
             space,
-            cutoff=unit.Quantity(cutoff, unit.radian),
-            skin=unit.Quantity(skin, unit.nanometer),
+            cutoff=unit.Quantity(123, unit.radian),
+            skin=unit.Quantity(123, unit.nanometer),
             n_max_neighbors=5,
         )
     # check units of skin
     with pytest.raises(ValueError):
         NeighborListNsqrd(
             space,
-            cutoff=unit.Quantity(cutoff, unit.nanometer),
-            skin=unit.Quantity(skin, unit.radian),
+            cutoff=unit.Quantity(123, unit.nanometer),
+            skin=unit.Quantity(123, unit.radian),
             n_max_neighbors=5,
         )
 
@@ -271,19 +250,24 @@ def test_neighborlist_pair_multiple_particles():
     coordinates = jnp.stack(coord_mesh.reshape(3, -1), axis=1, dtype=jnp.float32)
 
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
     space = OrthogonalPeriodicSpace()
     # every particle should interact with every other particle
-    cutoff = 2.1
-    skin = 0.1
+    cutoff = 2.1 * unit.nanometer
+    skin = 0.1 * unit.nanometer
     nbr_list = NeighborListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
-        skin=unit.Quantity(skin, unit.nanometer),
+        cutoff=cutoff,
+        skin=skin,
         n_max_neighbors=5,
     )
     nbr_list.build_from_state(state)
@@ -294,12 +278,12 @@ def test_neighborlist_pair_multiple_particles():
     assert jnp.all(n_interacting == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
     # every particle should be in the nieghbor list, but only a subset in the interacting range
-    cutoff = 1.1
-    skin = 1.1
+    cutoff = 1.1 * unit.nanometer
+    skin = 1.1 * unit.nanometer
     nbr_list = NeighborListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
-        skin=unit.Quantity(skin, unit.nanometer),
+        cutoff=cutoff,
+        skin=skin,
         n_max_neighbors=5,
     )
     nbr_list.build_from_state(state)
@@ -326,7 +310,7 @@ def test_neighborlist_pair_multiple_particles():
         )
     )
     # test passing coordinates and box vectors directly
-    nbr_list.build(state.x0, state.box_vectors)
+    nbr_list.build(state.positions, state.box_vectors)
 
     assert jnp.all(nbr_list.n_neighbors == jnp.array([7, 6, 5, 4, 3, 2, 1, 0]))
 
@@ -341,17 +325,21 @@ def test_pairlist_pair():
 
     coordinates = jnp.array([[0, 0, 0], [1, 0, 0]])
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
     space = OrthogonalPeriodicSpace()
-    cutoff = 1.1
-    skin = 0.1
-    pair_list = PairList(
+    cutoff = 1.1 * unit.nanometer
+    pair_list = PairListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
+        cutoff=cutoff,
     )
 
     assert pair_list.cutoff == cutoff
@@ -361,7 +349,7 @@ def test_pairlist_pair():
     assert jnp.all(pair_list.reduction_mask == jnp.array([[True], [False]]))
     assert pair_list.is_built == True
 
-    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(coordinates)
+    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(state.positions)
 
     assert jnp.all(n_pairs == jnp.array([1, 0]))
     assert jnp.all(all_pairs.shape == (2, 1))
@@ -373,9 +361,48 @@ def test_pairlist_pair():
 
     assert pair_list.check(coordinates) == False
 
-    coordinates = coordinates = jnp.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    coordinates = jnp.array([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
     # we changed number of particles, and thus should rebuild
     assert pair_list.check(coordinates) == True
+
+    # test without using a cutoff
+    # this will be exactly the same as with a cutoff, given it is just two particles
+    cutoff = None
+    pair_list = PairListNsqrd(
+        space,
+        cutoff=None,
+    )
+    pair_list.build_from_state(state)
+
+    assert pair_list.cutoff == cutoff
+    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(state.positions)
+    assert jnp.all(n_pairs == jnp.array([1, 0]))
+    assert jnp.all(all_pairs.shape == (2, 1))
+    assert jnp.all(all_pairs == jnp.array([[1], [0]]))
+    assert jnp.all(mask == jnp.array([[1], [0]]))
+    assert jnp.all(dist == jnp.array([[1.0], [1.0]]))
+    assert displacement.shape == (2, 1, 3)
+    assert jnp.all(displacement == jnp.array([[[-1.0, 0.0, 0.0]], [[1.0, 0.0, 0.0]]]))
+
+    # test the difference between a short cutoff with no interactions and the same
+    # system with no cutoff.
+
+    # this test ultimately have no particles in the neighbor list
+    # because the cutoff is really short
+    cutoff = 0.5 * unit.nanometer
+    pair_list = PairListNsqrd(space, cutoff=cutoff)
+
+    assert pair_list.cutoff == cutoff
+    pair_list.build_from_state(state)
+    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(state.positions)
+    # the mask will all be false because the cutoff is too short
+    assert jnp.all(mask == jnp.array([[0], [0]]))
+
+    # set the cutoff to None, and calculate all pairs in the box
+    pair_list.cutoff = None
+    n_pairs, all_pairs, mask, dist, displacement = pair_list.calculate(state.positions)
+    # the mask will have the single pair in the box be true
+    assert jnp.all(mask == jnp.array([[1], [0]]))
 
 
 def test_pair_list_multiple_particles():
@@ -390,18 +417,23 @@ def test_pair_list_multiple_particles():
     coordinates = jnp.stack(coord_mesh.reshape(3, -1), axis=1, dtype=jnp.float32)
 
     box_vectors = jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
     state = SamplerState(
-        x0=unit.Quantity(coordinates, unit.nanometer),
+        positions=unit.Quantity(coordinates, unit.nanometer),
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=unit.Quantity(box_vectors, unit.nanometer),
     )
 
     space = OrthogonalPeriodicSpace()
     # every particle should interact with every other particle
-    cutoff = 2.1
-    skin = 0.1
-    pair_list = PairList(
+    cutoff = 2.1 * unit.nanometer
+    skin = 0.1 * unit.nanometer
+    pair_list = PairListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
+        cutoff=cutoff,
     )
     pair_list.build_from_state(state)
 
@@ -428,8 +460,8 @@ def test_pair_list_multiple_particles():
     # compare to nbr_list
     nbr_list = NeighborListNsqrd(
         space,
-        cutoff=unit.Quantity(cutoff, unit.nanometer),
-        skin=unit.Quantity(skin, unit.nanometer),
+        cutoff=cutoff,
+        skin=skin,
         n_max_neighbors=20,
     )
     nbr_list.build_from_state(state)

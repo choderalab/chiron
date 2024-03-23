@@ -1,3 +1,13 @@
+import pytest
+
+
+@pytest.fixture(scope="session")
+def prep_temp_dir(tmpdir_factory):
+    """Create a temporary directory for the test."""
+    tmpdir = tmpdir_factory.mktemp("test_testsystems")
+    return tmpdir
+
+
 def compute_openmm_reference_energy(testsystem, positions):
     from openmm import unit
     from openmm.app import Simulation
@@ -182,8 +192,12 @@ def test_LJ_fluid():
             dispersion_correction=False,
             shift=False,
         )
+        from chiron.utils import PRNG
+
+        PRNG.set_seed(1234)
         state = SamplerState(
-            x0=lj_openmm.positions,
+            positions=lj_openmm.positions,
+            current_PRNG_key=PRNG.get_random_key(),
             box_vectors=lj_openmm.system.getDefaultPeriodicBoxVectors(),
         )
 
@@ -196,7 +210,7 @@ def test_LJ_fluid():
             lj_openmm.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff
         )
 
-        e_chiron_energy = lj_chiron.compute_energy(state.x0, nbr_list)
+        e_chiron_energy = lj_chiron.compute_energy(state.positions, nbr_list)
         e_openmm_energy = compute_openmm_reference_energy(
             lj_openmm, lj_openmm.positions
         )

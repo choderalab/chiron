@@ -3,7 +3,7 @@ def test_minimization():
     import jax.numpy as jnp
 
     from chiron.states import SamplerState
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
     from openmm import unit
 
     # initialize testystem
@@ -16,16 +16,23 @@ def test_minimization():
     cutoff = unit.Quantity(1.0, unit.nanometer)
     lj_potential = LJPotential(lj_fluid.topology, cutoff=cutoff)
 
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
     sampler_state = SamplerState(
-        lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+        lj_fluid.positions,
+        current_PRNG_key=PRNG.get_random_key(),
+        box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
     )
     # use parilist
-    nbr_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
     nbr_list.build_from_state(sampler_state)
 
     # compute intial energy with and without pairlist
-    initial_e_with_nbr_list = lj_potential.compute_energy(sampler_state.x0, nbr_list)
-    initial_e_without_nbr_list = lj_potential.compute_energy(sampler_state.x0)
+    initial_e_with_nbr_list = lj_potential.compute_energy(
+        sampler_state.positions, nbr_list
+    )
+    initial_e_without_nbr_list = lj_potential.compute_energy(sampler_state.positions)
     print(f"initial_e_with_nbr_list: {initial_e_with_nbr_list}")
     print(f"initial_e_without_nbr_list: {initial_e_without_nbr_list}")
     assert not jnp.isclose(
@@ -33,7 +40,7 @@ def test_minimization():
     ), "initial_e_with_nbr_list and initial_e_without_nbr_list should not be close"
     # minimize energy for 0 steps
     results = minimize_energy(
-        sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=0
+        sampler_state.positions, lj_potential.compute_energy, nbr_list, maxiter=0
     )
 
     # check that the minimization did not change the energy
@@ -43,7 +50,7 @@ def test_minimization():
         min_x, nbr_list
     )
     after_0_steps_minimization_e_without_nbr_list = lj_potential.compute_energy(
-        sampler_state.x0
+        sampler_state.positions
     )
     print(
         f"after_0_steps_minimization_e_with_nbr_list: {after_0_steps_minimization_e_with_nbr_list}"
@@ -62,7 +69,7 @@ def test_minimization():
     # after 100 steps of minimization
     steps = 100
     results = minimize_energy(
-        sampler_state.x0, lj_potential.compute_energy, nbr_list, maxiter=steps
+        sampler_state.positions, lj_potential.compute_energy, nbr_list, maxiter=steps
     )
     min_x = results.params
     e_min = lj_potential.compute_energy(min_x, nbr_list)
@@ -81,7 +88,7 @@ def test_minimize_two_particles():
     import jax.numpy as jnp
 
     from chiron.states import SamplerState
-    from chiron.neighbors import PairList, OrthogonalPeriodicSpace
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
     from openmm import unit
     from chiron.potential import LJPotential
 
@@ -92,15 +99,19 @@ def test_minimize_two_particles():
     lj_potential = LJPotential(None, sigma=sigma, epsilon=epsilon, cutoff=cutoff)
 
     coordinates = jnp.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0]])
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
 
     # define the sampler state
     sampler_state = SamplerState(
-        x0=coordinates * unit.nanometer,
+        positions=coordinates * unit.nanometer,
+        current_PRNG_key=PRNG.get_random_key(),
         box_vectors=jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
         * unit.nanometer,
     )
 
-    pair_list = PairList(OrthogonalPeriodicSpace(), cutoff=cutoff)
+    pair_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=cutoff)
     pair_list.build_from_state(sampler_state)
 
     e_start = lj_potential.compute_energy(coordinates, pair_list)

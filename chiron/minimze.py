@@ -1,16 +1,16 @@
-import jax
-import jax.numpy as jnp
-from jaxopt import GradientDescent
-from loguru import logger as log
+from typing import Callable
+from jax import numpy as jnp
 
 
-def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
+def minimize_energy(
+    coordinates: jnp.array, potential_fn: Callable, nbr_list=None, maxiter: int = 1000
+):
     """
     Minimize the potential energy of a system using JAXopt.
 
     Parameters
     ----------
-    coordinates : jnp.ndarray
+    coordinates : jnp.array
         The initial coordinates of the system.
     potential_fn : callable
         The potential energy function of the system, which takes coordinates as input.
@@ -24,6 +24,7 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
     jnp.ndarray
         The optimized coordinates.
     """
+    from loguru import logger as log
 
     def objective_fn(x):
         if nbr_list is not None:
@@ -32,6 +33,9 @@ def minimize_energy(coordinates, potential_fn, nbr_list=None, maxiter=1000):
         else:
             log.debug("Using NO neighbor list")
             return potential_fn(x)
+
+    from jaxopt import GradientDescent
+    import jax
 
     optimizer = GradientDescent(
         fun=jax.value_and_grad(objective_fn), value_and_grad=True, maxiter=maxiter

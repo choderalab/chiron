@@ -19,31 +19,47 @@ lj_potential = LJPotential(
     lj_fluid.topology, sigma=sigma, epsilon=epsilon, cutoff=cutoff
 )
 
+
+from chiron.utils import PRNG
+
+PRNG.set_seed(1234)
+
 from chiron.states import SamplerState, ThermodynamicState
 
 # define the sampler state
 sampler_state = SamplerState(
-    x0=lj_fluid.positions, box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors()
+    positions=lj_fluid.positions,
+    current_PRNG_key=PRNG.get_random_key(),
+    box_vectors=lj_fluid.system.getDefaultPeriodicBoxVectors(),
 )
 
 # define the thermodynamic state
 thermodynamic_state = ThermodynamicState(
-    potential=lj_potential, temperature=300 * unit.kelvin
+    potential=lj_potential,
+    temperature=300 * unit.kelvin,
 )
+
 
 from chiron.neighbors import NeighborListNsqrd, OrthogonalPeriodicSpace
 
-# define the neighbor list for an orthogonal periodic space
+# Set up a neighbor list for an orthogonal periodic box with a cutoff of 3.0 * sigma and skin of 0.5 * sigma,
+# where sigma = 0.34 nm.
+# The class we instantiate, NeighborListNsqrd, uses an O(N^2) calculation to build the neighbor list,
+# but uses a buffer (i.e., the skin) to avoid needing to perform the O(N^2) calculation at every step.
+# With this routine, the calculation at each step between builds is O(N*n_max_neighbors).
+# For the conditions considered here, n_max_neighbors is set to 180 (note this will increase if necessary)
+# and thus there is ~5 reduction in computational cost compared to a brute force approach (i.e., PairListNsqrd).
+
 skin = 0.5 * unit.nanometer
 
 nbr_list = NeighborListNsqrd(
     OrthogonalPeriodicSpace(), cutoff=cutoff, skin=skin, n_max_neighbors=180
 )
 
-# build the neighbor list from the sampler state
+# perform the initial build of the neighbor list from the sampler state
 nbr_list.build_from_state(sampler_state)
 
-from chiron.reporters import SimulationReporter
+from chiron.reporters import LangevinDynamicsReporter
 
 # initialize a reporter to save the simulation data
 filename = "test_lj.h5"
@@ -51,18 +67,25 @@ import os
 
 if os.path.isfile(filename):
     os.remove(filename)
-reporter = SimulationReporter("test_lj.h5", lj_fluid.topology, 1)
+reporter = LangevinDynamicsReporter(
+    "test_lj.h5",
+    1,
+    lj_fluid.topology,
+)
 
 from chiron.integrators import LangevinIntegrator
 
 # initialize the Langevin integrator
-integrator = LangevinIntegrator(reporter=reporter, save_frequency=100)
-print("init_energy: ", lj_potential.compute_energy(sampler_state.x0, nbr_list))
+integrator = LangevinIntegrator(reporter=reporter, report_interval=100)
+print("init_energy: ", lj_potential.compute_energy(sampler_state.positions, nbr_list))
 
-integrator.run(
+# run the simulation
+# note, typically we will not be calling the integrator directly,
+# but instead using the LangevinDynamics Move in the MCMC Sampler.
+updated_sampler_state, updated_nbr_list = integrator.run(
     sampler_state,
     thermodynamic_state,
-    n_steps=5000,
+    number_of_steps=1000,
     nbr_list=nbr_list,
     progress_bar=True,
 )
@@ -71,9 +94,11 @@ import h5py
 
 # read the data from the reporter
 with h5py.File("test_lj.h5", "r") as f:
-    energies = f["energy"][:]
+    energies = f["potential_energy"][:]
     steps = f["step"][:]
 
+energies = reporter.get_property("potential_energy")
+steps = reporter.get_property("step")
 
 # plot the energy
 import matplotlib.pyplot as plt

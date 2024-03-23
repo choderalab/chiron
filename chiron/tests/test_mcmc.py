@@ -36,40 +36,50 @@ def test_sample_from_harmonic_osciallator(prep_temp_dir):
     thermodynamic_state = ThermodynamicState(
         potential=harmonic_potential, temperature=300 * unit.kelvin
     )
-    sampler_state = SamplerState(x0=ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    sampler_state = SamplerState(
+        positions=ho.positions, current_PRNG_key=PRNG.get_random_key()
+    )
     from chiron.integrators import LangevinIntegrator
 
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
     id = uuid.uuid4()
-    h5_file = f"test_{id}.h5"
-    reporter = SimulationReporter(f"{prep_temp_dir}/{h5_file}", 1)
+    wd = prep_temp_dir.join(f"_test_{id}")
+    BaseReporter.set_directory(wd)
+    reporter = LangevinDynamicsReporter()
 
     integrator = LangevinIntegrator(
-        stepsize=0.2 * unit.femtosecond, reporter=reporter, save_frequency=1
+        timestep=2 * unit.femtosecond,
+        reporter=reporter,
+        report_interval=1,
+        refresh_velocities=True,
     )
 
-    r = integrator.run(
+    integrator.run(
         sampler_state,
         thermodynamic_state,
-        n_steps=5,
+        number_of_steps=5,
     )
-
+    integrator.reporter.flush_buffer()
     import jax.numpy as jnp
     import h5py
 
-    h5 = h5py.File(f"{prep_temp_dir}/{h5_file}", "r")
+    h5 = h5py.File(f"{wd}/{LangevinDynamicsReporter.get_name()}.h5", "r")
     keys = h5.keys()
 
-    assert "energy" in keys, "Energy not in keys"
+    assert "potential_energy" in keys, "Energy not in keys"
     assert "step" in keys, "Step not in keys"
-    assert "traj" in keys, "Traj not in keys"
+    assert "traj" not in keys, "Traj is not in keys"
 
-    energy = h5["energy"][:]
+    energy = h5["potential_energy"][:]
     print(energy)
 
     reference_energy = jnp.array(
-        [0.00019308, 0.00077772, 0.00174247, 0.00307798, 0.00479007]
+        [0.03551735, 0.1395877, 0.30911613, 0.5495938, 0.85149795]
     )
     assert jnp.allclose(energy, reference_energy)
 
@@ -85,7 +95,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import LangevinDynamicsMove, MoveSet, MCMCSampler
+    from chiron.mcmc import LangevinDynamicsMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
@@ -99,31 +109,58 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_LangevinDynamics
 
     # Initalize the sampler and thermodynamic state
     from chiron.states import ThermodynamicState, SamplerState
+    from chiron.utils import PRNG
 
+    PRNG.set_seed(1234)
     thermodynamic_state = ThermodynamicState(
         harmonic_potential,
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set (here only LangevinDynamicsMove) and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import LangevinDynamicsReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", None, 1
-    )
+    BaseReporter.set_directory(prep_temp_dir)
+
+    simulation_reporter = LangevinDynamicsReporter(1)
+
+    # the following will reinitialize the velocities for each iteration
     langevin_move = LangevinDynamicsMove(
-        nr_of_steps=10, seed=1234, simulation_reporter=simulation_reporter
+        number_of_steps=10, refresh_velocities=True, reporter=simulation_reporter
     )
 
-    move_set = MoveSet([("LangevinMove", langevin_move)])
+    move_set = MoveSchedule([("LangevinMove", langevin_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
+
+    # the following will use the initialize velocities function
+    from chiron.utils import initialize_velocities
+
+    sampler_state.velocities = initialize_velocities(
+        thermodynamic_state.temperature, ho.topology, sampler_state._current_PRNG_key
+    )
+
+    langevin_move = LangevinDynamicsMove(
+        number_of_steps=10, refresh_velocities=False, reporter=simulation_reporter
+    )
+
+    move_set = MoveSchedule([("LangevinMove", langevin_move)])
+
+    # Initalize the sampler
+    sampler = MCMCSampler(move_set)
+
+    # Run the sampler with the thermodynamic state and sampler state and return the sampler state
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDisplacementMove(
@@ -137,7 +174,7 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
     """
     from openmm import unit
     from chiron.potential import HarmonicOscillatorPotential
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillator
@@ -157,29 +194,34 @@ def test_sample_from_harmonic_osciallator_with_MCMC_classes_and_MetropolisDispla
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+    simulation_reporter = MCReporter(1)
 
-    mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=10,
+    mc_displacement_move = MonteCarloDisplacementMove(
+        number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=[0],
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
-    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_MetropolisDisplacementMove(
@@ -192,7 +234,7 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
     sampler states, and uses the Metropolis displacement move in an MCMC sampling scheme.
     """
     from openmm import unit
-    from chiron.mcmc import MetropolisDisplacementMove, MoveSet, MCMCSampler
+    from chiron.mcmc import MonteCarloDisplacementMove, MoveSchedule, MCMCSampler
 
     # Initalize the testsystem
     from openmmtools.testsystems import HarmonicOscillatorArray
@@ -212,29 +254,36 @@ def test_sample_from_harmonic_osciallator_array_with_MCMC_classes_and_Metropolis
         temperature=300 * unit.kelvin,
         volume=30 * (unit.angstrom**3),
     )
-    sampler_state = SamplerState(ho.positions)
+
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+    sampler_state = SamplerState(ho.positions, current_PRNG_key=PRNG.get_random_key())
 
     # Initalize the move set and reporter
-    from chiron.reporters import SimulationReporter
+    from chiron.reporters import MCReporter, BaseReporter
 
-    simulation_reporter = SimulationReporter(
-        f"{prep_temp_dir}/test_{uuid.uuid4()}.h5", 1
-    )
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
 
-    mc_displacement_move = MetropolisDisplacementMove(
-        nr_of_moves=10,
+    simulation_reporter = MCReporter(1)
+
+    mc_displacement_move = MonteCarloDisplacementMove(
+        number_of_moves=10,
         displacement_sigma=0.1 * unit.angstrom,
         atom_subset=None,
-        simulation_reporter=simulation_reporter,
+        reporter=simulation_reporter,
     )
 
-    move_set = MoveSet([("MetropolisDisplacementMove", mc_displacement_move)])
+    move_set = MoveSchedule([("MonteCarloDisplacementMove", mc_displacement_move)])
 
     # Initalize the sampler
-    sampler = MCMCSampler(move_set, sampler_state, thermodynamic_state)
+    sampler = MCMCSampler(move_set)
 
     # Run the sampler with the thermodynamic state and sampler state and return the sampler state
-    sampler.run(n_iterations=2)  # how many times to repeat
+    sampler.run(
+        sampler_state, thermodynamic_state, n_iterations=2
+    )  # how many times to repeat
 
 
 def test_thermodynamic_state_inputs():
@@ -273,6 +322,134 @@ def test_thermodynamic_state_inputs():
         ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.kelvin)
 
     ThermodynamicState(potential=harmonic_potential, pressure=100 * unit.atmosphere)
+
+
+def test_mc_barostat_parameter_setting():
+    import jax.numpy as jnp
+    from chiron.mcmc import MonteCarloBarostatMove
+
+    barostat_move = MonteCarloBarostatMove(
+        volume_max_scale=0.1,
+        number_of_moves=1,
+    )
+
+    assert barostat_move.volume_max_scale == 0.1
+    assert barostat_move.number_of_moves == 1
+
+
+def test_mc_barostat(prep_temp_dir):
+    import jax.numpy as jnp
+
+    from chiron.reporters import MCReporter, BaseReporter
+
+    wd = prep_temp_dir.join(f"_test_{uuid.uuid4()}")
+    BaseReporter.set_directory(wd)
+    simulation_reporter = MCReporter(1)
+
+    from chiron.mcmc import MonteCarloBarostatMove
+
+    barostat_move = MonteCarloBarostatMove(
+        volume_max_scale=0.1,
+        number_of_moves=10,
+        reporter=simulation_reporter,
+        report_interval=1,
+    )
+
+    from chiron.potential import IdealGasPotential
+    from openmm import unit
+
+    positions = (
+        jnp.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 0],
+                [1, 0, 1],
+                [0, 1, 1],
+                [1, 1, 1],
+            ]
+        )
+        * unit.nanometer
+    )
+    box_vectors = (
+        jnp.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]])
+        * unit.nanometer
+    )
+    volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+
+    from openmm.app import Topology, Element
+
+    topology = Topology()
+    element = Element.getBySymbol("Ar")
+    chain = topology.addChain()
+    residue = topology.addResidue("system", chain)
+    for i in range(positions.shape[0]):
+        topology.addAtom("Ar", element, residue)
+
+    ideal_gas_potential = IdealGasPotential(topology)
+
+    from chiron.states import SamplerState, ThermodynamicState
+    from chiron.utils import PRNG
+
+    PRNG.set_seed(1234)
+
+    # define the sampler state
+    sampler_state = SamplerState(
+        positions=positions,
+        box_vectors=box_vectors,
+        current_PRNG_key=PRNG.get_random_key(),
+    )
+
+    # define the thermodynamic state
+    thermodynamic_state = ThermodynamicState(
+        potential=ideal_gas_potential,
+        temperature=300 * unit.kelvin,
+        pressure=1.0 * unit.atmosphere,
+    )
+
+    from chiron.neighbors import PairListNsqrd, OrthogonalPeriodicSpace
+
+    # since particles are non-interacting and we will not displacece them, the pair list basically
+    # does nothing in this case.
+    nbr_list = PairListNsqrd(OrthogonalPeriodicSpace(), cutoff=0 * unit.nanometer)
+
+    sampler_state, thermodynamic_state, nbr_list = barostat_move.update(
+        sampler_state, thermodynamic_state, nbr_list
+    )
+    potential_energies = simulation_reporter.get_property("potential_energy")
+    volumes = simulation_reporter.get_property("volume")
+
+    # ideal gas treatment, so stored energy will only be a
+    # consequence of pressure, volume, and temperature
+    from loguru import logger as log
+
+    log.debug(f"PE {potential_energies * unit.kilojoules_per_mole}")
+    log.debug(thermodynamic_state.pressure)
+    log.debug(thermodynamic_state.beta)
+    log.debug(volumes)
+    log.debug(volumes * unit.nanometer**3)
+
+    # assert that the PE is always zero
+    assert potential_energies[0] == 0
+    assert potential_energies[-1] == 0
+
+    # the reduced potential will only be a consequence of the pressure, volume, and temperature
+
+    assert jnp.isclose(
+        thermodynamic_state.get_reduced_potential(sampler_state),
+        (
+            thermodynamic_state.pressure
+            * thermodynamic_state.beta
+            * (volumes[-1] * unit.nanometer**3)
+        ),
+        1e-3,
+    )
+
+    print(barostat_move.statistics["n_accepted"])
+    assert barostat_move.statistics["n_proposed"] == 10
+    assert barostat_move.statistics["n_accepted"] == 8
 
 
 def test_sample_from_joint_distribution_of_two_HO_with_local_moves_and_MC_updates():

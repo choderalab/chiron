@@ -1,13 +1,13 @@
 import jax
 import jax.numpy as jnp
-from loguru import logger as log
 from openmm import unit
 from openmm.app import Topology
-from typing import Optional
 
 
 class NeuralNetworkPotential:
     def __init__(self, model, **kwargs):
+        from loguru import logger as log
+
         if model is None:
             log.warning("No model provided, using default model")
         else:
@@ -61,6 +61,70 @@ class NeuralNetworkPotential:
         # exclude case where i ==j and duplicate pairs
         pairs = jnp.stack((pairs1[interacting_mask], pairs2[interacting_mask]), axis=0)
         return distance[interacting_mask], displacement_vectors[interacting_mask], pairs
+
+
+class IdealGasPotential(NeuralNetworkPotential):
+    def __init__(
+        self,
+        topology: Topology,
+    ):
+        """
+        Initialize the Ideal Gas potential.
+
+        Parameters
+        ----------
+        topology : Topology
+            The topology of the system
+
+        """
+
+        if not isinstance(topology, (Topology, property)) and topology is not None:
+            raise TypeError(
+                f"Topology must be a Topology object, a property, or None, got type(topology) = {type(topology)}"
+            )
+
+        self.topology = topology
+
+    def compute_energy(self, positions: jnp.array, nbr_list=None, debug_mode=False):
+        """
+        Compute the energy for an ideal gas, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, default=None
+            Instance of a neighbor list or pair list class to use.
+            If None, an unoptimized N^2 pairlist will be used without PBC conditions.
+        Returns
+        -------
+        potential_energy : float
+            The total potential energy of the system.
+
+        """
+        # Compute the pair distances and displacement vectors
+
+        return 0.0
+
+    def compute_force(self, positions: jnp.array, nbr_list=None) -> jnp.array:
+        """
+        Compute the  force for ideal gas particles, which is always 0.
+
+        Parameters
+        ----------
+        positions : jnp.array
+            The positions of the particles in the system
+        nbr_list : NeighborList, optional
+            Instance of the neighborlist class to use. By default, set to None, which will use an N^2 pairlist
+
+        Returns
+        -------
+        force : jnp.array
+            The forces on the particles in the system
+
+        """
+
+        return 0.0
 
 
 class LJPotential(NeuralNetworkPotential):
@@ -166,6 +230,7 @@ class LJPotential(NeuralNetworkPotential):
 
         """
         # Compute the pair distances and displacement vectors
+        from loguru import logger as log
 
         if nbr_list is None:
             log.debug(
@@ -199,7 +264,7 @@ class LJPotential(NeuralNetworkPotential):
                 raise ValueError("Neighborlist must be built before use")
 
             # ensure that the cutoff in the neighbor list is the same as the cutoff in the potential
-            if nbr_list.cutoff != self.cutoff:
+            if nbr_list.cutoff.value_in_unit_system(unit.md_unit_system) != self.cutoff:
                 raise ValueError(
                     f"Neighborlist cutoff ({nbr_list.cutoff}) must be the same as the potential cutoff ({self.cutoff})"
                 )
@@ -272,9 +337,24 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         self,
         topology: Topology,
         k: unit.Quantity = 1.0 * unit.kilocalories_per_mole / unit.angstrom**2,
-        x0: unit.Quantity = 0.0 * unit.angstrom,
+        x0: unit.Quantity = jnp.array([[0.0, 0.0, 0.0]]) * unit.angstrom,
         U0: unit.Quantity = 0.0 * unit.kilocalories_per_mole,
     ):
+        """
+        Initialize a HarmonicOscillatorPotential object.
+
+        Parameters:
+        ----------
+        topology : Topology
+            The topology object representing the molecular system.
+        k : unit.Quantity, optional
+            The spring constant of the harmonic potential. Default is 1.0 kcal/mol/Å^2.
+        positions : unit.Quantity, optional
+            The equilibrium position of the harmonic potential. Default is [0.0,0.0,0.0] Å.
+        U0 : unit.Quantity, optional
+            The offset potential energy of the harmonic potential. Default is 0.0 kcal/mol.
+        """
+
         if not isinstance(topology, Topology):
             if not isinstance(
                 topology, property
@@ -286,7 +366,9 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         if not isinstance(k, unit.Quantity):
             raise TypeError(f"k must be a unit.Quantity, type(k) = {type(k)}")
         if not isinstance(x0, unit.Quantity):
-            raise TypeError(f"x0 must be a unit.Quantity, type(x0) = {type(x0)}")
+            raise TypeError(
+                f"positions must be a unit.Quantity, type(positions) = {type(x0)}"
+            )
         if not isinstance(U0, unit.Quantity):
             raise TypeError(f"U0 must be a unit.Quantity, type(U0) = {type(U0)}")
 
@@ -296,18 +378,25 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
             )
         if not x0.unit.is_compatible(unit.angstrom):
             raise ValueError(
-                f"x0 must be a unit.Quantity with units of distance, x0.unit = {x0.unit}"
+                f"positions must be a unit.Quantity with units of distance, positions.unit = {x0.unit}"
             )
+        assert (
+            x0.shape[1] == 3
+        ), f"positions must be a NX3 vector, positions.shape = {x0.shape}"
         if not U0.unit.is_compatible(unit.kilocalories_per_mole):
             raise ValueError(
                 f"U0 must be a unit.Quantity with units of energy, U0.unit = {U0.unit}"
             )
 
-        log.info("Initializing HarmonicOscillatorPotential")
-        log.info(f"k = {k}")
-        log.info(f"x0 = {x0}")
-        log.info(f"U0 = {U0}")
-        log.info("Energy is calculate: U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0")
+        from loguru import logger as log
+
+        log.debug("Initializing HarmonicOscillatorPotential")
+        log.debug(f"k = {k}")
+        log.debug(f"positions = {x0}")
+        log.debug(f"U0 = {U0}")
+        log.debug(
+            "Energy is calculate: U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0"
+        )
         self.k = jnp.array(
             k.value_in_unit_system(unit.md_unit_system)
         )  # spring constant
@@ -319,12 +408,21 @@ class HarmonicOscillatorPotential(NeuralNetworkPotential):
         )  # offset potential energy
         self.topology = topology
 
+    from functools import partial
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _compute_energy(self, positions: jnp.array, x0: jnp.array, k, U0):
+        displacement_vectors = positions - x0
+        # Use the 3D harmonic oscillator potential to compute the potential energy
+        potential_energy = 0.5 * k * jnp.sum(displacement_vectors**2) + U0
+        return potential_energy
+
     def compute_energy(self, positions: jnp.array, nbr_list=None):
-        # the functional form is given by U(x) = (K/2) * ( (x-x0)^2 + y^2 + z^2 ) + U0
+        # the functional form is given by U(x) = (K/2) * ( (x-positions)^2 + y^2 + z^2 ) + U0
         # https://github.com/choderalab/openmmtools/blob/main/openmmtools/testsystems.py#L695
 
         # compute the displacement vectors
-        displacement_vectors = positions - self.x0
+        # displacement_vectors = positions - self.x0
         # Uue the 3D harmonic oscillator potential to compute the potential energy
-        potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
-        return potential_energy
+        # potential_energy = 0.5 * self.k * jnp.sum(displacement_vectors**2) + self.U0
+        return self._compute_energy(positions, self.x0, self.k, self.U0)
