@@ -241,6 +241,7 @@ def test_multistate_run(ho_multistate_sampler_multiple_ks: MultiStateSampler):
     # we no longer transpose the array in the reporter; it is transposed before analysis in mbar
     # note n_iterations+1 because it logs time = 0 as well
     assert u_kn.shape == (n_iterations + 1, 4, 4)
+
     # check that the free energies are correct
     print(ho_sampler.analytical_f_i)
     # [ 0.        , -0.28593054, -0.54696467, -0.78709279]
