@@ -133,5 +133,5 @@ def test_reporter(prep_temp_dir, ho_multistate_sampler_multiple_ks):
         "step",
     ]
     u_kn = ho_sampler._reporter.get_property("u_kn")
-    assert u_kn.shape == (4, 4, 6)
+    assert u_kn.shape == (6, 4, 4)
     assert os.path.exists(ho_sampler._reporter.log_file_path)
